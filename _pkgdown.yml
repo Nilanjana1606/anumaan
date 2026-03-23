@@ -90,6 +90,10 @@ reference:
   - amr_preprocess
   - amr_config
   - validate_config
+  - print.amr_config
+  - print.amr_result
+  - summary.amr_result
+  - print.amr_preprocessing_report
 
 - title: "Normalization"
   desc: "Standardize column names, organisms, antibiotics, and specimens"
@@ -102,6 +106,7 @@ reference:
   - standardize_outcome
   - standardize_susceptibility
   - recode_intermediate
+  - clean_antibiotic_values
   - parse_dates
 
 - title: "Classification"
@@ -113,6 +118,8 @@ reference:
   - classify_aware
   - classify_antibiotic_class
   - classify_mortality
+  - derive_infection_type
+  - derive_infection_type_for_mortality
 
 - title: "Enrichment"
   desc: "Derive missing variables from existing data"
@@ -151,6 +158,10 @@ reference:
   - starts_with("calculate_")
   - starts_with("fit_")
   - starts_with("assign_rr")
+  - convert_or_to_rr
+  - count_incident_cases
+  - filter_profiles_to_rr_classes
+  - get_top_pathogens
   - load_rr_reference
   - lookup_rr
   - add_rr_mappings
