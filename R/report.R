@@ -548,12 +548,9 @@ export_report_html <- function(report, file) {
 #' @param file Output file path
 #' @keywords internal
 export_report_pdf <- function(report, file) {
-  # Write as text first, then note PDF requires rmarkdown
-  txt_file <- sub("\\.pdf$", ".txt", file)
-  export_report_txt(report, txt_file)
-  warning(
+  stop(
     "PDF export requires rmarkdown and a LaTeX installation. ",
-    "Report saved as text to: ", txt_file
+    "Use .html, .txt, or .rds format instead."
   )
 }
 
@@ -565,6 +562,7 @@ export_report_pdf <- function(report, file) {
 #' @keywords internal
 export_report_txt <- function(report, file) {
   sink(file)
+  on.exit(sink())
   print(report)
   cat("\n\n=== DETAILED COLUMN MAPPING ===\n")
   print(report$column_mapping)
@@ -679,7 +677,3 @@ convert_df_to_html_table <- function(df) {
   html <- c(html, "</table>")
   return(paste(html, collapse = "\n"))
 }
-
-
-# Null coalescing operator (internal)
-`%||%` <- function(a, b) if (is.null(a)) b else a

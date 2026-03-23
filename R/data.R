@@ -244,7 +244,7 @@ get_organism_taxonomy <- function() {
   if ("organism_group" %in% names(taxonomy) && !"org_group" %in% names(taxonomy)) {
     names(taxonomy)[names(taxonomy) == "organism_group"] <- "org_group"
   }
-  taxonomy
+  taxonomy[, c("organism_name", "org_group")]
 }
 
 
@@ -256,20 +256,16 @@ get_organism_taxonomy <- function() {
 #' @return Data frame with columns organism_name and rr_pathogen
 #' @keywords internal
 get_rr_pathogen_map <- function() {
-  file_path <- find_extdata_file("organisms.csv")
-  if (file_path == "") {
-    warning("organisms.csv not found. Returning empty RR pathogen map.")
+  taxonomy <- get_organism_taxonomy()
+  if (nrow(taxonomy) == 0) {
     return(data.frame(
       organism_name = character(),
       rr_pathogen = character(),
       stringsAsFactors = FALSE
     ))
   }
-  taxonomy <- utils::read.csv(file_path, stringsAsFactors = FALSE)
-  # Use organism_name as the rr_pathogen if no dedicated column exists
-  if (!"rr_pathogen" %in% names(taxonomy)) {
-    taxonomy$rr_pathogen <- taxonomy$organism_name
-  }
+  # Use organism_name as the rr_pathogen (no dedicated column in current data)
+  taxonomy$rr_pathogen <- taxonomy$organism_name
   taxonomy[, c("organism_name", "rr_pathogen")]
 }
 

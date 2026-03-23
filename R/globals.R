@@ -2,7 +2,7 @@
 # Package-level imports and NSE variable declarations
 
 #' @importFrom magrittr %>%
-#' @importFrom rlang .data .env :=
+#' @importFrom rlang .data .env := %||%
 #' @importFrom stats density median na.omit pnorm profile quantile reorder setNames
 #' @importFrom utils adist head object.size
 NULL
@@ -11,8 +11,8 @@ NULL
 # across the package. These are not actual global variables -- they are
 # column references inside dplyr::mutate(), dplyr::filter(), etc.
 utils::globalVariables(c(
-  # Pipe and tidy-eval
-  "%>%", ".", ".data", ".env", ":=",
+  # magrittr dot placeholder (not covered by @importFrom)
+  ".",
 
   # Internal temporary columns created in dplyr pipelines
   ".abg_key", ".abx", ".abx_val", ".adm_date", ".chain_seq",
