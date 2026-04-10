@@ -36,7 +36,6 @@ Depends:
 Imports:
     dplyr (>= 1.0.0),
     tidyr (>= 1.0.0),
-    magrittr (>= 2.0.0),
     stringr (>= 1.4.0),
     stringdist (>= 0.9.0),
     lubridate (>= 1.7.0),
@@ -55,15 +54,7 @@ Suggests:
     lme4 (>= 1.1.0),
     ggpubr,
     ggrepel,
-    pkgdown,
-    Matrix,
-    car,
-    leaflet,
-    osqp,
-    quadprog,
-    sf,
-    spdep,
-    tmap
+    pkgdown
 VignetteBuilder: knitr
 URL: https://saketlab.github.io/anumaan/, https://github.com/saketlab/anumaan
 BugReports: https://github.com/saketlab/anumaan/issues
