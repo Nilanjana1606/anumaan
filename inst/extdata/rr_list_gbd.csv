@@ -1,0 +1,88 @@
+"Pathogen","Drug","Sample size","Mean relative risk","Lower bound","Upper bound"
+"Acinetobacter baumannii","Anti-pseudomonal penicillin/Beta-lactamase inhibitors",948,1.31,1.12,1.52
+"Acinetobacter baumannii","Beta-lactam/Beta-lactamase inhibitors",1555,1.27,1.11,1.44
+"Acinetobacter baumannii","Carbapenem",3232,1.42,1.27,1.58
+"Acinetobacter baumannii","Fourth-generation cephalosporins",1439,1.31,1.14,1.51
+"Acinetobacter baumannii","Third-generation cephalosporins",2055,1.35,1.13,1.62
+"Acinetobacter baumannii","Aminoglycosides",2066,1.1,0.97,1.25
+"Acinetobacter baumannii","Fluoroquinolones",3020,1.38,1.21,1.56
+"Citrobacter spp.","Anti-pseudomonal penicillin/Beta-lactamase inhibitors",3127,1.32,1.14,1.53
+"Citrobacter spp.","Carbapenem",3097,1.48,1.25,1.76
+"Citrobacter spp.","Fluoroquinolones",4387,1.36,1.18,1.57
+"Citrobacter spp.","Fourth-generation cephalosporins",2718,1.31,1.1,1.56
+"Citrobacter spp.","Third-generation cephalosporins",3984,1.38,1.16,1.64
+"Citrobacter spp.","Aminoglycosides",4069,1.09,0.94,1.28
+"Enterobacter spp.","Aminoglycosides",15211,1.19,1.06,1.34
+"Enterobacter spp.","Anti-pseudomonal penicillin/Beta-lactamase inhibitors",11857,1.23,1.13,1.34
+"Enterobacter spp.","Carbapenem",13299,1.53,1.4,1.67
+"Enterobacter spp.","Fluoroquinolones",17552,1.28,1.17,1.4
+"Enterobacter spp.","Fourth-generation cephalosporins",11482,1.31,1.18,1.45
+"Enterobacter spp.","Trimethoprim-Sulfamethoxazole",14798,1.09,0.98,1.21
+"Enterococcus faecalis","Fluoroquinolones",1126,1.43,1.24,1.64
+"Enterococcus faecalis","Vancomycin",36,1.7,1.39,2.07
+"Enterococcus faecium","Fluoroquinolones",4082,1.37,1.14,1.64
+"Enterococcus faecium","Vancomycin",9242,1.54,1.39,1.7
+"Escherichia coli","Aminoglycosides",164196,1.2,1.16,1.25
+"Escherichia coli","Aminopenicillin",157276,1.21,1.17,1.25
+"Escherichia coli","Beta-lactam/Beta-lactamase inhibitors",143458,1.15,1.11,1.18
+"Escherichia coli","Carbapenem",131382,1.7,1.5,1.93
+"Escherichia coli","Trimethoprim-Sulfamethoxazole",164240,1.14,1.11,1.18
+"Escherichia coli","Fluoroquinolones",171311,1.31,1.27,1.35
+"Escherichia coli","Third-generation cephalosporins",163801,1.37,1.17,1.61
+"Group A Streptococcus","Macrolide",130,1.07,0.89,1.29
+"Group B Streptococcus","Fluoroquinolones",44,1.26,1.04,1.53
+"Group B Streptococcus","Macrolide",465,1.18,0.99,1.41
+"Group B Streptococcus","Penicillin",15,1.29,1.06,1.57
+"Haemophilus influenzae","Aminopenicillin",1438,1.27,1.06,1.51
+"Haemophilus influenzae","Third-generation cephalosporins",308,1.48,1.23,1.79
+"Klebsiella pneumoniae","Aminoglycosides",51811,1.24,1.17,1.32
+"Klebsiella pneumoniae","Beta-lactam/Beta-lactamase inhibitors",46753,1.19,1.13,1.25
+"Klebsiella pneumoniae","Fluoroquinolones",53414,1.19,1.12,1.26
+"Klebsiella pneumoniae","Trimethoprim-Sulfamethoxazole",51737,1.12,1.06,1.19
+"Klebsiella pneumoniae","Carbapenem",41943,1.68,1.56,1.82
+"Klebsiella pneumoniae","Third-generation cephalosporins",52090,1.36,1.16,1.6
+"Morganella spp.","Fluoroquinolones",3290,1.26,1.1,1.44
+"Morganella spp.","Fourth-generation cephalosporins",2352,1.23,1.02,1.49
+"Morganella spp.","Third-generation cephalosporins",3407,1.33,1.12,1.58
+"Mycobacterium tuberculosis","Extensive drug resistance",428524,2.59,2.46,2.72
+"Mycobacterium tuberculosis","Isoniazid mono-resistance",14537,1.19,0.84,1.67
+"Mycobacterium tuberculosis","Multidrug resistance",427342,2.5,1.17,4.74
+"Mycobacterium tuberculosis","Rifampicin mono-resistance",7161,1.39,1.06,1.77
+"Non-typhoidal Salmonella","Fluoroquinolones",42,1.23,1.01,1.5
+"Other Enterococci","Fluoroquinolones",107,1.28,1.07,1.55
+"Other Enterococci","Vancomycin",7730,1.37,1.29,1.46
+"Proteus spp.","Aminoglycosides",21844,1.1,1.01,1.2
+"Proteus spp.","Aminopenicillin",20638,1.01,0.94,1.09
+"Proteus spp.","Fluoroquinolones",22141,1.13,1.05,1.21
+"Proteus spp.","Trimethoprim-Sulfamethoxazole",21838,1.06,0.98,1.14
+"Proteus spp.","Third-generation cephalosporins",18775,1.27,1.08,1.5
+"Pseudomonas aeruginosa","Aminoglycosides",39341,1.03,0.98,1.09
+"Pseudomonas aeruginosa","Anti-pseudomonal penicillin/Beta-lactamase inhibitors",36016,1.3,1.22,1.37
+"Pseudomonas aeruginosa","Carbapenem",41177,1.27,1.22,1.32
+"Pseudomonas aeruginosa","Fluoroquinolones",47417,1.19,1.15,1.23
+"Pseudomonas aeruginosa","Fourth-generation cephalosporins",34020,1.24,1.17,1.31
+"Pseudomonas aeruginosa","Third-generation cephalosporins",31041,1.35,1.15,1.59
+"Salmonella Paratyphi","Fluoroquinolones",24,1.24,1.02,1.52
+"Salmonella Paratyphi","Multidrug resistance",25,1.24,1.03,1.5
+"Salmonella Typhi","Fluoroquinolones",24,1.24,1.02,1.52
+"Salmonella Typhi","Multidrug resistance",25,1.24,1.03,1.5
+"Sample size are the admission reported with known discharge disposition and antimicrobial susceptibility test.",NA,NA,NA,NA,NA
+"Serratia spp.","Aminoglycosides",5250,1.05,0.93,1.19
+"Serratia spp.","Anti-pseudomonal penicillin/Beta-lactamase inhibitors",3003,1.17,1.01,1.35
+"Serratia spp.","Carbapenem",3639,1.39,1.2,1.63
+"Serratia spp.","Fluoroquinolones",5252,1.09,0.94,1.26
+"Serratia spp.","Fourth-generation cephalosporins",3928,1.17,0.99,1.38
+"Serratia spp.","Third-generation cephalosporins",5960,1.29,1.09,1.52
+"Shigella spp.","Fluoroquinolones",24,1.24,1.02,1.52
+"Staphylococcus aureus","Fluoroquinolones",37963,1.07,1.02,1.11
+"Staphylococcus aureus","Macrolide",53005,1.06,1.02,1.09
+"Staphylococcus aureus","Trimethoprim-Sulfamethoxazole",59632,1.17,1.09,1.25
+"Staphylococcus aureus","Methicillin",95696,1.43,1.2,1.7
+"Staphylococcus aureus","Vancomycin",53623,1.52,1.28,1.81
+"Streptococcus pneumoniae","Beta-lactam/Beta-lactamase inhibitors",1419,1.14,0.95,1.37
+"Streptococcus pneumoniae","Carbapenem",1947,1.37,1.16,1.61
+"Streptococcus pneumoniae","Fluoroquinolones",6499,1.23,1.05,1.45
+"Streptococcus pneumoniae","Macrolide",7348,1.05,0.94,1.17
+"Streptococcus pneumoniae","Trimethoprim-Sulfamethoxazole",5413,1.14,1.01,1.28
+"Streptococcus pneumoniae","Third-generation cephalosporins",10457,1.33,1.13,1.57
+"Streptococcus pneumoniae","Penicillin",30849,1.27,1.18,1.36
