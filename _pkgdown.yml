@@ -87,86 +87,96 @@ reference:
 - title: "Pipeline"
   desc: "Main preprocessing pipeline and configuration"
   contents:
-  - amr_preprocess
+  - run_preprocess
   - amr_config
   - validate_config
   - print.amr_config
   - print.amr_result
   - summary.amr_result
   - print.amr_preprocessing_report
+  - print.stwd_join_result
 
-- title: "Normalization"
-  desc: "Standardize column names, organisms, antibiotics, and specimens"
+- title: "Standardization"
+  desc: "Standardize column names, organisms, antibiotics, specimens, and values"
   contents:
-  - standardize_column_names
-  - normalize_organism
-  - normalize_antibiotic
-  - normalize_specimen
-  - standardize_gender
-  - standardize_outcome
-  - standardize_susceptibility
-  - recode_intermediate
-  - clean_antibiotic_values
-  - parse_dates
+  - prep_standardize_column_names
+  - prep_standardize_organisms
+  - prep_standardize_antibiotics
+  - prep_standardize_specimens
+  - prep_standardize_sex
+  - prep_standardize_outcome
+  - prep_standardize_ast_values
+  - prep_clean_ast_values
+  - prep_recode_intermediate_ast
+  - prep_parse_dates
+  - prep_parse_date_column
+  - prep_coerce_dates
 
 - title: "Classification"
-  desc: "MDR/XDR classification, organism grouping, and AWaRe"
+  desc: "MDR/XDR classification, organism grouping, AWaRe, and mortality"
   contents:
-  - classify_mdr
-  - classify_xdr
-  - classify_org_group
-  - classify_aware
-  - classify_antibiotic_class
-  - classify_mortality
-  - derive_infection_type
-  - derive_infection_type_for_mortality
+  - prep_classify_mdr
+  - prep_classify_xdr
+  - prep_assign_organism_group
+  - prep_classify_antibiotic_class
+  - prep_classify_aware
+  - prep_classify_mortality
+  - prep_derive_hai_cai
+  - prep_extract_genus
+  - prep_extract_species
 
 - title: "Enrichment"
   desc: "Derive missing variables from existing data"
   contents:
-  - enrich_age
-  - enrich_los
-  - enrich_infection_type
-  - enrich_hospital_department
-  - assign_age_bins
-  - derive_age
+  - prep_fill_age
+  - prep_derive_age
+  - prep_fill_los
+  - prep_calculate_los
+  - prep_assign_age_bins
+  - prep_infer_department
+  - prep_clean_optional_columns
 
 - title: "Deduplication and collapsing"
-  desc: "Event IDs, deduplication, and data reshaping"
+  desc: "Event IDs, deduplication, contaminant flagging, and data reshaping"
   contents:
-  - create_event_ids
-  - deduplicate_events
-  - flag_contaminants
+  - prep_create_event_ids
+  - prep_deduplicate_events
+  - prep_flag_contaminants
+  - prep_get_contaminant_list
+  - prep_is_contaminant
   - flag_polymicrobial
-  - collapse_to_antibiotic_level
-  - collapse_to_class_level
-  - create_wide_format
-  - pivot_wide_to_long
-  - create_resistance_profile
   - compute_polymicrobial_weight
+  - prep_collapse_antibiotic_level
+  - prep_collapse_class_level
+  - prep_pivot_ast_wide_to_long
+  - prep_create_wide_ast_matrix
+  - prep_create_resistance_profile
+  - prep_filter_analysis_ready
+
+- title: "Multi-centre stewardship import"
+  desc: "Joining and validating ICMR multi-centre stewardship datasets"
+  contents:
+  - prep_join_stewardship_centre
+  - prep_bind_stewardship_centres
+  - prep_save_centre
+  - prep_check_columns
+  - prep_check_keys
+  - prep_validate_table
 
 - title: "Resistance profiles"
-  desc: "Marginal resistance, coresistance, and profile computation"
+  desc: "Marginal resistance, co-resistance, and profile computation"
   contents:
-  - starts_with("compute_")
+  - compute_marginal_resistance
+  - compute_pairwise_coresistance
+  - compute_resistance_profiles
   - select_resistance_class
   - prioritize_resistance
 
-- title: "Burden estimation (YLL/YLD)"
+- title: "Burden estimation (YLL/YLD/DALY)"
   desc: "GBD-methodology burden calculations"
   contents:
-  - starts_with("calculate_")
-  - starts_with("fit_")
-  - starts_with("assign_rr")
-  - convert_or_to_rr
-  - count_incident_cases
-  - filter_profiles_to_rr_classes
-  - get_top_pathogens
-  - load_rr_reference
-  - lookup_rr
-  - add_rr_mappings
-  - map_class_to_rr
-  - map_to_rr_pathogen
+  - starts_with("daly_")
+  - compute_hospital_daly
 
 - title: "LOS modeling"
   desc: "Length-of-stay distribution fitting and comparison"
@@ -182,7 +192,6 @@ reference:
 - title: "Burden plots"
   desc: "GBD-style and hospital-level burden visualizations"
   contents:
-  - compute_hospital_daly
   - plot_gbd_fig4
   - plot_gbd_fig6
   - plot_burden_comparison
@@ -207,11 +216,12 @@ reference:
 - title: "Spatial analysis"
   desc: "Spatial metrics and mapping"
   contents:
-  - starts_with("create_spatial")
-  - starts_with("create_choropleth")
-  - starts_with("create_interactive")
-  - starts_with("calculate_spatial")
-  - starts_with("calculate_distance")
+  - create_spatial_object
+  - create_choropleth_map
+  - create_interactive_map
+  - calculate_spatial_metrics
+  - calculate_spatial_autocorrelation
+  - calculate_distance_matrix
   - detect_hotspots
 
 - title: "Validation and reporting"
@@ -220,7 +230,11 @@ reference:
   - validate_data_quality
   - validate_required_fields
   - check_logical_consistency
-  - starts_with("summarize_")
+  - summarize_column_mapping
+  - summarize_data_quality
+  - summarize_raw_data
+  - summarize_transformations
+  - compute_processing_statistics
   - generate_preprocessing_report
   - export_report
 
@@ -233,13 +247,7 @@ reference:
   - get_age_bins
   - get_antimicrobial_categories
   - get_beta_lactam_hierarchy
-  - get_contaminant_list
   - get_magiorakos_thresholds
-  - is_contaminant
-  - groom_optional_columns
-  - remove_duplicate_rows
-  - extract_genus
-  - extract_species
 
 authors:
   Saket Choudhary:
