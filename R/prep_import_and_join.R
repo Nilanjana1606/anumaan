@@ -47,13 +47,13 @@
 #' )
 #' }
 prep_pivot_ast_wide_to_long <- function(data,
-                               antibiotic_cols = NULL,
-                               pattern = NULL,
-                               id_cols = c("patient_id", "event_id", "organism_name", "date_of_culture"),
-                               antibiotic_name_col = "antibiotic_name",
-                               antibiotic_value_col = "antibiotic_value",
-                               remove_missing = TRUE,
-                               create_event_id = FALSE) {
+                                        antibiotic_cols = NULL,
+                                        pattern = NULL,
+                                        id_cols = c("patient_id", "event_id", "organism_name", "date_of_culture"),
+                                        antibiotic_name_col = "antibiotic_name",
+                                        antibiotic_value_col = "antibiotic_value",
+                                        remove_missing = TRUE,
+                                        create_event_id = FALSE) {
   n_before <- nrow(data)
 
   # Create event_id if needed
@@ -183,11 +183,11 @@ prep_pivot_ast_wide_to_long <- function(data,
 #' )
 #' }
 prep_create_wide_ast_matrix <- function(data,
-                               event_col = "event_id",
-                               antibiotic_col = "antibiotic_normalized",
-                               susceptibility_col = "antibiotic_value",
-                               prefix = "abx_",
-                               keep_cols = c("patient_id", "organism_normalized", "date_of_culture")) {
+                                        event_col = "event_id",
+                                        antibiotic_col = "antibiotic_normalized",
+                                        susceptibility_col = "antibiotic_value",
+                                        prefix = "abx_",
+                                        keep_cols = c("patient_id", "organism_normalized", "date_of_culture")) {
   # Validate required columns
   if (!event_col %in% names(data)) {
     stop(sprintf("Column '%s' not found", event_col))

@@ -2,19 +2,19 @@
 # YLD (Years Lived with Disability) calculation functions for AMR burden estimation
 
 daly_calc_yld_baseline <- function(incidence_data,
-                          P_Lk_prime_tbl,
-                          yld_ref = NULL,
-                          DW_sepsis = NULL,
-                          avg_los_years = NULL,
-                          state_name = NULL,
-                          facility_col = NULL,
-                          facility_name = NULL,
-                          facility_state_map = NULL,
-                          state_col = "state",
-                          pathogen_col = "pathogen",
-                          pathogen_name = NULL,
-                          plk_col = "P_Lk_prime",
-                          incidence_col = "n_cases") {
+                                   P_Lk_prime_tbl,
+                                   yld_ref = NULL,
+                                   DW_sepsis = NULL,
+                                   avg_los_years = NULL,
+                                   state_name = NULL,
+                                   facility_col = NULL,
+                                   facility_name = NULL,
+                                   facility_state_map = NULL,
+                                   state_col = "state",
+                                   pathogen_col = "pathogen",
+                                   pathogen_name = NULL,
+                                   plk_col = "P_Lk_prime",
+                                   incidence_col = "n_cases") {
   # -- Input validation ------------------------------------------------------
   use_scalar_proxy <- !is.null(DW_sepsis)
 

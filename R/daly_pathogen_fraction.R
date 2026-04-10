@@ -2,19 +2,19 @@
 # Pathogen fraction and CFR calculations for DALY burden estimation
 
 daly_calc_pathogen_fraction_nonfatal <- function(data,
-                                 syndrome_col,
-                                 syndrome_name,
-                                 specimen_col = NULL,
-                                 specimen_name = NULL,
-                                 polymicrobial_col,
-                                 patient_col,
-                                 pathogen_col,
-                                 outcome_col,
-                                 discharged_value = "Discharged",
-                                 glass_ref = NULL,
-                                 facility_col = NULL,
-                                 facility_name = NULL,
-                                 pathogen_name = NULL) {
+                                                 syndrome_col,
+                                                 syndrome_name,
+                                                 specimen_col = NULL,
+                                                 specimen_name = NULL,
+                                                 polymicrobial_col,
+                                                 patient_col,
+                                                 pathogen_col,
+                                                 outcome_col,
+                                                 discharged_value = "Discharged",
+                                                 glass_ref = NULL,
+                                                 facility_col = NULL,
+                                                 facility_name = NULL,
+                                                 pathogen_name = NULL) {
   # -- Input validation ------------------------------------------------------
   if (xor(is.null(specimen_col), is.null(specimen_name))) {
     stop("specimen_col and specimen_name must both be provided or both be NULL.")
@@ -230,19 +230,19 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
 #'
 #' @export
 daly_calc_pathogen_fraction_fatal <- function(data,
-                                 syndrome_col,
-                                 syndrome_name,
-                                 specimen_col = NULL,
-                                 specimen_name = NULL,
-                                 polymicrobial_col,
-                                 patient_col,
-                                 pathogen_col,
-                                 outcome_col,
-                                 death_value = "Death",
-                                 glass_ref = NULL,
-                                 facility_col = NULL,
-                                 facility_name = NULL,
-                                 pathogen_name = NULL) {
+                                              syndrome_col,
+                                              syndrome_name,
+                                              specimen_col = NULL,
+                                              specimen_name = NULL,
+                                              polymicrobial_col,
+                                              patient_col,
+                                              pathogen_col,
+                                              outcome_col,
+                                              death_value = "Death",
+                                              glass_ref = NULL,
+                                              facility_col = NULL,
+                                              facility_name = NULL,
+                                              pathogen_name = NULL) {
   # -- Input validation -------------------------------------------------------
   required_cols <- c(
     syndrome_col, polymicrobial_col,
@@ -454,19 +454,19 @@ daly_calc_pathogen_fraction_fatal <- function(data,
 #' @export
 
 daly_calc_case_fatality <- function(data,
-                             syndrome_col,
-                             syndrome_name,
-                             specimen_col,
-                             specimen_name,
-                             polymicrobial_col,
-                             patient_col,
-                             pathogen_col,
-                             outcome_col,
-                             death_value = "Died",
-                             glass_ref = NULL,
-                             facility_col = NULL,
-                             facility_name = NULL,
-                             pathogen_name = NULL) {
+                                    syndrome_col,
+                                    syndrome_name,
+                                    specimen_col,
+                                    specimen_name,
+                                    polymicrobial_col,
+                                    patient_col,
+                                    pathogen_col,
+                                    outcome_col,
+                                    death_value = "Died",
+                                    glass_ref = NULL,
+                                    facility_col = NULL,
+                                    facility_name = NULL,
+                                    pathogen_name = NULL) {
   # -- Input validation ------------------------------------------------------
   required_cols <- c(
     syndrome_col, specimen_col, polymicrobial_col,
@@ -635,16 +635,16 @@ daly_calc_case_fatality <- function(data,
 #' @export
 
 daly_get_top_pathogens <- function(data,
-                              pathogen_col,
-                              n = 5L,
-                              syndrome_col = NULL,
-                              syndrome_name = NULL,
-                              specimen_col = NULL,
-                              specimen_name = NULL,
-                              outcome_col = NULL,
-                              outcome_name = NULL,
-                              facility_col = NULL,
-                              facility_name = NULL) {
+                                   pathogen_col,
+                                   n = 5L,
+                                   syndrome_col = NULL,
+                                   syndrome_name = NULL,
+                                   specimen_col = NULL,
+                                   specimen_name = NULL,
+                                   outcome_col = NULL,
+                                   outcome_name = NULL,
+                                   facility_col = NULL,
+                                   facility_name = NULL) {
   # -- Input validation ------------------------------------------------------
   if (!pathogen_col %in% names(data)) {
     stop(sprintf("pathogen_col '%s' not found in data.", pathogen_col))

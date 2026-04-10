@@ -471,21 +471,21 @@ daly_calc_syndrome_fraction <- function(pop_data,
 #' )
 #' }
 daly_calc_deaths_by_syndrome <- function(d_j = NULL,
-                                      s_j = NULL,
-                                      m_lj = NULL,
-                                      pop_data = NULL,
-                                      facility_data = NULL,
-                                      cause_col = "cause_of_death",
-                                      syndrome_col = "syndrome",
-                                      syndrome = NULL,
-                                      deaths_col = NULL,
-                                      infection_flag_col = "is_infection_death",
-                                      outcome_col = "final_outcome",
-                                      death_value = "Died",
-                                      patient_col = "patient_id",
-                                      facility_col = NULL,
-                                      facility_name = NULL,
-                                      groupby_cols = NULL) {
+                                         s_j = NULL,
+                                         m_lj = NULL,
+                                         pop_data = NULL,
+                                         facility_data = NULL,
+                                         cause_col = "cause_of_death",
+                                         syndrome_col = "syndrome",
+                                         syndrome = NULL,
+                                         deaths_col = NULL,
+                                         infection_flag_col = "is_infection_death",
+                                         outcome_col = "final_outcome",
+                                         death_value = "Died",
+                                         patient_col = "patient_id",
+                                         facility_col = NULL,
+                                         facility_name = NULL,
+                                         groupby_cols = NULL) {
   has_components <- !is.null(d_j) && !is.null(s_j) && !is.null(m_lj)
   has_pop_data <- !is.null(pop_data)
   has_facility <- !is.null(facility_data)
@@ -770,13 +770,13 @@ daly_calc_deaths_by_syndrome <- function(d_j = NULL,
 #'   and \code{facility_col} if supplied.
 #' @export
 daly_count_incident_cases <- function(data,
-                                 syndrome_col,
-                                 syndrome_name,
-                                 patient_col,
-                                 facility_col = NULL,
-                                 facility_name = NULL,
-                                 pathogen_col = NULL,
-                                 pathogen_name = NULL) {
+                                      syndrome_col,
+                                      syndrome_name,
+                                      patient_col,
+                                      facility_col = NULL,
+                                      facility_name = NULL,
+                                      pathogen_col = NULL,
+                                      pathogen_name = NULL) {
   # -- Input validation ------------------------------------------------------
   required_cols <- c(syndrome_col, patient_col)
   missing_cols <- setdiff(required_cols, names(data))
@@ -1088,14 +1088,14 @@ daly_calc_cr_l <- function(data,
 #' @export
 
 daly_calc_incidence_from_cfr <- function(deaths_L,
-                                  cfr_lk_tbl,
-                                  P_Lk_prime_tbl,
-                                  CR_L = 1,
-                                  pathogen_col = "pathogen",
-                                  cfr_col = "CFR_LK",
-                                  plk_col = "P_Lk_prime",
-                                  facility_col = NULL,
-                                  deaths_col = "deaths") {
+                                         cfr_lk_tbl,
+                                         P_Lk_prime_tbl,
+                                         CR_L = 1,
+                                         pathogen_col = "pathogen",
+                                         cfr_col = "CFR_LK",
+                                         plk_col = "P_Lk_prime",
+                                         facility_col = NULL,
+                                         deaths_col = "deaths") {
   # -- Input validation ------------------------------------------------------
   for (tbl_name in c("cfr_lk_tbl", "P_Lk_prime_tbl")) {
     tbl <- get(tbl_name)

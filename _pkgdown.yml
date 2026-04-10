@@ -94,7 +94,6 @@ reference:
   - print.amr_result
   - summary.amr_result
   - print.amr_preprocessing_report
-  - print.stwd_join_result
 
 - title: "Standardization"
   desc: "Standardize column names, organisms, antibiotics, specimens, and values"

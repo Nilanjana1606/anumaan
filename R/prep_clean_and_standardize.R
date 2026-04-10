@@ -127,10 +127,10 @@ find_extdata_file <- function(filename) {
 #' clean_data <- result$data
 #' }
 prep_standardize_column_names <- function(data,
-                                     mapping = default_column_mappings,
-                                     fuzzy_match = TRUE,
-                                     fuzzy_threshold = 0.3,
-                                     interactive = FALSE) {
+                                          mapping = default_column_mappings,
+                                          fuzzy_match = TRUE,
+                                          fuzzy_threshold = 0.3,
+                                          interactive = FALSE) {
   original_names <- names(data)
   new_names <- names(data)
   mapping_log <- list()
@@ -247,9 +247,9 @@ prep_standardize_column_names <- function(data,
 #' result <- prep_standardize_organisms(data, organism_col = "organism")
 #' }
 prep_standardize_organisms <- function(data,
-                               organism_col = "organism_name",
-                               add_organism_group = TRUE,
-                               add_resistance_flags = TRUE) {
+                                       organism_col = "organism_name",
+                                       add_organism_group = TRUE,
+                                       add_resistance_flags = TRUE) {
   if (!organism_col %in% names(data)) {
     stop(sprintf("Column '%s' not found in data", organism_col))
   }
@@ -350,15 +350,21 @@ prep_standardize_organisms <- function(data,
 
     scores <- sapply(1:nrow(org_ref), function(i) {
       ref_keywords <- org_ref$keywords[[i]]
-      if (length(ref_keywords) == 0) return(0)
+      if (length(ref_keywords) == 0) {
+        return(0)
+      }
       overlap <- sum(input_keywords %in% ref_keywords)
-      if (tolower(input_org) == org_ref$ref_lower[i]) return(1000)
+      if (tolower(input_org) == org_ref$ref_lower[i]) {
+        return(1000)
+      }
       if (grepl(org_ref$ref_lower[i], tolower(input_org), fixed = TRUE) ||
         grepl(tolower(input_org), org_ref$ref_lower[i], fixed = TRUE)) {
         overlap <- overlap + 2
       }
       total_unique <- length(union(input_keywords, ref_keywords))
-      if (total_unique == 0) return(0)
+      if (total_unique == 0) {
+        return(0)
+      }
       return(overlap / total_unique)
     })
 
@@ -491,11 +497,11 @@ prep_standardize_organisms <- function(data,
 #'
 #' @export
 prep_parse_dates <- function(data, date_columns = c(
-                          "date_of_admission",
-                          "date_of_culture",
-                          "date_of_final_outcome",
-                          "DOB"
-                        )) {
+                               "date_of_admission",
+                               "date_of_culture",
+                               "date_of_final_outcome",
+                               "DOB"
+                             )) {
   for (col in date_columns) {
     if (!col %in% names(data)) {
       message(sprintf("Date column '%s' not found, skipping", col))
@@ -632,8 +638,8 @@ prep_standardize_outcome <- function(data, col = "final_outcome") {
 #' result <- prep_standardize_specimens(data, specimen_col = "specimen")
 #' }
 prep_standardize_specimens <- function(data,
-                               specimen_col = "specimen_type",
-                               add_categories = TRUE) {
+                                       specimen_col = "specimen_type",
+                                       add_categories = TRUE) {
   if (!specimen_col %in% names(data)) {
     warning(sprintf("Column '%s' not found. Skipping specimen normalization.", specimen_col))
     return(data)
@@ -695,7 +701,9 @@ prep_standardize_specimens <- function(data,
   specimen_ref$temp_ref_lower <- tolower(trimws(specimen_ref$specimen_name))
 
   extract_spec_keywords <- function(name) {
-    if (is.na(name) || name == "") return(character(0))
+    if (is.na(name) || name == "") {
+      return(character(0))
+    }
     cleaned <- tolower(gsub("[^a-z0-9\\s/]", " ", name))
     words <- unlist(strsplit(cleaned, "[\\s/]+"))
     filler <- c("a", "an", "the", "of", "from", "to", "and", "or", "is", "in", "on")
@@ -724,14 +732,18 @@ prep_standardize_specimens <- function(data,
 
     scores <- sapply(1:nrow(specimen_ref), function(i) {
       ref_keywords <- specimen_ref$keywords[[i]]
-      if (length(ref_keywords) == 0) return(0)
+      if (length(ref_keywords) == 0) {
+        return(0)
+      }
       overlap <- sum(input_keywords %in% ref_keywords)
       if (grepl(specimen_ref$temp_ref_lower[i], input_spec, fixed = TRUE) ||
         grepl(input_spec, specimen_ref$temp_ref_lower[i], fixed = TRUE)) {
         overlap <- overlap + 2
       }
       total_unique <- length(union(input_keywords, ref_keywords))
-      if (total_unique == 0) return(0)
+      if (total_unique == 0) {
+        return(0)
+      }
       return(overlap / total_unique)
     })
 
@@ -813,10 +825,10 @@ prep_standardize_specimens <- function(data,
 #' data <- prep_standardize_antibiotics(data, antibiotic_col = "antibiotic_name")
 #' }
 prep_standardize_antibiotics <- function(data,
-                                 antibiotic_col = "antibiotic_name",
-                                 who_table = NULL,
-                                 add_class = TRUE,
-                                 add_aware = TRUE) {
+                                         antibiotic_col = "antibiotic_name",
+                                         who_table = NULL,
+                                         add_class = TRUE,
+                                         add_aware = TRUE) {
   if (!antibiotic_col %in% names(data)) {
     stop(sprintf("Column '%s' not found in data", antibiotic_col))
   }
@@ -859,7 +871,9 @@ prep_standardize_antibiotics <- function(data,
   ))
 
   extract_abx_keywords <- function(name) {
-    if (is.na(name) || name == "") return(character(0))
+    if (is.na(name) || name == "") {
+      return(character(0))
+    }
     cleaned <- tolower(gsub("[^a-z0-9\\s/-]", " ", name))
     words <- unlist(strsplit(cleaned, "[\\s/-]+"))
     filler <- c("iv", "oral", "injection", "tablet", "mg", "strip", "mic", "done", "by")
@@ -886,15 +900,21 @@ prep_standardize_antibiotics <- function(data,
 
     scores <- sapply(1:nrow(who_table), function(i) {
       ref_keywords <- who_table$keywords[[i]]
-      if (length(ref_keywords) == 0) return(0)
+      if (length(ref_keywords) == 0) {
+        return(0)
+      }
       overlap <- sum(input_keywords %in% ref_keywords)
-      if (tolower(input_abx) == who_table$ref_lower[i]) return(1000)
+      if (tolower(input_abx) == who_table$ref_lower[i]) {
+        return(1000)
+      }
       if (grepl(who_table$ref_lower[i], tolower(input_abx), fixed = TRUE) ||
         grepl(tolower(input_abx), who_table$ref_lower[i], fixed = TRUE)) {
         overlap <- overlap + 2
       }
       total_unique <- length(union(input_keywords, ref_keywords))
-      if (total_unique == 0) return(0)
+      if (total_unique == 0) {
+        return(0)
+      }
       return(overlap / total_unique)
     })
 
@@ -1011,8 +1031,8 @@ prep_standardize_antibiotics <- function(data,
 #' @return Data frame with Age column added/updated and Age_derived flag
 #' @export
 prep_derive_age <- function(data, dob_col = "DOB",
-                       reference_date_col = "date_of_culture",
-                       force = FALSE) {
+                            reference_date_col = "date_of_culture",
+                            force = FALSE) {
   if ("Age" %in% names(data) && !force) {
     n_present <- sum(!is.na(data$Age))
     if (n_present > 0) {
@@ -1213,8 +1233,8 @@ prep_assign_organism_group <- function(data, organism_col = "organism_normalized
 #' @return Data frame with antibiotic_class column added
 #' @export
 prep_classify_antibiotic_class <- function(data,
-                                      antibiotic_col = "antibiotic_normalized",
-                                      who_table = NULL) {
+                                           antibiotic_col = "antibiotic_normalized",
+                                           who_table = NULL) {
   if (!antibiotic_col %in% names(data)) {
     stop(sprintf("Antibiotic column '%s' not found", antibiotic_col))
   }
@@ -1258,8 +1278,8 @@ prep_classify_antibiotic_class <- function(data,
 #' @return Data frame with aware_category column added
 #' @export
 prep_classify_aware <- function(data,
-                           antibiotic_col = "antibiotic_normalized",
-                           who_table = NULL) {
+                                antibiotic_col = "antibiotic_normalized",
+                                who_table = NULL) {
   if (!antibiotic_col %in% names(data)) {
     stop(sprintf("Antibiotic column '%s' not found", antibiotic_col))
   }
@@ -1301,8 +1321,8 @@ prep_classify_aware <- function(data,
 #' @return Data frame with Length_of_stay column
 #' @export
 prep_calculate_los <- function(data,
-                          admission_col = "date_of_admission",
-                          outcome_col = "date_of_final_outcome") {
+                               admission_col = "date_of_admission",
+                               outcome_col = "date_of_final_outcome") {
   if (!all(c(admission_col, outcome_col) %in% names(data))) {
     stop("Admission and outcome date columns not found")
   }
@@ -1350,10 +1370,10 @@ prep_calculate_los <- function(data,
 #' data_enriched <- prep_fill_age(data)
 #' }
 prep_fill_age <- function(data,
-                       age_col = "Age",
-                       dob_col = "DOB",
-                       date_col = "date_of_culture",
-                       overwrite = FALSE) {
+                          age_col = "Age",
+                          dob_col = "DOB",
+                          date_col = "date_of_culture",
+                          overwrite = FALSE) {
   has_age <- age_col %in% names(data)
   has_dob <- dob_col %in% names(data)
   has_date <- date_col %in% names(data)
@@ -1457,10 +1477,10 @@ prep_fill_age <- function(data,
 #' data_enriched <- prep_fill_los(data)
 #' }
 prep_fill_los <- function(data,
-                       los_col = "Length_of_stay",
-                       admission_col = "date_of_admission",
-                       outcome_col = "date_of_final_outcome",
-                       overwrite = FALSE) {
+                          los_col = "Length_of_stay",
+                          admission_col = "date_of_admission",
+                          outcome_col = "date_of_final_outcome",
+                          overwrite = FALSE) {
   has_los <- los_col %in% names(data)
   has_admission <- admission_col %in% names(data)
   has_outcome <- outcome_col %in% names(data)
@@ -1559,11 +1579,11 @@ prep_fill_los <- function(data,
 #' data_enriched <- prep_infer_department(data)
 #' }
 prep_infer_department <- function(data,
-                                       department_col = "hospital_department",
-                                       specimen_col = "specimen_type",
-                                       diagnosis_col = "diagnosis_1",
-                                       age_col = "Age",
-                                       overwrite = FALSE) {
+                                  department_col = "hospital_department",
+                                  specimen_col = "specimen_type",
+                                  diagnosis_col = "diagnosis_1",
+                                  age_col = "Age",
+                                  overwrite = FALSE) {
   has_department <- department_col %in% names(data)
   has_specimen <- specimen_col %in% names(data)
   has_diagnosis <- diagnosis_col %in% names(data)
@@ -1660,7 +1680,7 @@ prep_infer_department <- function(data,
 #' )
 #' }
 prep_clean_optional_columns <- function(data,
-                                   optional_cols = NULL) {
+                                        optional_cols = NULL) {
   known_optional <- c(
     "infection_type", "device_inserted", "hospital_department",
     "aware_category", "unit_type", "comorbidities", "hospital_location",

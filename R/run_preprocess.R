@@ -263,7 +263,7 @@ run_preprocess <- function(data,
       data <- flag_polymicrobial(data)
 
       if (verbose) message("\n[3.9] Computing polymicrobial weights...")
-      data <- compute_polymicrobial_weight(data, method = "monomicrobial_proportion")
+      data <- compute_polymicrobial_weight(data, episode_col = "event_id", method = "monomicrobial_proportion")
     }
 
     # Step 3.9: Apply death weights (placeholder -- not yet implemented)

@@ -826,17 +826,17 @@ daly_fit_los_rr <- function(
         }
 
         if ("Sex_model" %in% names(hosp_sub) &&
-            length(unique(stats::na.omit(as.character(hosp_sub$Sex_model)))) > 1L) {
+          length(unique(stats::na.omit(as.character(hosp_sub$Sex_model)))) > 1L) {
           fixed_terms <- c(fixed_terms, "Sex_model")
         }
 
         if ("ICU" %in% names(hosp_sub) &&
-            length(unique(stats::na.omit(as.character(hosp_sub$ICU)))) > 1L) {
+          length(unique(stats::na.omit(as.character(hosp_sub$ICU)))) > 1L) {
           fixed_terms <- c(fixed_terms, "ICU")
         }
 
         if ("comorbidity_encoded" %in% names(hosp_sub) &&
-            length(unique(stats::na.omit(as.character(hosp_sub$comorbidity_encoded)))) > 1L) {
+          length(unique(stats::na.omit(as.character(hosp_sub$comorbidity_encoded)))) > 1L) {
           fixed_terms <- c(fixed_terms, "comorbidity_encoded")
         }
 
@@ -2142,18 +2142,18 @@ daly_fit_mortality_rr <- function(
         fixed_terms <- c(sprintf("`%s`", cls), "Age_model", "Sex_model", "HAI")
 
         if ("ICU" %in% names(hosp_sub) &&
-            length(unique(stats::na.omit(as.character(hosp_sub$ICU)))) > 1L) {
+          length(unique(stats::na.omit(as.character(hosp_sub$ICU)))) > 1L) {
           fixed_terms <- c(fixed_terms, "ICU")
         }
 
         if ("comorbidity_encoded" %in% names(hosp_sub) &&
-            length(unique(stats::na.omit(as.character(hosp_sub$comorbidity_encoded)))) > 1L) {
+          length(unique(stats::na.omit(as.character(hosp_sub$comorbidity_encoded)))) > 1L) {
           fixed_terms <- c(fixed_terms, "comorbidity_encoded")
         }
 
         if ("Syndrome_model" %in% names(hosp_sub) &&
-            length(unique(stats::na.omit(as.character(hosp_sub$Syndrome_model)))) > 1L &&
-            is.null(syndrome_name)) {
+          length(unique(stats::na.omit(as.character(hosp_sub$Syndrome_model)))) > 1L &&
+          is.null(syndrome_name)) {
           fixed_terms <- c(fixed_terms, "Syndrome_model")
         }
 

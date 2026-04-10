@@ -33,13 +33,13 @@
 #' @return Original data frame with event_id column added.
 #' @export
 prep_create_event_ids <- function(data,
-                             patient_col = "patient_id",
-                             date_col = "date_of_culture",
-                             organism_col = "organism_normalized",
-                             specimen_col = "specimen_type",
-                             antibiotic_col = "antibiotic_name",
-                             value_col = "antibiotic_value",
-                             gap_days = 14) {
+                                  patient_col = "patient_id",
+                                  date_col = "date_of_culture",
+                                  organism_col = "organism_normalized",
+                                  specimen_col = "specimen_type",
+                                  antibiotic_col = "antibiotic_name",
+                                  value_col = "antibiotic_value",
+                                  gap_days = 14) {
   # ---------- validate ----------
   missing_cols <- setdiff(c(patient_col, date_col, organism_col), names(data))
   if (length(missing_cols) > 0) {
@@ -224,10 +224,10 @@ prep_create_event_ids <- function(data,
 #' @return Deduplicated data frame
 #' @export
 prep_deduplicate_events <- function(data,
-                               event_col = "event_id",
-                               organism_col = "organism_normalized",
-                               antibiotic_col = "antibiotic_normalized",
-                               keep = "first") {
+                                    event_col = "event_id",
+                                    organism_col = "organism_normalized",
+                                    antibiotic_col = "antibiotic_normalized",
+                                    keep = "first") {
   missing_cols <- setdiff(c(event_col, organism_col, antibiotic_col), names(data))
   if (length(missing_cols) > 0) {
     stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
