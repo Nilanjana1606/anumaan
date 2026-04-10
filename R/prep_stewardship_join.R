@@ -43,51 +43,55 @@ prep_check_columns <- function(data,
   }
 
   # Blank / duplicate column names
-  blank_names  <- sum(is.na(names(data)) | trimws(names(data)) == "")
-  dup_names    <- sum(duplicated(names(data)))
+  blank_names <- sum(is.na(names(data)) | trimws(names(data)) == "")
+  dup_names <- sum(duplicated(names(data)))
   if (blank_names > 0L) {
     warning(sprintf("[%s] %d blank column name(s) found.", table_label, blank_names))
   }
   if (dup_names > 0L) {
-    warning(sprintf("[%s] %d duplicated column name(s): %s",
-                    table_label,
-                    dup_names,
-                    paste(names(data)[duplicated(names(data))], collapse = ", ")))
+    warning(sprintf(
+      "[%s] %d duplicated column name(s): %s",
+      table_label,
+      dup_names,
+      paste(names(data)[duplicated(names(data))], collapse = ", ")
+    ))
   }
 
   # Missing required columns
   missing <- setdiff(required, names(data))
   if (length(missing) > 0L) {
-    msg <- sprintf("[%s] Missing required column(s): %s",
-                   table_label, paste(missing, collapse = ", "))
+    msg <- sprintf(
+      "[%s] Missing required column(s): %s",
+      table_label, paste(missing, collapse = ", ")
+    )
     if (stop_on_missing) stop(msg) else warning(msg)
   }
 
   # Type checks on columns that exist
   report_rows <- list()
   for (col in names(data)) {
-    actual_class  <- paste(class(data[[col]]), collapse = "/")
+    actual_class <- paste(class(data[[col]]), collapse = "/")
     expected_class <- if (col %in% names(expected_types)) expected_types[[col]] else NA_character_
     type_ok <- if (!is.na(expected_class)) {
       inherits(data[[col]], expected_class)
     } else {
       TRUE
     }
-    n_na      <- sum(is.na(data[[col]]))
-    n_total   <- nrow(data)
-    pct_na    <- if (n_total > 0) round(100 * n_na / n_total, 1) else NA_real_
+    n_na <- sum(is.na(data[[col]]))
+    n_total <- nrow(data)
+    pct_na <- if (n_total > 0) round(100 * n_na / n_total, 1) else NA_real_
 
     report_rows[[length(report_rows) + 1L]] <- data.frame(
-      table        = table_label,
-      column       = col,
-      required     = col %in% required,
-      present      = TRUE,
-      actual_type  = actual_class,
+      table = table_label,
+      column = col,
+      required = col %in% required,
+      present = TRUE,
+      actual_type = actual_class,
       expected_type = if (!is.na(expected_class)) expected_class else "",
-      type_ok      = type_ok,
-      n_total      = n_total,
-      n_na         = n_na,
-      pct_na       = pct_na,
+      type_ok = type_ok,
+      n_total = n_total,
+      n_na = n_na,
+      pct_na = pct_na,
       stringsAsFactors = FALSE
     )
 
@@ -102,16 +106,16 @@ prep_check_columns <- function(data,
   # Add rows for required columns that are absent
   for (col in missing) {
     report_rows[[length(report_rows) + 1L]] <- data.frame(
-      table        = table_label,
-      column       = col,
-      required     = TRUE,
-      present      = FALSE,
-      actual_type  = NA_character_,
+      table = table_label,
+      column = col,
+      required = TRUE,
+      present = FALSE,
+      actual_type = NA_character_,
       expected_type = if (col %in% names(expected_types)) expected_types[[col]] else "",
-      type_ok      = FALSE,
-      n_total      = NA_integer_,
-      n_na         = NA_integer_,
-      pct_na       = NA_real_,
+      type_ok = FALSE,
+      n_total = NA_integer_,
+      n_na = NA_integer_,
+      pct_na = NA_real_,
       stringsAsFactors = FALSE
     )
   }
@@ -156,11 +160,11 @@ prep_check_keys <- function(data,
   raw <- as.character(data[[key_col]])
   placeholders <- c("", "NULL", "null", "NA", "N/A", "None", "none", "nan", "NaN")
   is_missing <- is.na(raw) | trimws(raw) %in% placeholders
-  n_total    <- length(raw)
-  n_missing  <- sum(is_missing)
+  n_total <- length(raw)
+  n_missing <- sum(is_missing)
   pct_missing <- round(100 * n_missing / max(n_total, 1), 1)
   n_distinct <- length(unique(raw[!is_missing]))
-  n_dup      <- sum(duplicated(raw[!is_missing]))
+  n_dup <- sum(duplicated(raw[!is_missing]))
 
   if (pct_missing > warn_missing_pct) {
     warning(sprintf(
@@ -175,13 +179,13 @@ prep_check_keys <- function(data,
   ))
 
   invisible(data.frame(
-    table          = table_label,
-    key_col        = key_col,
-    n_total        = n_total,
-    n_missing      = n_missing,
-    pct_missing    = pct_missing,
-    n_distinct     = n_distinct,
-    n_duplicated   = n_dup,
+    table = table_label,
+    key_col = key_col,
+    n_total = n_total,
+    n_missing = n_missing,
+    pct_missing = pct_missing,
+    n_distinct = n_distinct,
+    n_duplicated = n_dup,
     stringsAsFactors = FALSE
   ))
 }
@@ -233,8 +237,10 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
 
   idx_present <- which(!is.na(x_chr))
   if (length(idx_present) == 0L) {
-    message(sprintf("[%s] '%s': all values missing - returning NA Date vector.",
-                    table_label, col_name))
+    message(sprintf(
+      "[%s] '%s': all values missing - returning NA Date vector.",
+      table_label, col_name
+    ))
     return(out)
   }
 
@@ -244,7 +250,7 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
 
   # Excel serial dates: 10 000-99 999  (roughly 1927-2173)
   excel_idx <- idx_present[is_numeric[idx_present] & x_num[idx_present] > 10000 &
-                             x_num[idx_present] < 100000]
+    x_num[idx_present] < 100000]
   if (length(excel_idx) > 0L) {
     out[excel_idx] <- as.Date(x_num[excel_idx], origin = "1899-12-30")
     message(sprintf(
@@ -273,14 +279,14 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
         orders = c(
           "Y-m-d", "d-m-Y", "m-d-Y",
           "Y/m/d", "d/m/Y", "m/d/Y",
-          "Ymd",   "dmY",   "mdY",
+          "Ymd", "dmY", "mdY",
           "Y-m-d H:M:S", "d-m-Y H:M:S", "m-d-Y H:M:S"
         ),
         quiet = TRUE
       )
     )
     parsed_date <- as.Date(parsed)
-    succeeded   <- !is.na(parsed_date)
+    succeeded <- !is.na(parsed_date)
     out[remaining[succeeded]] <- parsed_date[succeeded]
 
     # Reversed YYYYDDMM / DDMMYYYY attempt on still-failing values
@@ -290,9 +296,11 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
       digits_only <- gsub("[^0-9]", "", candidates)
       swapped <- ifelse(
         nchar(digits_only) == 8L,
-        paste0(substr(digits_only, 1, 4), "-",
-               substr(digits_only, 7, 8), "-",
-               substr(digits_only, 5, 6)),
+        paste0(
+          substr(digits_only, 1, 4), "-",
+          substr(digits_only, 7, 8), "-",
+          substr(digits_only, 5, 6)
+        ),
         NA_character_
       )
       swap_parsed <- suppressWarnings(as.Date(swapped, format = "%Y-%m-%d"))
@@ -312,7 +320,7 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
       encrypted_like <- nchar(x_chr[still_bad]) > 12 &
         !grepl("[/\\-]", x_chr[still_bad])
       n_encrypted <- sum(encrypted_like, na.rm = TRUE)
-      n_unparsed  <- length(still_bad)
+      n_unparsed <- length(still_bad)
 
       if (n_encrypted > 0L) {
         warning(sprintf(
@@ -332,7 +340,7 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
 
   # Summary
   n_decoded <- sum(!is.na(out[idx_present]))
-  n_failed  <- length(idx_present) - n_decoded
+  n_failed <- length(idx_present) - n_decoded
   message(sprintf(
     "[%s] '%s': %d / %d non-missing value(s) successfully parsed as Date (%d failed).",
     table_label, col_name, n_decoded, length(idx_present), n_failed
@@ -370,8 +378,9 @@ prep_coerce_dates <- function(data,
   }
   for (col in cols) {
     data[[col]] <- prep_parse_date_column(data[[col]],
-                                          col_name    = col,
-                                          table_label = table_label)
+      col_name    = col,
+      table_label = table_label
+    )
   }
   data
 }
@@ -395,11 +404,11 @@ prep_coerce_dates <- function(data,
 #' @return A list with \code{data} (date-coerced) and \code{report} (check summary).
 #' @export
 prep_validate_table <- function(data,
-                                required_cols  = character(),
-                                key_col        = NULL,
+                                required_cols = character(),
+                                key_col = NULL,
                                 expected_types = character(),
-                                date_cols      = NULL,
-                                table_label    = "table",
+                                date_cols = NULL,
+                                table_label = "table",
                                 stop_on_missing = TRUE) {
   col_report <- prep_check_columns(
     data            = data,
@@ -437,23 +446,22 @@ prep_validate_table <- function(data,
 
 # Apply all known ICMR rename rules for a given table type
 .stwd_apply_renames <- function(data, table_type) {
-  rename_map <- switch(
-    table_type,
+  rename_map <- switch(table_type,
     patient = c(
-      id            = "PatientInformation_id",
-      user          = "user_id",
-      center        = "center_id",
-      state         = "state_id",
-      district      = "district_id",
+      id = "PatientInformation_id",
+      user = "user_id",
+      center = "center_id",
+      state = "state_id",
+      district = "district_id",
       quantification = "quantification_id"
     ),
     antibioticinfo = c(
-      id               = "id_antibioticinfo",
+      id = "id_antibioticinfo",
       PatientInformation = "PatientInformation_id",
-      user             = "user_id",
+      user = "user_id",
       antibiotic_name_1 = "antibiotic_name_1_id",
-      revised_id       = "revised_id_id",
-      treat_id         = "treat_id_id"
+      revised_id = "revised_id_id",
+      treat_id = "treat_id_id"
     ),
     audit = c(
       id      = "id_audit",
@@ -461,9 +469,9 @@ prep_validate_table <- function(data,
       user    = "user_id"
     ),
     hai = c(
-      id               = "id_hai",
+      id = "id_hai",
       PatientInformation = "PatientInformation_id",
-      user             = "user_id"
+      user = "user_id"
     ),
     organisminfo = c(
       id                      = "id_organisminfo",
@@ -481,15 +489,15 @@ prep_validate_table <- function(data,
       organism_info              = "organism_info_id",
       organism_treat_antibiotic  = "organism_treat_antibiotic_id"
     ),
-    district   = c(name = "district_name"),
-    state      = c(name = "state_name"),
-    organisms  = c(name = "organism_name"),
-    center     = c(name = "center_name"),
+    district = c(name = "district_name"),
+    state = c(name = "state_name"),
+    organisms = c(name = "organism_name"),
+    center = c(name = "center_name"),
     antibiotics = c(
       id           = "id_antibiotics_lookup",
       date_created = "date_created_antibiotics"
     ),
-    c()  # sample_type and unknown types: no renames
+    c() # sample_type and unknown types: no renames
   )
 
   present <- intersect(names(rename_map), names(data))
@@ -498,8 +506,10 @@ prep_validate_table <- function(data,
   }
 
   # Drop user_id from secondary tables (not the patient table)
-  if (table_type %in% c("antibioticinfo", "audit", "hai",
-                         "organisminfo", "organisminfo_antibiotic")) {
+  if (table_type %in% c(
+    "antibioticinfo", "audit", "hai",
+    "organisminfo", "organisminfo_antibiotic"
+  )) {
     data$user_id <- NULL
   }
 
@@ -582,24 +592,26 @@ prep_validate_table <- function(data,
 #'   }
 #' @export
 prep_join_stewardship_centre <- function(
-    patient,
-    antibioticinfo              = NULL,
-    audit                      = NULL,
-    hai                        = NULL,
-    organisminfo               = NULL,
-    organisminfo_antibiotic    = NULL,
-    lookups                    = list(),
-    centre_name                = NULL,
-    patient_id_col             = "PatientInformation_id",
-    kmc_organisminfo_col_names = NULL,
-    normalize_abx              = TRUE,
-    create_events              = TRUE,
-    culture_date_col           = "date_treat",
-    specimen_col               = "sample_type",
-    organism_col               = "organism_name",
-    antibiotic_col             = "antibiotic_name",
-    required_analysis_cols     = c("final_outcome", "organism_name",
-                                   "antibiotic_name", "antibiotic_value")
+  patient,
+  antibioticinfo = NULL,
+  audit = NULL,
+  hai = NULL,
+  organisminfo = NULL,
+  organisminfo_antibiotic = NULL,
+  lookups = list(),
+  centre_name = NULL,
+  patient_id_col = "PatientInformation_id",
+  kmc_organisminfo_col_names = NULL,
+  normalize_abx = TRUE,
+  create_events = TRUE,
+  culture_date_col = "date_treat",
+  specimen_col = "sample_type",
+  organism_col = "organism_name",
+  antibiotic_col = "antibiotic_name",
+  required_analysis_cols = c(
+    "final_outcome", "organism_name",
+    "antibiotic_name", "antibiotic_value"
+  )
 ) {
   lbl <- centre_name %||% "centre"
   message(sprintf("\n========== prep_join_stewardship_centre: %s ==========", lbl))
@@ -618,34 +630,37 @@ prep_join_stewardship_centre <- function(
     key_col        = patient_id_col,
     table_label    = paste0("patient_", lbl)
   )
-  patient     <- val_patient$data
-  check_log   <- list(patient = val_patient$col_report)
+  patient <- val_patient$data
+  check_log <- list(patient = val_patient$col_report)
 
   patient[[patient_id_col]] <- .stwd_standardize_key(patient[[patient_id_col]])
 
   # --- Helper: validate + rename a secondary table -------------------------
   .prep_secondary <- function(df, type) {
-    if (is.null(df)) return(NULL)
+    if (is.null(df)) {
+      return(NULL)
+    }
     df <- as.data.frame(df, stringsAsFactors = FALSE)
     df <- .stwd_apply_renames(df, type)
-    v  <- prep_validate_table(df,
-                              key_col     = patient_id_col,
-                              table_label = paste0(type, "_", lbl))
+    v <- prep_validate_table(df,
+      key_col     = patient_id_col,
+      table_label = paste0(type, "_", lbl)
+    )
     check_log[[type]] <<- v$col_report
     v$data
   }
 
-  antibioticinfo          <- .prep_secondary(antibioticinfo,           "antibioticinfo")
-  audit                   <- .prep_secondary(audit,                    "audit")
-  hai                     <- .prep_secondary(hai,                      "hai")
-  organisminfo            <- .prep_secondary(organisminfo,             "organisminfo")
-  organisminfo_antibiotic <- .prep_secondary(organisminfo_antibiotic,  "organisminfo_antibiotic")
+  antibioticinfo <- .prep_secondary(antibioticinfo, "antibioticinfo")
+  audit <- .prep_secondary(audit, "audit")
+  hai <- .prep_secondary(hai, "hai")
+  organisminfo <- .prep_secondary(organisminfo, "organisminfo")
+  organisminfo_antibiotic <- .prep_secondary(organisminfo_antibiotic, "organisminfo_antibiotic")
 
   # KMC quirk: header-less organisminfo sheet -- column names already applied at read time
   # (col_names passed to read_excel), so no extra action needed here.
 
   # --- Pre-join: organisminfo + organisminfo_antibiotic --------------------
-  merge_log   <- list()
+  merge_log <- list()
   orginfo_combined <- NULL
 
   if (!is.null(organisminfo) && !is.null(organisminfo_antibiotic)) {
@@ -658,12 +673,12 @@ prep_join_stewardship_centre <- function(
       if (!"organism_info_id" %in% names(organisminfo_antibiotic)) {
         stop(sprintf("[%s] organisminfo_antibiotic must contain 'organism_info_id'.", lbl))
       }
-      prep_check_keys(organisminfo,           "id_organisminfo",  paste0("organisminfo_", lbl))
-      prep_check_keys(organisminfo_antibiotic,"organism_info_id", paste0("orgabx_", lbl))
+      prep_check_keys(organisminfo, "id_organisminfo", paste0("organisminfo_", lbl))
+      prep_check_keys(organisminfo_antibiotic, "organism_info_id", paste0("orgabx_", lbl))
     }
     .stwd_check_prejoin_keys()
 
-    dt_org    <- data.table::as.data.table(organisminfo)
+    dt_org <- data.table::as.data.table(organisminfo)
     dt_orgabx <- data.table::as.data.table(organisminfo_antibiotic)
 
     orginfo_combined <- merge(
@@ -688,9 +703,11 @@ prep_join_stewardship_centre <- function(
     # Coalesce date_treat: organisminfo (.x) preferred over orgabx (.y)
     if (all(c("date_treat.x", "date_treat.y") %in% names(orginfo_combined))) {
       orginfo_combined$date_treat.x <- prep_parse_date_column(
-        orginfo_combined$date_treat.x, "date_treat.x", lbl)
+        orginfo_combined$date_treat.x, "date_treat.x", lbl
+      )
       orginfo_combined$date_treat.y <- prep_parse_date_column(
-        orginfo_combined$date_treat.y, "date_treat.y", lbl)
+        orginfo_combined$date_treat.y, "date_treat.y", lbl
+      )
       orginfo_combined$date_treat <- dplyr::coalesce(
         orginfo_combined$date_treat.x,
         orginfo_combined$date_treat.y
@@ -701,25 +718,28 @@ prep_join_stewardship_centre <- function(
 
     merge_log$orginfo_prejoin <- data.frame(
       step = "orginfo_prejoin",
-      rows_orginfo    = nrow(organisminfo),
-      rows_orgabx     = nrow(organisminfo_antibiotic),
-      rows_combined   = nrow(orginfo_combined),
+      rows_orginfo = nrow(organisminfo),
+      rows_orgabx = nrow(organisminfo_antibiotic),
+      rows_combined = nrow(orginfo_combined),
       stringsAsFactors = FALSE
     )
-    message(sprintf("[%s] Organism pre-join: %d + %d -> %d rows.",
-                    lbl, nrow(organisminfo), nrow(organisminfo_antibiotic),
-                    nrow(orginfo_combined)))
-
+    message(sprintf(
+      "[%s] Organism pre-join: %d + %d -> %d rows.",
+      lbl, nrow(organisminfo), nrow(organisminfo_antibiotic),
+      nrow(orginfo_combined)
+    ))
   } else if (!is.null(organisminfo)) {
     orginfo_combined <- organisminfo
   }
 
   # --- Sequential patient-level joins --------------------------------------
   .left_merge <- function(left, right, by_l, by_r, step_name) {
-    if (is.null(right)) return(left)
+    if (is.null(right)) {
+      return(left)
+    }
     rows_before <- nrow(left)
     right[[by_r]] <- .stwd_standardize_key(right[[by_r]])
-    left[[by_l]]  <- .stwd_standardize_key(left[[by_l]])
+    left[[by_l]] <- .stwd_standardize_key(left[[by_l]])
 
     prep_check_keys(right, by_r, paste0(step_name, "_right_", lbl))
 
@@ -731,51 +751,56 @@ prep_join_stewardship_centre <- function(
     )
     out <- as.data.frame(out, stringsAsFactors = FALSE)
     merge_log[[step_name]] <<- data.frame(
-      step         = step_name,
-      rows_before  = rows_before,
-      rows_right   = nrow(right),
-      rows_after   = nrow(out),
+      step = step_name,
+      rows_before = rows_before,
+      rows_right = nrow(right),
+      rows_after = nrow(out),
       stringsAsFactors = FALSE
     )
-    message(sprintf("[%s] %-30s: %d -> %d rows (right: %d).",
-                    lbl, step_name, rows_before, nrow(out), nrow(right)))
+    message(sprintf(
+      "[%s] %-30s: %d -> %d rows (right: %d).",
+      lbl, step_name, rows_before, nrow(out), nrow(right)
+    ))
     out
   }
 
-  patient <- .left_merge(patient, antibioticinfo,   patient_id_col, patient_id_col, "join_antibioticinfo")
-  patient <- .left_merge(patient, audit,            patient_id_col, "patient_id",   "join_audit")
-  patient <- .left_merge(patient, hai,              patient_id_col, patient_id_col, "join_hai")
+  patient <- .left_merge(patient, antibioticinfo, patient_id_col, patient_id_col, "join_antibioticinfo")
+  patient <- .left_merge(patient, audit, patient_id_col, "patient_id", "join_audit")
+  patient <- .left_merge(patient, hai, patient_id_col, patient_id_col, "join_hai")
   patient <- .left_merge(patient, orginfo_combined, patient_id_col, patient_id_col, "join_organism_bundle")
 
   # --- Lookup joins --------------------------------------------------------
-  district  <- lookups$district
-  state     <- lookups$state
+  district <- lookups$district
+  state <- lookups$state
   sample_tp <- lookups$sample_type
   organisms <- lookups$organisms
   antibiotics <- lookups$antibiotics
-  center    <- lookups$center
+  center <- lookups$center
 
   # Rename lookup tables
-  if (!is.null(state))      state      <- .stwd_apply_renames(as.data.frame(state,      stringsAsFactors = FALSE), "state")
-  if (!is.null(district))   district   <- .stwd_apply_renames(as.data.frame(district,   stringsAsFactors = FALSE), "district")
-  if (!is.null(sample_tp))  sample_tp  <- .stwd_apply_renames(as.data.frame(sample_tp,  stringsAsFactors = FALSE), "sample_type")
-  if (!is.null(organisms))  organisms  <- .stwd_apply_renames(as.data.frame(organisms,  stringsAsFactors = FALSE), "organisms")
+  if (!is.null(state)) state <- .stwd_apply_renames(as.data.frame(state, stringsAsFactors = FALSE), "state")
+  if (!is.null(district)) district <- .stwd_apply_renames(as.data.frame(district, stringsAsFactors = FALSE), "district")
+  if (!is.null(sample_tp)) sample_tp <- .stwd_apply_renames(as.data.frame(sample_tp, stringsAsFactors = FALSE), "sample_type")
+  if (!is.null(organisms)) organisms <- .stwd_apply_renames(as.data.frame(organisms, stringsAsFactors = FALSE), "organisms")
   if (!is.null(antibiotics)) antibiotics <- .stwd_apply_renames(as.data.frame(antibiotics, stringsAsFactors = FALSE), "antibiotics")
-  if (!is.null(center))     center     <- .stwd_apply_renames(as.data.frame(center,     stringsAsFactors = FALSE), "center")
+  if (!is.null(center)) center <- .stwd_apply_renames(as.data.frame(center, stringsAsFactors = FALSE), "center")
 
   # Standardize lookup IDs to character
-  .as_chr_id <- function(df, col) { if (!is.null(df) && col %in% names(df)) df[[col]] <- as.character(df[[col]]); df }
-  state      <- .as_chr_id(state,      "id")
-  district   <- .as_chr_id(district,   "id")
-  district   <- .as_chr_id(district,   "state_id")
-  sample_tp  <- .as_chr_id(sample_tp,  "id")
-  organisms  <- .as_chr_id(organisms,  "id")
-  center     <- .as_chr_id(center,     "id")
+  .as_chr_id <- function(df, col) {
+    if (!is.null(df) && col %in% names(df)) df[[col]] <- as.character(df[[col]])
+    df
+  }
+  state <- .as_chr_id(state, "id")
+  district <- .as_chr_id(district, "id")
+  district <- .as_chr_id(district, "state_id")
+  sample_tp <- .as_chr_id(sample_tp, "id")
+  organisms <- .as_chr_id(organisms, "id")
+  center <- .as_chr_id(center, "id")
 
   # Build district_with_state
   district_with_state <- NULL
   if (!is.null(district) && !is.null(state) &&
-      "state_id" %in% names(district) && "id" %in% names(state)) {
+    "state_id" %in% names(district) && "id" %in% names(state)) {
     district_with_state <- merge(
       data.table::as.data.table(district),
       data.table::as.data.table(state),
@@ -838,8 +863,10 @@ prep_join_stewardship_centre <- function(
   # --- Optional: normalize antibiotics ------------------------------------
   if (normalize_abx && antibiotic_col %in% names(patient)) {
     patient <- tryCatch(
-      prep_standardize_antibiotics(patient, antibiotic_col = antibiotic_col,
-                                   add_class = TRUE, add_aware = TRUE),
+      prep_standardize_antibiotics(patient,
+        antibiotic_col = antibiotic_col,
+        add_class = TRUE, add_aware = TRUE
+      ),
       error = function(e) {
         warning(sprintf("[%s] prep_standardize_antibiotics() failed: %s", lbl, conditionMessage(e)))
         patient
@@ -849,12 +876,12 @@ prep_join_stewardship_centre <- function(
 
   # --- Optional: create event IDs -----------------------------------------
   if (create_events &&
-      all(c(patient_id_col, culture_date_col, organism_col) %in% names(patient))) {
+    all(c(patient_id_col, culture_date_col, organism_col) %in% names(patient))) {
     patient <- tryCatch(
       prep_create_event_ids(
         patient,
-        patient_col  = patient_id_col,
-        date_col     = culture_date_col,
+        patient_col = patient_id_col,
+        date_col = culture_date_col,
         organism_col = organism_col,
         specimen_col = specimen_col,
         antibiotic_col = antibiotic_col
@@ -867,7 +894,7 @@ prep_join_stewardship_centre <- function(
   }
 
   # --- Centre summary ------------------------------------------------------
-  n_pts  <- dplyr::n_distinct(patient[[patient_id_col]], na.rm = TRUE)
+  n_pts <- dplyr::n_distinct(patient[[patient_id_col]], na.rm = TRUE)
   message(sprintf(
     "[%s] Join complete: %d rows | %d unique patients | %d columns.",
     lbl, nrow(patient), n_pts, ncol(patient)
@@ -911,12 +938,12 @@ prep_join_stewardship_centre <- function(
 #'   }
 #' @export
 prep_filter_analysis_ready <- function(
-    data,
-    patient_id_col  = "PatientInformation_id",
-    required_cols   = c("final_outcome", "organism_name", "antibiotic_name", "antibiotic_value"),
-    organism_group_col = "org_group",
-    fungal_label    = "Fungal isolates",
-    verbose         = TRUE
+  data,
+  patient_id_col = "PatientInformation_id",
+  required_cols = c("final_outcome", "organism_name", "antibiotic_name", "antibiotic_value"),
+  organism_group_col = "org_group",
+  fungal_label = "Fungal isolates",
+  verbose = TRUE
 ) {
   if (!patient_id_col %in% names(data)) {
     stop(sprintf("Missing patient column '%s'.", patient_id_col))
@@ -938,7 +965,7 @@ prep_filter_analysis_ready <- function(
     ])
     n_fungal_pts <- length(fungal_ids)
     data <- data[is.na(data[[organism_group_col]]) |
-                   data[[organism_group_col]] != fungal_label, , drop = FALSE]
+      data[[organism_group_col]] != fungal_label, , drop = FALSE]
     attrition <- dplyr::bind_rows(
       attrition,
       tibble::tibble(
@@ -971,10 +998,11 @@ prep_filter_analysis_ready <- function(
 
   combo_counts <- flags %>%
     dplyr::count(dplyr::across(dplyr::everything()),
-                 name = "unique_patients", sort = TRUE)
+      name = "unique_patients", sort = TRUE
+    )
 
   flag_cols <- paste0(used_cols, "_flag")
-  keep_ids  <- flags
+  keep_ids <- flags
   for (fc in flag_cols) {
     keep_ids <- keep_ids[keep_ids[[fc]] == "Present", , drop = FALSE]
   }
@@ -1033,10 +1061,10 @@ prep_filter_analysis_ready <- function(
 #'   }
 #' @export
 prep_bind_stewardship_centres <- function(
-    centres,
-    keep_common_only = TRUE,
-    patient_id_col   = "PatientInformation_id",
-    verbose          = TRUE
+  centres,
+  keep_common_only = TRUE,
+  patient_id_col = "PatientInformation_id",
+  verbose = TRUE
 ) {
   if (!is.list(centres) || length(centres) == 0L) {
     stop("`centres` must be a non-empty named list.")
@@ -1049,15 +1077,17 @@ prep_bind_stewardship_centres <- function(
 
   dfs <- lapply(seq_along(centres), function(i) {
     obj <- centres[[i]]
-    df  <- if (inherits(obj, "stwd_join_result")) {
+    df <- if (inherits(obj, "stwd_join_result")) {
       obj$data
     } else if (is.list(obj) && "data" %in% names(obj) && is.data.frame(obj$data)) {
       obj$data
     } else if (is.data.frame(obj)) {
       obj
     } else {
-      stop(sprintf("Element '%s' must be a data frame or a stwd_join_result.",
-                   centre_names[[i]]))
+      stop(sprintf(
+        "Element '%s' must be a data frame or a stwd_join_result.",
+        centre_names[[i]]
+      ))
     }
     df <- as.data.frame(df, stringsAsFactors = FALSE)
     if (!"center_name" %in% names(df)) {
@@ -1068,8 +1098,10 @@ prep_bind_stewardship_centres <- function(
 
   common_cols <- Reduce(intersect, lapply(dfs, names))
   if (verbose) {
-    message(sprintf("Common columns across %d centre(s): %d",
-                    length(dfs), length(common_cols)))
+    message(sprintf(
+      "Common columns across %d centre(s): %d",
+      length(dfs), length(common_cols)
+    ))
   }
 
   if (keep_common_only) {
@@ -1088,10 +1120,10 @@ prep_bind_stewardship_centres <- function(
       center_name              = centre_names[[i]],
       rows                     = nrow(df),
       unique_patients          = if (patient_id_col %in% names(df)) dplyr::n_distinct(df[[patient_id_col]], na.rm = TRUE) else NA_integer_,
-      missing_organism         = if ("organism_name"    %in% names(df)) sum(is.na(df$organism_name))    else NA_integer_,
-      missing_antibiotic       = if ("antibiotic_name"  %in% names(df)) sum(is.na(df$antibiotic_name))  else NA_integer_,
+      missing_organism         = if ("organism_name" %in% names(df)) sum(is.na(df$organism_name)) else NA_integer_,
+      missing_antibiotic       = if ("antibiotic_name" %in% names(df)) sum(is.na(df$antibiotic_name)) else NA_integer_,
       missing_antibiotic_value = if ("antibiotic_value" %in% names(df)) sum(is.na(df$antibiotic_value)) else NA_integer_,
-      missing_outcome          = if ("final_outcome"    %in% names(df)) sum(is.na(df$final_outcome))    else NA_integer_
+      missing_outcome          = if ("final_outcome" %in% names(df)) sum(is.na(df$final_outcome)) else NA_integer_
     )
   }))
 
@@ -1116,9 +1148,9 @@ prep_bind_stewardship_centres <- function(
 
   list(
     data = combined,
-    qc   = list(
-      centre_summary             = centre_summary,
-      common_columns             = common_cols,
+    qc = list(
+      centre_summary = centre_summary,
+      common_columns = common_cols,
       duplicate_patients_across_centres = duplicate_patients
     )
   )
@@ -1142,15 +1174,17 @@ prep_bind_stewardship_centres <- function(
 #' @export
 prep_save_centre <- function(data,
                              path,
-                             centre_name    = "centre",
+                             centre_name = "centre",
                              patient_id_col = "PatientInformation_id") {
   message(sprintf("\n=== %s - Save Summary ===", centre_name))
   message(sprintf("  Rows: %d  |  Cols: %d", nrow(data), ncol(data)))
   if (patient_id_col %in% names(data)) {
-    message(sprintf("  Unique patients: %d",
-                    data.table::uniqueN(data[[patient_id_col]])))
+    message(sprintf(
+      "  Unique patients: %d",
+      data.table::uniqueN(data[[patient_id_col]])
+    ))
   }
-  if ("organism_name"  %in% names(data)) message(sprintf("  NA organism_name:  %d", sum(is.na(data$organism_name))))
+  if ("organism_name" %in% names(data)) message(sprintf("  NA organism_name:  %d", sum(is.na(data$organism_name))))
   if ("antibiotic_name" %in% names(data)) message(sprintf("  NA antibiotic_name: %d", sum(is.na(data$antibiotic_name))))
 
   t <- system.time(data.table::fwrite(data, path))
@@ -1172,8 +1206,10 @@ print.stwd_join_result <- function(x, ...) {
   cat(sprintf("  Centre     : %s\n", x$centre_name %||% "NA"))
   cat(sprintf("  Rows       : %d\n", nrow(x$data)))
   if ("PatientInformation_id" %in% names(x$data)) {
-    cat(sprintf("  Unique pts : %d\n",
-                dplyr::n_distinct(x$data$PatientInformation_id, na.rm = TRUE)))
+    cat(sprintf(
+      "  Unique pts : %d\n",
+      dplyr::n_distinct(x$data$PatientInformation_id, na.rm = TRUE)
+    ))
   }
   if (!is.null(x$qc$merge_log) && nrow(x$qc$merge_log) > 0L) {
     cat("  Merge log  :\n")

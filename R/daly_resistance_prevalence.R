@@ -65,8 +65,8 @@ daly_load_rr_reference <- function() {
 #' data <- daly_add_rr_mappings(data)
 #' }
 daly_add_rr_mappings <- function(data,
-                            organism_col = "organism_normalized",
-                            antibiotic_col = "antibiotic_class") {
+                                 organism_col = "organism_normalized",
+                                 antibiotic_col = "antibiotic_class") {
   if (!organism_col %in% names(data)) {
     warning(sprintf("Column '%s' not found. Skipping RR mapping.", organism_col))
     return(data)
@@ -265,18 +265,18 @@ daly_lookup_rr <- function(data, rr_table = NULL) {
 }
 
 daly_calc_resistance_prevalence_nonfatal <- function(ast_data,
-                                isolate_col = "isolate_id",
-                                pathogen_col = "pathogen",
-                                antibiotic_col = "antibiotic",
-                                ast_result_col = "ast_result",
-                                # Antibiotic class handling
-                                drug_class_col = NULL,
-                                antibiotic_class_map = NULL,
-                                # Facility handling
-                                facility_col = NULL,
-                                facility_name = NULL,
-                                # Pathogen filter
-                                pathogen_name = NULL) {
+                                                     isolate_col = "isolate_id",
+                                                     pathogen_col = "pathogen",
+                                                     antibiotic_col = "antibiotic",
+                                                     ast_result_col = "ast_result",
+                                                     # Antibiotic class handling
+                                                     drug_class_col = NULL,
+                                                     antibiotic_class_map = NULL,
+                                                     # Facility handling
+                                                     facility_col = NULL,
+                                                     facility_name = NULL,
+                                                     # Pathogen filter
+                                                     pathogen_name = NULL) {
   ## -- sanity checks ---------------------------------------------
   required_cols <- c(
     isolate_col, pathogen_col,
