@@ -19,6 +19,13 @@ daly_calc_yll_attributable(
 )
 }
 \arguments{
+\item{yll_patient_data}{Data frame: the \code{patient_data} element
+from \code{daly_calc_yll_associated()}, with \code{life_expectancy},
+\code{death_weight}, and \code{yll_contribution} columns.}
+
+\item{paf_mort}{Named list returned by
+\code{daly_calc_paf_mortality()}.}
+
 \item{pathogen_col}{Character.  Pathogen column.}
 
 \item{patient_col}{Character.  Patient identifier column.}
@@ -28,7 +35,21 @@ daly_calc_yll_attributable(
 \item{sex_col}{Character.  Normalised sex column.
 Default \code{".sex_norm"}.}
 
+\item{resistance_profile_col}{Character or \code{NULL}.  Column holding the
+resistance profile identifier per patient row.  When supplied, per-profile
+PAF is applied instead of a scalar PAF_k.  Default \code{NULL}.}
+
+\item{profile_col}{Character.  Profile identifier column in the
+\code{paf_mort} per-profile data frames.  Default \code{"profile"}.}
+
+\item{facility_col}{Character or \code{NULL}.  Facility identifier
+column.  When supplied results include a \code{by_facility} breakdown.
+Default \code{NULL}.}
+
 \item{syndrome_col}{Character or \code{NULL}.  Syndrome column.}
+
+\item{stratify_by}{Character vector or \code{NULL}.  Additional
+columns to aggregate results by.  Default \code{NULL}.}
 }
 \value{
 A list:

@@ -1,6 +1,6 @@
 # Test sp. -> spp. Normalization Fix
 
-test_that("normalize_organism converts sp/sp. variants to spp.", {
+test_that("prep_standardize_organisms converts sp/sp. variants to spp.", {
   test_data <- data.frame(
     patient_id = 1:10,
     organism_name = c(
@@ -18,7 +18,7 @@ test_that("normalize_organism converts sp/sp. variants to spp.", {
     stringsAsFactors = FALSE
   )
 
-  result <- normalize_organism(test_data, organism_col = "organism_name")
+  result <- prep_standardize_organisms(test_data, organism_col = "organism_name")
 
   # All sp/sp. variants (excluding full species names) should become spp.
   sp_rows <- grepl("\\bsp\\.?$", test_data$organism_name, ignore.case = TRUE)

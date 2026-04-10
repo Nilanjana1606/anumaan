@@ -71,6 +71,7 @@ daly_load_life_expectancy <- function(le_path) {
 #' If \code{date_culture_col} is \code{NULL} polymicrobial flagging is
 #' skipped and all weights default to 1.
 #'
+#' @param data                  Data frame of patient-level facility records.
 #' @param outcome_col           Character.  Final outcome column.
 #' @param death_value           Character.  Value(s) indicating a fatal outcome.
 #'   Default \code{"Death"}.  Pass a vector to match multiple labels
@@ -81,11 +82,19 @@ daly_load_life_expectancy <- function(le_path) {
 #'   bin labels (e.g. \code{"0-1"}, \code{"1-5"}, ..., \code{"85+"}).  Use
 #'   \code{age_bin_map} to recode non-standard labels.
 #' @param sex_col               Character.  Column containing patient sex.
+#' @param facility_col          Character or \code{NULL}.  Facility identifier
+#'   column.  When supplied, polymicrobial weights are computed per facility
+#'   and results include a \code{by_facility} breakdown.  Default \code{NULL}.
 #' @param syndrome_col          Character or \code{NULL}.  Syndrome column.
 #'   When \code{NULL} all syndromes are pooled; when supplied the
 #'   \code{by_syndrome} and \code{by_syndrome_pathogen} outputs are populated.
 #' @param syndrome_name         Character or \code{NULL}.  If supplied, data
 #'   are filtered to this syndrome before computation.  \code{NULL} = all.
+#' @param date_culture_col      Character or \code{NULL}.  Culture date column
+#'   used for polymicrobial episode detection.  When \code{NULL} polymicrobial
+#'   flagging is skipped and all weights default to 1.
+#' @param specimen_col          Character or \code{NULL}.  Specimen type column
+#'   used alongside \code{date_culture_col} for polymicrobial detection.
 #' @param le_path               Character.  Path to the India life expectancy
 #'   xlsx file.  Defaults to the bundled \code{inst/extdata} copy.
 #' @param male_value            Character.  Value in \code{sex_col} for males.
@@ -94,6 +103,15 @@ daly_load_life_expectancy <- function(le_path) {
 #'   Default \code{"Female"}.  All other values use the combined LE.
 #' @param age_bin_map           Named character vector remapping non-standard
 #'   age bin labels to LE-table labels.  Default \code{c("<1" = "0-1")}.
+#' @param poly_weight_method    Character.  Method for computing polymicrobial
+#'   death weights.  Default \code{"monomicrobial_proportion"}.
+#' @param min_mono_per_facility Integer.  Minimum monomicrobial records per
+#'   facility to use facility-specific weights; smaller facilities fall back
+#'   to global weights.  Default \code{30L}.
+#' @param gap_days              Integer.  Window (days) used for polymicrobial
+#'   episode detection.  Default \code{14}.
+#' @param stratify_by           Character vector or \code{NULL}.  Additional
+#'   columns to aggregate results by.  Default \code{NULL}.
 #'
 #' @return A named list:
 #' \describe{
@@ -157,7 +175,7 @@ daly_calc_yll_associated <- function(
   poly_weight_method = "monomicrobial_proportion",
   min_mono_per_facility = 30L,
   gap_days = 14,
-  le_path = here::here("inst", "extdata", "life_expectancy_all.xlsx"),
+  le_path = system.file("extdata", "life_expectancy_all.xlsx", package = "anumaan"),
   male_value = "Male",
   female_value = "Female",
   age_bin_map = c("<1" = "0-1"),
@@ -206,10 +224,7 @@ daly_calc_yll_associated <- function(
       flag_polymicrobial(
         df_sub,
         patient_col  = patient_col,
-        specimen_col = if (!is.null(specimen_col)) specimen_col else "sample_type",
-        date_col     = date_culture_col,
-        organism_col = pathogen_col,
-        gap_days     = gap_days
+        organism_col = pathogen_col
       ),
       error = function(e) {
         message(sprintf(
@@ -455,12 +470,27 @@ daly_calc_yll_associated <- function(
 #' \deqn{\text{YLL}^{\text{attr}}_{i,k} =
 #'   \text{yll\_contribution}_{i,k} \times \text{PAF}_{k(,\delta)}}
 #'
-#' @param pathogen_col  Character.  Pathogen column.
-#' @param patient_col   Character.  Patient identifier column.
-#' @param age_bin_col   Character.  Age bin column.
-#' @param sex_col       Character.  Normalised sex column.
+#' @param yll_patient_data       Data frame: the \code{patient_data} element
+#'   from \code{daly_calc_yll_associated()}, with \code{life_expectancy},
+#'   \code{death_weight}, and \code{yll_contribution} columns.
+#' @param paf_mort              Named list returned by
+#'   \code{daly_calc_paf_mortality()}.
+#' @param pathogen_col          Character.  Pathogen column.
+#' @param patient_col           Character.  Patient identifier column.
+#' @param age_bin_col           Character.  Age bin column.
+#' @param sex_col               Character.  Normalised sex column.
 #'   Default \code{".sex_norm"}.
-#' @param syndrome_col  Character or \code{NULL}.  Syndrome column.
+#' @param resistance_profile_col Character or \code{NULL}.  Column holding the
+#'   resistance profile identifier per patient row.  When supplied, per-profile
+#'   PAF is applied instead of a scalar PAF_k.  Default \code{NULL}.
+#' @param profile_col           Character.  Profile identifier column in the
+#'   \code{paf_mort} per-profile data frames.  Default \code{"profile"}.
+#' @param facility_col          Character or \code{NULL}.  Facility identifier
+#'   column.  When supplied results include a \code{by_facility} breakdown.
+#'   Default \code{NULL}.
+#' @param syndrome_col          Character or \code{NULL}.  Syndrome column.
+#' @param stratify_by           Character vector or \code{NULL}.  Additional
+#'   columns to aggregate results by.  Default \code{NULL}.
 #'
 #' @return A list:
 #'   \describe{

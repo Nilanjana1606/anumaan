@@ -2,7 +2,7 @@
 % Please edit documentation in R/daly_cohorts.R
 \name{daly_calc_cr_l}
 \alias{daly_calc_cr_l}
-\title{Identify top N pathogens by occurrence}
+\title{Calculate the CFR adjustment factor (CR_L)}
 \usage{
 daly_calc_cr_l(
   data,
@@ -20,40 +20,56 @@ daly_calc_cr_l(
 \arguments{
 \item{data}{Data frame of facility-level records.}
 
-\item{syndrome_col}{Character or NULL. Filter to this syndrome column.}
+\item{syndrome_col}{Character. Column containing infectious syndrome labels.}
 
-\item{syndrome_name}{Character or NULL. Syndrome value to filter to.}
+\item{syndrome_name}{Character. Syndrome to compute CR_L for.}
 
-\item{facility_col}{Character or NULL. Facility identifier column.
-When provided without \code{facility_name}, returns top N per facility.}
+\item{patient_col}{Character. Unique patient identifier column.}
+
+\item{visit_type_col}{Character. Column indicating visit type per record
+(inpatient / outpatient).}
+
+\item{inpatient_value}{Character. Value in \code{visit_type_col} that denotes
+an inpatient visit. Default \code{"Inpatient"}.}
+
+\item{outpatient_value}{Character. Value in \code{visit_type_col} that denotes
+an outpatient visit. Default \code{"Outpatient"}.}
+
+\item{adjustment_ref}{Data frame with columns \code{infectious_syndrome} and
+\code{adjustment_factor_on_CFR}. Load from
+\file{inst/extdata/adjustment_for_CFR}.}
+
+\item{facility_col}{Character or NULL. Facility identifier column. When
+provided (and \code{facility_name} is NULL), CR_L is returned per facility.}
 
 \item{facility_name}{Character or NULL. If provided, restricts to that
-facility only before ranking.}
-
-\item{pathogen_col}{Character. Pathogen column.}
-
-\item{n}{Integer. Number of top pathogens to return. Default 5.}
-
-\item{specimen_col}{Character or NULL. Filter to this specimen column.}
-
-\item{specimen_name}{Character or NULL. Specimen value to filter to.}
-
-\item{outcome_col}{Character or NULL. Filter to this outcome column.}
-
-\item{outcome_name}{Character or NULL. Outcome value to filter to
-(e.g., \code{"Died"} or \code{"Discharged"}).}
+facility only.}
 }
 \value{
-Data frame with columns: \code{pathogen_col}, \code{n_records},
-  \code{rank} (1 = most common), and \code{facility_col} if supplied.
+Data frame with columns \code{syndrome} (= \code{syndrome_name}),
+  \code{adjustment_type}, \code{CR_L}, and (when \code{facility_col} is
+  supplied) \code{facility_col}. Additional columns
+  (\code{n_inpatient}, \code{n_total}, etc.) give the raw counts used.
 }
 \description{
-Ranks pathogens by the number of records (rows) in the dataset, optionally
-filtered to a specific syndrome, specimen, facility, or outcome. Returns
-the top N pathogens overall or broken down per facility.
+Computes CR_L, the factor that adjusts a hospital-derived CFR to account for
+infection cases managed outside the inpatient setting. The adjustment type
+for each syndrome is looked up from the \code{adjustment_ref} table
+(loaded from \file{inst/extdata/adjustment_for_CFR}).
 }
 \details{
-Use this to decide which pathogens to focus on before calling
-\code{calculate_P_Lk_prime_BSI()}, \code{calculate_cfr_lk()}, or
-\code{calculate_YLD()}.
+Three adjustment types are supported:
+\describe{
+  \item{None}{CR_L = 1. The hospital CFR applies directly (e.g., BSI,
+    Meningitis, hospital-acquired infections).}
+  \item{Inpatient ratio}{
+    CR_L = (patients with \eqn{\ge} 1 inpatient visit) / (all patients).
+    Used when community cases are captured partly in outpatient data
+    (e.g., community-acquired LRI, UTI).}
+  \item{Outpatient to inpatient ratio}{
+    CR_L = (patients with \eqn{\ge} 1 outpatient AND \eqn{\ge} 1 inpatient
+    visit) / (patients with \eqn{\ge} 1 outpatient visit).
+    Used for syndromes where OP-to-IP transition captures disease severity
+    (e.g., STI, Skin, Eye, Oral, Bone/joint infections).}
+}
 }

@@ -105,5 +105,5 @@ is fully compatible with \code{assign_rr_to_profiles()} and
 \code{filter_profiles_to_rr_classes()}.
 }
 \seealso{
-\code{\link{fit_los_rr_poisson}}, \code{\link{assign_rr_to_profiles}}
+\code{\link{daly_fit_los_rr}}, \code{daly_assign_rr_to_profiles}
 }

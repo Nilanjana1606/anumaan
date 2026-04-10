@@ -734,6 +734,41 @@ daly_calc_deaths_by_syndrome <- function(d_j = NULL,
   return(result)
 }
 
+# -- Incident cases by syndrome (direct count) ---------------------------------
+
+#' Count incident cases by syndrome from facility data
+#'
+#' Counts the number of unique patients per infectious syndrome directly from
+#' facility-level data. This is the direct-count approach to incidence --
+#' no CFR, no CR_L adjustment, no pathogen weighting. Use this when you
+#' want raw facility-reported case counts rather than the formula-derived
+#' estimate from \code{calculate_incidence_L()}.
+#'
+#' Results are returned facility-wise when \code{facility_col} is supplied
+#' and \code{facility_name} is NULL. When \code{facility_name} is specified,
+#' only that facility is returned. When no facility information is provided,
+#' a single pooled count across all records is returned.
+#'
+#' @param data          Data frame of facility-level records.
+#' @param syndrome_col  Character. Column containing infectious syndrome labels.
+#' @param syndrome_name Character. Syndrome to count cases for
+#'   (e.g., \code{"Bloodstream infections"}).
+#' @param patient_col   Character. Unique patient identifier column. Cases
+#'   are counted as distinct patients, not rows.
+#' @param facility_col  Character or NULL. Facility identifier column.
+#'   When provided without \code{facility_name}, counts are broken down
+#'   per facility. Default \code{NULL}.
+#' @param facility_name Character or NULL. If provided, restricts the count
+#'   to that facility only. Default \code{NULL}.
+#' @param pathogen_col Character or NULL. Pathogen identifier column.
+#'   Required when \code{pathogen_name} is specified. Default \code{NULL}.
+#' @param pathogen_name Character or NULL. If provided, restricts the count
+#'   to the specified pathogen(s). Default \code{NULL}.
+#'
+#' @return Data frame with columns:
+#'   \code{syndrome_col}, \code{n_cases} (unique patient count),
+#'   and \code{facility_col} if supplied.
+#' @export
 daly_count_incident_cases <- function(data,
                                  syndrome_col,
                                  syndrome_name,
@@ -828,35 +863,52 @@ daly_count_incident_cases <- function(data,
 }
 
 
-# -- Top N pathogens -----------------------------------------------------------
+# -- CR_L : CFR adjustment factor -----------------------------------------------
 
-#' Identify top N pathogens by occurrence
+#' Calculate the CFR adjustment factor (CR_L)
 #'
-#' Ranks pathogens by the number of records (rows) in the dataset, optionally
-#' filtered to a specific syndrome, specimen, facility, or outcome. Returns
-#' the top N pathogens overall or broken down per facility.
+#' Computes CR_L, the factor that adjusts a hospital-derived CFR to account for
+#' infection cases managed outside the inpatient setting. The adjustment type
+#' for each syndrome is looked up from the \code{adjustment_ref} table
+#' (loaded from \file{inst/extdata/adjustment_for_CFR}).
 #'
-#' Use this to decide which pathogens to focus on before calling
-#' \code{calculate_P_Lk_prime_BSI()}, \code{calculate_cfr_lk()}, or
-#' \code{calculate_YLD()}.
+#' Three adjustment types are supported:
+#' \describe{
+#'   \item{None}{CR_L = 1. The hospital CFR applies directly (e.g., BSI,
+#'     Meningitis, hospital-acquired infections).}
+#'   \item{Inpatient ratio}{
+#'     CR_L = (patients with \eqn{\ge} 1 inpatient visit) / (all patients).
+#'     Used when community cases are captured partly in outpatient data
+#'     (e.g., community-acquired LRI, UTI).}
+#'   \item{Outpatient to inpatient ratio}{
+#'     CR_L = (patients with \eqn{\ge} 1 outpatient AND \eqn{\ge} 1 inpatient
+#'     visit) / (patients with \eqn{\ge} 1 outpatient visit).
+#'     Used for syndromes where OP-to-IP transition captures disease severity
+#'     (e.g., STI, Skin, Eye, Oral, Bone/joint infections).}
+#' }
 #'
-#' @param data          Data frame of facility-level records.
-#' @param pathogen_col  Character. Pathogen column.
-#' @param n             Integer. Number of top pathogens to return. Default 5.
-#' @param syndrome_col  Character or NULL. Filter to this syndrome column.
-#' @param syndrome_name Character or NULL. Syndrome value to filter to.
-#' @param specimen_col  Character or NULL. Filter to this specimen column.
-#' @param specimen_name Character or NULL. Specimen value to filter to.
-#' @param outcome_col   Character or NULL. Filter to this outcome column.
-#' @param outcome_name  Character or NULL. Outcome value to filter to
-#'   (e.g., \code{"Died"} or \code{"Discharged"}).
-#' @param facility_col  Character or NULL. Facility identifier column.
-#'   When provided without \code{facility_name}, returns top N per facility.
-#' @param facility_name Character or NULL. If provided, restricts to that
-#'   facility only before ranking.
+#' @param data             Data frame of facility-level records.
+#' @param syndrome_col     Character. Column containing infectious syndrome labels.
+#' @param syndrome_name    Character. Syndrome to compute CR_L for.
+#' @param patient_col      Character. Unique patient identifier column.
+#' @param visit_type_col   Character. Column indicating visit type per record
+#'   (inpatient / outpatient).
+#' @param inpatient_value  Character. Value in \code{visit_type_col} that denotes
+#'   an inpatient visit. Default \code{"Inpatient"}.
+#' @param outpatient_value Character. Value in \code{visit_type_col} that denotes
+#'   an outpatient visit. Default \code{"Outpatient"}.
+#' @param adjustment_ref   Data frame with columns \code{infectious_syndrome} and
+#'   \code{adjustment_factor_on_CFR}. Load from
+#'   \file{inst/extdata/adjustment_for_CFR}.
+#' @param facility_col     Character or NULL. Facility identifier column. When
+#'   provided (and \code{facility_name} is NULL), CR_L is returned per facility.
+#' @param facility_name    Character or NULL. If provided, restricts to that
+#'   facility only.
 #'
-#' @return Data frame with columns: \code{pathogen_col}, \code{n_records},
-#'   \code{rank} (1 = most common), and \code{facility_col} if supplied.
+#' @return Data frame with columns \code{syndrome} (= \code{syndrome_name}),
+#'   \code{adjustment_type}, \code{CR_L}, and (when \code{facility_col} is
+#'   supplied) \code{facility_col}. Additional columns
+#'   (\code{n_inpatient}, \code{n_total}, etc.) give the raw counts used.
 #' @export
 
 daly_calc_cr_l <- function(data,

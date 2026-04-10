@@ -2,7 +2,7 @@
 % Please edit documentation in R/prep_clean_and_standardize.R
 \name{validate_data_quality}
 \alias{validate_data_quality}
-\title{Remove Duplicate Rows}
+\title{Validate Data Quality}
 \usage{
 validate_data_quality(
   data,
@@ -13,31 +13,28 @@ validate_data_quality(
 )
 }
 \arguments{
-\item{data}{Data frame}
+\item{data}{Data frame to validate.}
 
-\item{keep}{Character. Which duplicate to keep: "first" (default), "last", or "none".}
+\item{min_rows}{Integer. Minimum acceptable number of rows.
+Default \code{10}.}
 
-\item{subset}{Character vector. Column names to check for duplicates.
-If NULL, checks all columns. Default NULL.}
+\item{max_missing_pct}{Numeric. Maximum acceptable percentage of missing
+values per column (0-100). Default \code{50}.}
 
-\item{report}{Logical. If TRUE, prints detailed duplicate report. Default TRUE.}
+\item{required_cols}{Character vector. Column names that must be present.
+Default \code{c("patient_id", "organism_normalized")}.}
+
+\item{stop_on_failure}{Logical. If \code{TRUE}, stop with an error when
+any quality issue is found. Default \code{FALSE}.}
 }
 \value{
-Data frame with duplicates removed
+Invisibly returns the input \code{data} frame. Prints a quality
+  report; issues are collected and (if \code{stop_on_failure}) raised as
+  an error.
 }
 \description{
-Identifies and removes exact duplicate rows from the dataset.
-Optionally keeps first or last occurrence.
-}
-\examples{
-\dontrun{
-# Remove exact duplicates (all columns)
-clean_data <- remove_duplicate_rows(data)
-
-# Remove duplicates based on specific columns
-clean_data <- remove_duplicate_rows(
-  data,
-  subset = c("patient_id", "date_of_culture", "organism_normalized")
-)
-}
+Runs a set of quality checks on a data frame: minimum row count,
+required column presence, and maximum missing-value percentage per column.
+Returns a character vector of quality issues found, or stops if
+\code{stop_on_failure} is \code{TRUE} and issues are detected.
 }

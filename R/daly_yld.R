@@ -233,54 +233,34 @@ daly_calc_yld_baseline <- function(incidence_data,
 }
 
 
-# -- CR_L : CFR adjustment factor -----------------------------------------------
+# -- PAF_LOS : population attributable fraction for length of stay ---------------
 
-#' Calculate the CFR adjustment factor (CR_L)
+#' Compute PAF for length of stay per resistance profile
 #'
-#' Computes CR_L, the factor that adjusts a hospital-derived CFR to account for
-#' infection cases managed outside the inpatient setting. The adjustment type
-#' for each syndrome is looked up from the \code{adjustment_ref} table
-#' (loaded from \file{inst/extdata/adjustment_for_CFR}).
+#' Computes the population attributable fraction (PAF) for length of stay
+#' from a named list of profile data frames, each containing resistance-profile
+#' probabilities and profile-level relative risk of LOS.
 #'
-#' Three adjustment types are supported:
-#' \describe{
-#'   \item{None}{CR_L = 1. The hospital CFR applies directly (e.g., BSI,
-#'     Meningitis, hospital-acquired infections).}
-#'   \item{Inpatient ratio}{
-#'     CR_L = (patients with \eqn{\ge} 1 inpatient visit) / (all patients).
-#'     Used when community cases are captured partly in outpatient data
-#'     (e.g., community-acquired LRI, UTI).}
-#'   \item{Outpatient to inpatient ratio}{
-#'     CR_L = (patients with \eqn{\ge} 1 outpatient AND \eqn{\ge} 1 inpatient
-#'     visit) / (patients with \eqn{\ge} 1 outpatient visit).
-#'     Used for syndromes where OP-to-IP transition captures disease severity
-#'     (e.g., STI, Skin, Eye, Oral, Bone/joint infections).}
-#' }
+#' For each pathogen the formula is:
+#'   PAF = sum_d R'_kd * (RR_kd - 1) / (1 + sum_d R'_kd * (RR_kd - 1))
 #'
-#' @param data             Data frame of facility-level records.
-#' @param syndrome_col     Character. Column containing infectious syndrome labels.
-#' @param syndrome_name    Character. Syndrome to compute CR_L for.
-#' @param patient_col      Character. Unique patient identifier column.
-#' @param visit_type_col   Character. Column indicating visit type per record
-#'   (inpatient / outpatient).
-#' @param inpatient_value  Character. Value in \code{visit_type_col} that denotes
-#'   an inpatient visit. Default \code{"Inpatient"}.
-#' @param outpatient_value Character. Value in \code{visit_type_col} that denotes
-#'   an outpatient visit. Default \code{"Outpatient"}.
-#' @param adjustment_ref   Data frame with columns \code{infectious_syndrome} and
-#'   \code{adjustment_factor_on_CFR}. Load from
-#'   \file{inst/extdata/adjustment_for_CFR}.
-#' @param facility_col     Character or NULL. Facility identifier column. When
-#'   provided (and \code{facility_name} is NULL), CR_L is returned per facility.
-#' @param facility_name    Character or NULL. If provided, restricts to that
-#'   facility only.
+#' where R'_kd is the probability of resistance profile d and RR_kd is the
+#' corresponding relative LOS multiplier.
 #'
-#' @return Data frame with columns \code{syndrome} (= \code{syndrome_name}),
-#'   \code{adjustment_type}, \code{CR_L}, and (when \code{facility_col} is
-#'   supplied) \code{facility_col}. Additional columns
-#'   (\code{n_inpatient}, \code{n_total}, etc.) give the raw counts used.
+#' @param profiles_with_rr Named list returned by \code{assign_rr_to_profiles()}
+#'   or \code{filter_profiles_to_rr_classes()}. Each entry is a data frame of
+#'   resistance profiles for one pathogen.
+#' @param probability_col Character. Column name for profile probability
+#'   (must sum to 1 within each pathogen). Default \code{"probability"}.
+#' @param rr_profile_col Character. Column name for profile-level LOS relative
+#'   risk. Default \code{"RR_LOS_profile"}.
+#' @param profile_col Character. Column name for the profile identifier.
+#'   Default \code{"profile"}.
+#'
+#' @return Named list (one entry per pathogen) with columns \code{profile},
+#'   \code{probability}, \code{rr_profile_col}, \code{numerator}, \code{PAF_LOS},
+#'   and \code{denominator} added to the input profile data frame.
 #' @export
-
 
 daly_calc_paf_los <- function(
   profiles_with_rr,

@@ -2,7 +2,7 @@
 % Please edit documentation in R/daly_rr_and_los.R
 \name{daly_derive_hai_cai_for_mortality}
 \alias{daly_derive_hai_cai_for_mortality}
-\title{Assign Per-Class LOS RR to Resistance Profiles (Max Rule)}
+\title{Classify HAI/CAI Infection Type for the Mortality Cohort}
 \usage{
 daly_derive_hai_cai_for_mortality(
   data,
@@ -17,31 +17,39 @@ daly_derive_hai_cai_for_mortality(
 )
 }
 \arguments{
-\item{profiles_output}{Named list from compute_resistance_profiles().}
+\item{data}{Data frame of patient-level records.}
 
-\item{rr_table}{Data frame from daly_fit_los_rr() or daly_fit_los_rr_nima().
-Must have columns pathogen_col, class_col, rr_col, and optionally
-CI_lower / CI_upper.}
+\item{infection_type_col}{Character. Column containing the raw infection
+type label. Default \code{"type_of_infection"}.}
 
-\item{pathogen_col}{Character. Default \code{"pathogen"}.}
+\item{date_admission_col}{Character. Admission date column.
+Default \code{"date_of_admission"}.}
 
-\item{class_col}{Character. Default \code{"antibiotic_class"}.}
+\item{date_culture_col}{Character. First positive culture date column.
+Default \code{"date_of_first_positive_culture"}.}
 
-\item{rr_col}{Character. Default \code{"RR_LOS"}.}
+\item{final_outcome_col}{Character. Final outcome column.
+Default \code{"final_outcome"}.}
 
-\item{fallback_rr}{Numeric. RR for resistant classes with no match.
-Default \code{1} (no attributable effect).}
+\item{final_outcome_date_col}{Character. Final outcome date column.
+Default \code{"final_outcome_date"}.}
+
+\item{death_value}{Character. Value in \code{final_outcome_col}
+indicating a fatal outcome. Default \code{"Death"}.}
+
+\item{hai_threshold_hours}{Numeric. Hours after admission at which a
+positive culture is classified as HAI. Default \code{48}.}
+
+\item{patient_id_col}{Character. Patient identifier column.
+Default \code{"PatientInformation_id"}.}
 }
 \value{
-Named list (one entry per pathogen): original profiles data frame
-  augmented with RR_LOS_profile, dominant_class, and (if available)
-  CI_lower_profile / CI_upper_profile.
+The input data frame with a derived \code{infection_type} column
+  (values \code{"HAI"} or \code{"CAI"}).
 }
 \description{
-For each resistance profile delta (from compute_resistance_profiles()),
-determines the profile-level RR_kd_LOS using the GBD max rule:
-  RR_kd_LOS = max over c in C_R(d) of RR_kc_LOS   [if C_R(d) non-empty]
-            = 1                                      [if d = all-susceptible]
-where C_R(d) = \{c : d_c = 1\}.
-The CI reported for each profile is that of its dominant (max-RR) class.
+Derives the healthcare-associated infection (HAI) vs community-acquired
+infection (CAI) classification for each patient record in the mortality
+cohort, using admission-to-culture date differences. Also performs a
+data-quality check for deceased patients missing an outcome date.
 }

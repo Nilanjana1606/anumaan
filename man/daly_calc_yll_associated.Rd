@@ -20,7 +20,7 @@ daly_calc_yll_associated(
   poly_weight_method = "monomicrobial_proportion",
   min_mono_per_facility = 30L,
   gap_days = 14,
-  le_path = here::here("inst", "extdata", "life_expectancy_all.xlsx"),
+  le_path = system.file("extdata", "life_expectancy_all.xlsx", package = "anumaan"),
   male_value = "Male",
   female_value = "Female",
   age_bin_map = c(`<1` = "0-1"),
@@ -28,6 +28,8 @@ daly_calc_yll_associated(
 )
 }
 \arguments{
+\item{data}{Data frame of patient-level facility records.}
+
 \item{outcome_col}{Character.  Final outcome column.}
 
 \item{death_value}{Character.  Value(s) indicating a fatal outcome.
@@ -44,12 +46,33 @@ bin labels (e.g. \code{"0-1"}, \code{"1-5"}, ..., \code{"85+"}).  Use
 
 \item{sex_col}{Character.  Column containing patient sex.}
 
+\item{facility_col}{Character or \code{NULL}.  Facility identifier
+column.  When supplied, polymicrobial weights are computed per facility
+and results include a \code{by_facility} breakdown.  Default \code{NULL}.}
+
 \item{syndrome_col}{Character or \code{NULL}.  Syndrome column.
 When \code{NULL} all syndromes are pooled; when supplied the
 \code{by_syndrome} and \code{by_syndrome_pathogen} outputs are populated.}
 
 \item{syndrome_name}{Character or \code{NULL}.  If supplied, data
 are filtered to this syndrome before computation.  \code{NULL} = all.}
+
+\item{date_culture_col}{Character or \code{NULL}.  Culture date column
+used for polymicrobial episode detection.  When \code{NULL} polymicrobial
+flagging is skipped and all weights default to 1.}
+
+\item{specimen_col}{Character or \code{NULL}.  Specimen type column
+used alongside \code{date_culture_col} for polymicrobial detection.}
+
+\item{poly_weight_method}{Character.  Method for computing polymicrobial
+death weights.  Default \code{"monomicrobial_proportion"}.}
+
+\item{min_mono_per_facility}{Integer.  Minimum monomicrobial records per
+facility to use facility-specific weights; smaller facilities fall back
+to global weights.  Default \code{30L}.}
+
+\item{gap_days}{Integer.  Window (days) used for polymicrobial
+episode detection.  Default \code{14}.}
 
 \item{le_path}{Character.  Path to the India life expectancy
 xlsx file.  Defaults to the bundled \code{inst/extdata} copy.}
@@ -62,6 +85,9 @@ Default \code{"Female"}.  All other values use the combined LE.}
 
 \item{age_bin_map}{Named character vector remapping non-standard
 age bin labels to LE-table labels.  Default \code{c("<1" = "0-1")}.}
+
+\item{stratify_by}{Character vector or \code{NULL}.  Additional
+columns to aggregate results by.  Default \code{NULL}.}
 }
 \value{
 A named list:

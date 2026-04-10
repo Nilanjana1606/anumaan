@@ -377,6 +377,29 @@ daly_calc_resistance_prevalence_nonfatal <- function(ast_data,
   return(result)
 }
 
+#' Assign Per-Class LOS RR to Resistance Profiles (Max Rule)
+#'
+#' For each resistance profile delta (from compute_resistance_profiles()),
+#' determines the profile-level RR_kd_LOS using the GBD max rule:
+#'   RR_kd_LOS = max over c in C_R(d) of RR_kc_LOS   [if C_R(d) non-empty]
+#'             = 1                                      [if d = all-susceptible]
+#' where C_R(d) = \{c : d_c = 1\}.
+#' The CI reported for each profile is that of its dominant (max-RR) class.
+#'
+#' @param profiles_output Named list from compute_resistance_profiles().
+#' @param rr_table Data frame from daly_fit_los_rr() or daly_fit_los_rr_nima().
+#'   Must have columns pathogen_col, class_col, rr_col, and optionally
+#'   CI_lower / CI_upper.
+#' @param pathogen_col Character. Default \code{"pathogen"}.
+#' @param class_col Character. Default \code{"antibiotic_class"}.
+#' @param rr_col Character. Default \code{"RR_LOS"}.
+#' @param fallback_rr Numeric. RR for resistant classes with no match.
+#'   Default \code{1} (no attributable effect).
+#'
+#' @return Named list (one entry per pathogen): original profiles data frame
+#'   augmented with RR_LOS_profile, dominant_class, and (if available)
+#'   CI_lower_profile / CI_upper_profile.
+#' @export
 daly_assign_rr_to_profiles <- function(
   profiles_output,
   rr_table,

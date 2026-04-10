@@ -1,0 +1,5 @@
+"Clinical Specimen","Laboratory case-definition","Priority pathogens under AMR surveillance"
+"Blood",NA,"Enterococcus species Staphylococcus aureus Escherichia coli Klebsiella species Acinetobacter baumannii/ Acinetobacter calcoaceticus complex Pseudomonas aeruginosa Salmonella enterica serovar Typhi Salmonella enterica serovar Paratyphi"
+"Urine","Clinically significant bacteriuria*","Enterococcus species Escherichia coli Klebsiella species Acinetobacter baumannii/ Acinetobacter calcoaceticus complex Pseudomonas aeruginosa"
+"Pus Aspirate²","Growth of pathogenic bacteria from aspirated purulent material from a closed infected site","Enterococcus species Staphylococcus aureus Escherichia coli Klebsiella species Acinetobacter baumannii/ Acinetobacter calcoaceticus complex Pseudomonas aeruginosa"
+"Other Sterile Body Fluid³","Growth of pathogenic bacteria from a sterile body fluid specimen","Enterococcus species Staphylococcus aureus Escherichia coli Klebsiella species Acinetobacter baumannii/ Acinetobacter calcoaceticus complex Pseudomonas aeruginosa"

@@ -38,7 +38,11 @@ daly_fit_los_rr(
 
 \item{patient_id_col}{Character. Patient identifier column.}
 
-\item{facility_col}{Character. Facility / centre column.}
+\item{facility_col}{Character or NULL. Facility / centre column. When
+\code{NULL}, no hospital effect is included in the model and a single
+pooled RR is returned (hospital column will be \code{NA}). When provided,
+the model is fit separately per hospital and the result contains one row
+per pathogen-class-hospital combination (hospital-specific RR).}
 
 \item{organism_col}{Character. Pathogen column.}
 
@@ -84,10 +88,13 @@ daly_fit_los_rr(
 
 \item{min_susceptible}{Integer. Minimum susceptible patients required.}
 
-\item{add_centre_fe}{Logical. Add centre fixed effects.}
+\item{add_centre_fe}{Logical. Retained for backward compatibility; ignored
+when \code{facility_col} is provided (per-hospital fitting is used) or
+\code{NULL} (no facility information available).}
 }
 \value{
-Data frame with pathogen, antibiotic_class, RR_LOS, CI_lower,
+Data frame with pathogen, antibiotic_class, hospital (NA when
+  \code{facility_col} is \code{NULL}), RR_LOS, CI_lower,
   CI_upper, beta_log_rr, mean_los_resistant, mean_los_susceptible,
   n_patients, n_resistant, n_susceptible, model_family, link_function,
   and syndrome_scope.

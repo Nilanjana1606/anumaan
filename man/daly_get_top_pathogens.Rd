@@ -2,7 +2,7 @@
 % Please edit documentation in R/daly_pathogen_fraction.R
 \name{daly_get_top_pathogens}
 \alias{daly_get_top_pathogens}
-\title{Count incident cases by syndrome from facility data}
+\title{Identify top N pathogens by occurrence}
 \usage{
 daly_get_top_pathogens(
   data,
@@ -21,42 +21,40 @@ daly_get_top_pathogens(
 \arguments{
 \item{data}{Data frame of facility-level records.}
 
-\item{pathogen_col}{Character or NULL. Pathogen identifier column.
-Required when \code{pathogen_name} is specified. Default \code{NULL}.}
+\item{pathogen_col}{Character. Pathogen column.}
 
-\item{syndrome_col}{Character. Column containing infectious syndrome labels.}
+\item{n}{Integer. Number of top pathogens to return. Default 5.}
 
-\item{syndrome_name}{Character. Syndrome to count cases for
-(e.g., \code{"Bloodstream infections"}).}
+\item{syndrome_col}{Character or NULL. Filter to this syndrome column.}
+
+\item{syndrome_name}{Character or NULL. Syndrome value to filter to.}
+
+\item{specimen_col}{Character or NULL. Filter to this specimen column.}
+
+\item{specimen_name}{Character or NULL. Specimen value to filter to.}
+
+\item{outcome_col}{Character or NULL. Filter to this outcome column.}
+
+\item{outcome_name}{Character or NULL. Outcome value to filter to
+(e.g., \code{"Died"} or \code{"Discharged"}).}
 
 \item{facility_col}{Character or NULL. Facility identifier column.
-When provided without \code{facility_name}, counts are broken down
-per facility. Default \code{NULL}.}
+When provided without \code{facility_name}, returns top N per facility.}
 
-\item{facility_name}{Character or NULL. If provided, restricts the count
-to that facility only. Default \code{NULL}.}
-
-\item{patient_col}{Character. Unique patient identifier column. Cases
-are counted as distinct patients, not rows.}
-
-\item{pathogen_name}{Character or NULL. If provided, restricts the count
-to the specified pathogen(s). Default \code{NULL}.}
+\item{facility_name}{Character or NULL. If provided, restricts to that
+facility only before ranking.}
 }
 \value{
-Data frame with columns:
-  \code{syndrome_col}, \code{n_cases} (unique patient count),
-  and \code{facility_col} if supplied.
+Data frame with columns: \code{pathogen_col}, \code{n_records},
+  \code{rank} (1 = most common), and \code{facility_col} if supplied.
 }
 \description{
-Counts the number of unique patients per infectious syndrome directly from
-facility-level data. This is the direct-count approach to incidence --
-no CFR, no CR_L adjustment, no pathogen weighting. Use this when you
-want raw facility-reported case counts rather than the formula-derived
-estimate from \code{calculate_incidence_L()}.
+Ranks pathogens by the number of records (rows) in the dataset, optionally
+filtered to a specific syndrome, specimen, facility, or outcome. Returns
+the top N pathogens overall or broken down per facility.
 }
 \details{
-Results are returned facility-wise when \code{facility_col} is supplied
-and \code{facility_name} is NULL. When \code{facility_name} is specified,
-only that facility is returned. When no facility information is provided,
-a single pooled count across all records is returned.
+Use this to decide which pathogens to focus on before calling
+\code{calculate_P_Lk_prime_BSI()}, \code{calculate_cfr_lk()}, or
+\code{calculate_YLD()}.
 }

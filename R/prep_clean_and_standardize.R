@@ -1860,31 +1860,27 @@ validate_required_fields <- function(data,
 }
 
 
-#' Remove Duplicate Rows
+#' Validate Data Quality
 #'
-#' Identifies and removes exact duplicate rows from the dataset.
-#' Optionally keeps first or last occurrence.
+#' Runs a set of quality checks on a data frame: minimum row count,
+#' required column presence, and maximum missing-value percentage per column.
+#' Returns a character vector of quality issues found, or stops if
+#' \code{stop_on_failure} is \code{TRUE} and issues are detected.
 #'
-#' @param data Data frame
-#' @param keep Character. Which duplicate to keep: "first" (default), "last", or "none".
-#' @param subset Character vector. Column names to check for duplicates.
-#'   If NULL, checks all columns. Default NULL.
-#' @param report Logical. If TRUE, prints detailed duplicate report. Default TRUE.
+#' @param data             Data frame to validate.
+#' @param min_rows         Integer. Minimum acceptable number of rows.
+#'   Default \code{10}.
+#' @param max_missing_pct  Numeric. Maximum acceptable percentage of missing
+#'   values per column (0-100). Default \code{50}.
+#' @param required_cols    Character vector. Column names that must be present.
+#'   Default \code{c("patient_id", "organism_normalized")}.
+#' @param stop_on_failure  Logical. If \code{TRUE}, stop with an error when
+#'   any quality issue is found. Default \code{FALSE}.
 #'
-#' @return Data frame with duplicates removed
+#' @return Invisibly returns the input \code{data} frame. Prints a quality
+#'   report; issues are collected and (if \code{stop_on_failure}) raised as
+#'   an error.
 #' @export
-#'
-#' @examples
-#' \dontrun{
-#' # Remove exact duplicates (all columns)
-#' clean_data <- remove_duplicate_rows(data)
-#'
-#' # Remove duplicates based on specific columns
-#' clean_data <- remove_duplicate_rows(
-#'   data,
-#'   subset = c("patient_id", "date_of_culture", "organism_normalized")
-#' )
-#' }
 validate_data_quality <- function(data,
                                   min_rows = 10,
                                   max_missing_pct = 50,

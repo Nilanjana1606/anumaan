@@ -38,7 +38,12 @@ daly_fit_mortality_rr(
 
 \item{patient_id_col}{Character. Patient identifier column.}
 
-\item{facility_col}{Character. Facility / centre column.}
+\item{facility_col}{Character or NULL. Facility / centre column. When
+\code{NULL}, no hospital random effect is used and a single pooled RR is
+returned using standard logistic regression (hospital column will be
+\code{NA}). When provided, a separate logistic model is fit per hospital
+and the result contains one row per pathogen-class-hospital combination
+(hospital-specific RR).}
 
 \item{organism_col}{Character. Pathogen column.}
 
@@ -84,10 +89,13 @@ daly_fit_mortality_rr(
 
 \item{min_deaths}{Integer. Minimum deaths per fitted model.}
 
-\item{use_random_intercept}{Logical. Use facility random intercept when possible.}
+\item{use_random_intercept}{Logical. Retained for backward compatibility;
+ignored when \code{facility_col} is provided (per-hospital fitting is
+used) or \code{NULL} (no facility information available).}
 }
 \value{
-Data frame with adjusted OR and adjusted RR of death.
+Data frame with hospital (NA when \code{facility_col} is
+  \code{NULL}), adjusted OR and adjusted RR of death.
 }
 \description{
 Fits a pathogen-class specific mixed-effects logistic regression model:
