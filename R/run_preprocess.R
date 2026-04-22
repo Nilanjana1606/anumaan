@@ -134,13 +134,23 @@ run_preprocess <- function(data,
     data <- mapping_result$data
     log$column_mapping <- mapping_result$mapping_log
 
-    # Step 1.2: Parse dates
-    if (verbose) message("\n[1.2] Parsing dates...")
-    date_cols <- c("date_of_admission", "date_of_culture", "date_of_final_outcome", "DOB")
-    existing_date_cols <- intersect(date_cols, names(data))
-    for (col in existing_date_cols) {
-      data <- prep_parse_dates(data, date_columns = col)
+    # Step 1.1b: Detect preprocessing capabilities from available columns
+    if (verbose) {
+      message("\n[1.1b] Detecting preprocessing capabilities...")
+      prep_report_capabilities(data)
     }
+
+    # Step 1.2: Parse and coerce dates, then validate logic
+    if (verbose) message("\n[1.2] Parsing dates...")
+    data <- prep_coerce_dates(data, table_label = "pipeline")
+    data <- prep_validate_date_logic(
+      data,
+      admission_col = "date_of_admission",
+      culture_col   = "date_of_culture",
+      outcome_col   = "date_of_final_outcome",
+      dob_col       = "DOB",
+      age_col       = "Age"
+    )
 
     # Step 1.3: Standardize values
     if (verbose) message("\n[1.3] Standardizing values...")
@@ -161,6 +171,12 @@ run_preprocess <- function(data,
     }
     if ("antibiotic_name" %in% names(data)) {
       data <- prep_standardize_antibiotics(data, antibiotic_col = "antibiotic_name")
+    }
+
+    # Step 1.5: Normalize specimen types
+    if (verbose) message("\n[1.5] Normalizing specimen types...")
+    if ("specimen_type" %in% names(data)) {
+      data <- prep_standardize_specimens(data, specimen_col = "specimen_type")
     }
   }
 
@@ -240,6 +256,15 @@ run_preprocess <- function(data,
       data <- prep_create_event_ids(data, gap_days = config$event_gap_days)
     }
 
+    # Step 3.5b: Deduplicate events (one row per event-organism-antibiotic)
+    if (all(c("event_id", "organism_normalized", "antibiotic_normalized") %in% names(data))) {
+      if (verbose) message("\n[3.5b] Deduplicating events...")
+      data <- prep_deduplicate_events(data,
+                                      event_col      = "event_id",
+                                      organism_col   = "organism_normalized",
+                                      antibiotic_col = "antibiotic_normalized")
+    }
+
     # Step 3.6: Flag contaminants
     if (verbose) message("\n[3.6] Flagging contaminants...")
     data <- prep_flag_contaminants(
@@ -257,13 +282,19 @@ run_preprocess <- function(data,
     }
 
     # Step 3.8: Polymicrobial identification and weighting
-    poly_required_cols <- c("patient_id", "specimen_type", "date_of_culture", "organism_normalized")
+    poly_required_cols <- c("patient_id", "organism_normalized")
     if (all(poly_required_cols %in% names(data))) {
       if (verbose) message("\n[3.8] Identifying polymicrobial infections...")
-      data <- flag_polymicrobial(data)
+      data <- flag_polymicrobial(data,
+                                 patient_col  = "patient_id",
+                                 organism_col = "organism_normalized")
 
       if (verbose) message("\n[3.9] Computing polymicrobial weights...")
-      data <- compute_polymicrobial_weight(data, episode_col = "event_id", method = "monomicrobial_proportion")
+      if ("event_id" %in% names(data)) {
+        data <- compute_polymicrobial_weight(data,
+                                             episode_col = "event_id",
+                                             method      = "monomicrobial_proportion")
+      }
     }
 
     # Step 3.9: Apply death weights (placeholder -- not yet implemented)
@@ -272,10 +303,32 @@ run_preprocess <- function(data,
     }
 
     # Step 3.10: MDR/XDR classification
-    if (all(c("organism_normalized", "antibiotic_class", "antibiotic_value") %in% names(data))) {
-      if (verbose) message("\n[3.11] Classifying MDR/XDR...")
-      data <- prep_classify_mdr(data, definition = config$mdr_definition)
-      data <- prep_classify_xdr(data, definition = config$xdr_definition)
+    # Requires class-level collapse first; results are joined back to main data.
+    mdr_required_cols <- c("event_id", "organism_normalized", "antibiotic_class", "antibiotic_value")
+    if (all(mdr_required_cols %in% names(data))) {
+      if (verbose) message("\n[3.11] Collapsing to antibiotic class level for MDR/XDR...")
+      data_class <- prep_collapse_class_level(
+        data,
+        event_col          = "event_id",
+        organism_col       = "organism_normalized",
+        class_col          = "antibiotic_class",
+        susceptibility_col = "antibiotic_value"
+      )
+      # prep_classify_mdr/xdr require column named class_result_event
+      data_class <- dplyr::rename(data_class, class_result_event = class_resistance)
+
+      if (verbose) message("\n[3.12] Classifying MDR/XDR...")
+      data_class <- prep_classify_mdr(data_class, definition = config$mdr_definition)
+      data_class <- prep_classify_xdr(data_class, definition = config$xdr_definition)
+
+      mdr_join_cols <- intersect(
+        c("event_id", "mdr", "mdr_confidence", "mdr_method",
+          "n_resistant_categories", "resistant_categories",
+          "xdr", "xdr_confidence", "xdr_method"),
+        names(data_class)
+      )
+      mdr_summary <- dplyr::distinct(data_class[, mdr_join_cols])
+      data <- dplyr::left_join(data, mdr_summary, by = "event_id")
     }
 
     # Step 3.11: Map to RR pathogens and classes (if enabled)
@@ -285,6 +338,25 @@ run_preprocess <- function(data,
     }
     if ("antibiotic_class" %in% names(data)) {
       data <- daly_map_rr_drug_class(data)
+    }
+  }
+
+  # ========================================
+  # PHASE 4: OUTPUTS
+  # ========================================
+  if ("derive" %in% phases) {
+    if (verbose) {
+      message("\n=======================================================")
+      message("  PHASE 4: OUTPUTS")
+      message("=======================================================")
+    }
+
+    if (verbose) message("\n[4.1] Filtering to minimally usable records...")
+    data <- prep_filter_minimally_usable(data)
+
+    if (validate) {
+      if (verbose) message("\n[4.2] Validating analysis-ready dataset...")
+      prep_validate_analysis_ready(data, stop_on_failure = FALSE)
     }
   }
 
