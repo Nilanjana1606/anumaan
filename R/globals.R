@@ -65,5 +65,15 @@ utils::globalVariables(c(
   "xdr", "xdr_confidence", "xdr_method", "yll_contribution",
 
   # Column names with spaces/trailing whitespace from CSV headers
-  "Common commensals", "Category "
+  "Common commensals", "Category ",
+
+  # Temporary dplyr/mutate columns not yet in the list above
+  ".gap_days", ".prev_adm", ".present", ".syndrome_rank", ".norm_syn",
+  "syndrome_selected", "poly_weight",
+  "n_centres_present", "column",
+
+  # Columns created in prep_map_diagnosis_to_icd / alethia integration
+  "given_entity", "alethia_prediction", "alethia_score",
+  "diagnosis_text", "icd_score", "icd_rank", "icd_prediction",
+  "icd_code", "icd_method"
 ))

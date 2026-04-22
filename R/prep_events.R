@@ -27,7 +27,7 @@
 #'
 #' Event IDs are numbered GLOBALLY per patient in chronological order.
 #'
-#' @param data Data frame (long format — one row per antibiotic test).
+#' @param data Data frame (long format -- one row per antibiotic test).
 #' @param patient_col  Patient ID column. Default "patient_id".
 #' @param date_col     Culture date column. Default "date_of_culture".
 #' @param organism_col Organism column. Default "organism_normalized".
@@ -54,9 +54,9 @@ prep_create_event_ids <- function(data,
   use_antibiogram <- antibiotic_col %in% names(data) && value_col %in% names(data)
 
   if (!use_specimen)
-    message(sprintf("Column '%s' not found — events created without specimen matching.", specimen_col))
+    message(sprintf("Column '%s' not found -- events created without specimen matching.", specimen_col))
   if (!use_antibiogram)
-    message("Antibiotic columns not found — events created without antibiogram comparison.")
+    message("Antibiotic columns not found -- events created without antibiogram comparison.")
 
   message(sprintf("Creating events (gap threshold: >%d days) ...", gap_days))
 
@@ -277,11 +277,11 @@ prep_deduplicate_events <- function(data,
 #' For each patient, classifies admissions into:
 #' \describe{
 #'   \item{index}{First admission for this patient.}
-#'   \item{linked_readmission}{Readmission within \code{gap_linked_days} — treated
+#'   \item{linked_readmission}{Readmission within \code{gap_linked_days} -- treated
 #'     as the same episode. Excluded from HAI incidence counts.}
 #'   \item{new_readmission}{Readmission between \code{gap_linked_days} and
 #'     \code{gap_new_days}.}
-#'   \item{late_readmission}{Readmission after \code{gap_new_days} — fully new
+#'   \item{late_readmission}{Readmission after \code{gap_new_days} -- fully new
 #'     event.}
 #' }
 #'

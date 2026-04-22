@@ -47,8 +47,7 @@ Imports:
     ggplot2 (>= 3.4.0),
     scales (>= 1.2.0),
     fitdistrplus (>= 1.1.0),
-    RColorBrewer (>= 1.1.0),
-    data.table (>= 1.14.0)
+    RColorBrewer (>= 1.1.0)
 SystemRequirements: Python (>= 3.8) with the 'alethia' package for
     ICD-10 semantic embedding (optional; only needed when
     prep_map_diagnosis_to_icd() is called with method = "python_embedding").
