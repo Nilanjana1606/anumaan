@@ -76,4 +76,10 @@ utils::globalVariables(c(
   "given_entity", "alethia_prediction", "alethia_score",
   "diagnosis_text", "icd_score", "icd_rank", "icd_prediction",
   "icd_code", "icd_method"
+  # prep_eda_plots.R -- dplyr NSE column references
+  "final_abx", "grand_total", "value_label", "percent", "label",
+  "med_age", "med_los", "org_ordered", "organism_resist",
+  "total_patients", "unique_patients", "unique_organisms",
+  "infection_type", "location_type", "tests", "total_tests",
+  "patients", "first"
 ))
