@@ -129,7 +129,7 @@ run_preprocess <- function(data,
     mapping_result <- prep_standardize_column_names(
       data,
       fuzzy_match = config$fuzzy_match,
-      mapping = config$custom_column_mappings
+      mapping = config$column_mappings
     )
     data <- mapping_result$data
     log$column_mapping <- mapping_result$mapping_log
