@@ -143,3 +143,37 @@ test_that("plot_syndrome_distribution returns ggplot for all modes and errors co
   bad <- make_amr_data(); bad$infectious_syndrome <- NULL
   expect_error(plot_syndrome_distribution(bad), "Column\\(s\\) not found")
 })
+
+test_that("plot_resistance_by_agebin returns ggplot for all modes and errors correctly", {
+  d <- make_amr_data()
+  expect_s3_class(plot_resistance_by_agebin(d, mode = "overall",
+                    organism_col = "organism_name", value_col = "antibiotic_value"), "ggplot")
+  expect_s3_class(plot_resistance_by_agebin(d, mode = "faceted",
+                    organism_col = "organism_name", value_col = "antibiotic_value"), "ggplot")
+  expect_s3_class(plot_resistance_by_agebin(d, mode = "single", center = "Centre A",
+                    organism_col = "organism_name", value_col = "antibiotic_value"), "ggplot")
+  expect_error(plot_resistance_by_agebin(d, mode = "single",
+                 organism_col = "organism_name", value_col = "antibiotic_value"),
+               "'center' must be provided")
+  bad <- d; bad$Age_bin <- NULL
+  expect_error(plot_resistance_by_agebin(bad, mode = "overall",
+                 organism_col = "organism_name", value_col = "antibiotic_value"),
+               "Column\\(s\\) not found")
+})
+
+test_that("plot_resistance_by_organism returns ggplot for all modes and errors correctly", {
+  d <- make_amr_data()
+  expect_s3_class(plot_resistance_by_organism(d, mode = "overall",
+                    organism_col = "organism_name", value_col = "antibiotic_value"), "ggplot")
+  expect_s3_class(plot_resistance_by_organism(d, mode = "faceted",
+                    organism_col = "organism_name", value_col = "antibiotic_value"), "ggplot")
+  expect_s3_class(plot_resistance_by_organism(d, mode = "single", center = "Centre A",
+                    organism_col = "organism_name", value_col = "antibiotic_value"), "ggplot")
+  expect_error(plot_resistance_by_organism(d, mode = "single",
+                 organism_col = "organism_name", value_col = "antibiotic_value"),
+               "'center' must be provided")
+  bad <- d; bad$organism_name <- NULL
+  expect_error(plot_resistance_by_organism(bad, mode = "overall",
+                 organism_col = "organism_name", value_col = "antibiotic_value"),
+               "Column\\(s\\) not found")
+})
