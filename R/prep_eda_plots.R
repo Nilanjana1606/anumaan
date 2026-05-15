@@ -15,7 +15,7 @@
 #'   "left", "right", "none"). Default "top".
 #'
 #' @return A ggplot2 theme object.
-#'
+#' @export
 eda_theme <- function(base_size = 14, legend_position = "top") {
   ggpubr::theme_pubr(base_size = base_size) +
     ggplot2::theme(
@@ -1949,12 +1949,14 @@ plot_death_discharged <- function(data,
       ggplot2::geom_text(
         ggplot2::aes(label = label),
         position = ggplot2::position_dodge(width = bar_width + 0.05),
-        vjust    = -0.3,
-        size     = 3.2,
-        fontface = "bold"
+        vjust    = 0.5,
+        hjust    = 1.1,
+        size     = 2.8,
+        fontface = "bold",
+        color    = "white"
       ) +
       ggplot2::scale_y_continuous(
-        expand = ggplot2::expansion(mult = c(0, 0.18))
+        expand = ggplot2::expansion(mult = c(0, 0.05))
       ) +
       ggplot2::coord_flip() +
       ggplot2::scale_fill_manual(values = colours) +
@@ -1991,12 +1993,14 @@ plot_death_discharged <- function(data,
     ggplot2::geom_text(
       ggplot2::aes(label = label),
       position = ggplot2::position_dodge(width = bar_width + 0.05),
-      vjust    = -0.3,
-      size     = 3.2,
-      fontface = "bold"
+      vjust    = 0.5,
+      hjust    = 1.1,
+      size     = 2.8,
+      fontface = "bold",
+      color    = "white"
     ) +
     ggplot2::scale_y_continuous(
-      expand = ggplot2::expansion(mult = c(0, 0.22))
+      expand = ggplot2::expansion(mult = c(0, 0.05))
     ) +
     tidytext::scale_x_reordered() +
     ggplot2::coord_flip() +
@@ -4449,6 +4453,459 @@ plot_syndrome_distribution <- function(data,
       axis.text.x        = ggplot2::element_text(angle = 30, hjust = 1),
       panel.grid.major.x = ggplot2::element_blank()
     )
+
+  if (mode == "faceted")
+    p <- p + ggplot2::facet_wrap(
+      stats::as.formula(paste("~", center_col)),
+      ncol   = ncol,
+      scales = "free_y"
+    )
+
+  return(p)
+}
+
+
+#' @title Resistance proportion by age group
+#' @description 100% stacked horizontal bar showing the proportion of Resistant
+#'   vs Susceptible patients within each age bin.  A patient is classified as
+#'   Resistant if they have ANY (organism × antibiotic) result of \code{"R"};
+#'   Susceptible only when every result is \code{"S"} (worst-phenotype rule
+#'   applied at patient × organism × antibiotic level, then collapsed to patient
+#'   level).
+#'
+#' @param data           Data frame (one row per patient × organism × antibiotic result).
+#' @param mode           One of \code{"faceted"}, \code{"overall"}, or \code{"single"}.
+#' @param center         Centre name used when \code{mode = "single"}.
+#' @param patient_col    Column for patient ID.
+#' @param organism_col   Column for organism name.
+#' @param antibiotic_col Column for antibiotic name.
+#' @param value_col      Column for resistance result (\code{"R"} / \code{"S"}).
+#' @param agebin_col     Column for age bin label.
+#' @param center_col     Column for centre name.
+#' @param colours        Named character vector with \code{"R"} and \code{"S"} entries.
+#' @param base_size      Base font size for \code{eda_theme()}.
+#' @param ncol           Facet columns (faceted mode only).
+#' @param title          Optional title override.
+#' @param syndrome_col   Optional column used to pre-filter by syndrome.
+#' @param syndrome_name  Optional value of \code{syndrome_col} to keep.
+#' @export
+plot_resistance_by_agebin <- function(
+    data,
+    mode           = c("faceted", "overall", "single"),
+    center         = NULL,
+    patient_col    = "patient_id",
+    organism_col   = "organism_normalized",
+    antibiotic_col = "antibiotic_name",
+    value_col      = "result",
+    agebin_col     = "Age_bin",
+    center_col     = "center_name",
+    colours        = NULL,
+    base_size      = 11,
+    ncol           = 3,
+    title          = NULL,
+    syndrome_col   = NULL,
+    syndrome_name  = NULL
+) {
+  mode <- match.arg(mode)
+
+  # -- 1. validate columns -------------------------------------------------------
+  required_cols <- c(patient_col, organism_col, antibiotic_col, value_col, agebin_col)
+  if (mode != "overall") required_cols <- c(required_cols, center_col)
+  missing_cols  <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0L)
+    stop(sprintf("Column(s) not found in data: %s", paste(missing_cols, collapse = ", ")))
+
+  if (mode == "single") {
+    if (is.null(center))
+      stop("'center' must be provided when mode = 'single'.")
+  }
+
+  if (!is.null(syndrome_name) && is.null(syndrome_col))
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+
+  # -- 2. syndrome pre-filter ---------------------------------------------------
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0L)
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+  }
+
+  # -- 3. default colours -------------------------------------------------------
+  if (is.null(colours))
+    colours <- c("R" = "#E74C3C", "S" = "#2ECC71")
+
+  # -- 4. tidy-eval symbols -----------------------------------------------------
+  pt_sym  <- rlang::sym(patient_col)
+  org_sym <- rlang::sym(organism_col)
+  abx_sym <- rlang::sym(antibiotic_col)
+  val_sym <- rlang::sym(value_col)
+  age_sym <- rlang::sym(agebin_col)
+  ctr_sym <- rlang::sym(center_col)
+
+  # -- 5. keep only R/S rows; drop blank age bins --------------------------------
+  clean <- data %>%
+    dplyr::filter(
+      !!val_sym %in% c("R", "S"),
+      !is.na(!!age_sym), trimws(as.character(!!age_sym)) != ""
+    )
+
+  if (nrow(clean) == 0L)
+    stop("No R/S result rows found after filtering.")
+
+  # -- 6. single-centre filter --------------------------------------------------
+  if (mode == "single")
+    clean <- clean %>% dplyr::filter(!!ctr_sym == center)
+
+  # -- 7. worst-phenotype dedup → one resistance call per patient ---------------
+  # Step A: (patient, organism, antibiotic) → any R = R, else S
+  # Step B: (patient) → any R across all organisms/antibiotics = patient is R
+  if (mode == "overall") {
+    resist <- clean %>%
+      dplyr::distinct(!!pt_sym, !!org_sym, !!abx_sym, !!val_sym) %>%
+      dplyr::group_by(!!pt_sym, !!org_sym, !!abx_sym) %>%
+      dplyr::summarise(abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
+                       .groups = "drop") %>%
+      dplyr::group_by(!!pt_sym) %>%
+      dplyr::summarise(resistance = ifelse(any(abx_call == "R"), "R", "S"),
+                       .groups = "drop")
+  } else {
+    resist <- clean %>%
+      dplyr::distinct(!!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym, !!val_sym) %>%
+      dplyr::group_by(!!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym) %>%
+      dplyr::summarise(abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
+                       .groups = "drop") %>%
+      dplyr::group_by(!!ctr_sym, !!pt_sym) %>%
+      dplyr::summarise(resistance = ifelse(any(abx_call == "R"), "R", "S"),
+                       .groups = "drop")
+  }
+
+  # -- 8. join age bin back (one agebin per patient; take first non-NA) ---------
+  if (mode == "overall") {
+    agebin_map <- clean %>%
+      dplyr::distinct(!!pt_sym, !!age_sym) %>%
+      dplyr::filter(!is.na(!!age_sym)) %>%
+      dplyr::group_by(!!pt_sym) %>%
+      dplyr::slice(1L) %>%
+      dplyr::ungroup()
+
+    plot_df <- resist %>%
+      dplyr::inner_join(agebin_map, by = patient_col) %>%
+      dplyr::count(!!age_sym, resistance, name = "n") %>%
+      dplyr::group_by(!!age_sym) %>%
+      dplyr::mutate(
+        total = sum(n),
+        pct   = round(100 * n / total, 1),
+        label = ifelse(pct >= 5, paste0(pct, "%"), "")
+      ) %>%
+      dplyr::ungroup() %>%
+      dplyr::mutate(resistance = factor(resistance, levels = c("S", "R")))
+  } else {
+    agebin_map <- clean %>%
+      dplyr::distinct(!!ctr_sym, !!pt_sym, !!age_sym) %>%
+      dplyr::filter(!is.na(!!age_sym)) %>%
+      dplyr::group_by(!!ctr_sym, !!pt_sym) %>%
+      dplyr::slice(1L) %>%
+      dplyr::ungroup()
+
+    plot_df <- resist %>%
+      dplyr::inner_join(agebin_map, by = c(center_col, patient_col)) %>%
+      dplyr::count(!!ctr_sym, !!age_sym, resistance, name = "n") %>%
+      dplyr::group_by(!!ctr_sym, !!age_sym) %>%
+      dplyr::mutate(
+        total = sum(n),
+        pct   = round(100 * n / total, 1),
+        label = ifelse(pct >= 5, paste0(pct, "%"), "")
+      ) %>%
+      dplyr::ungroup() %>%
+      dplyr::mutate(resistance = factor(resistance, levels = c("S", "R")))
+  }
+
+  if (nrow(plot_df) == 0L)
+    stop("No data to plot after joining age bins to resistance status.")
+
+  # -- 9. auto title ------------------------------------------------------------
+  auto_title <- title %||% switch(
+    mode,
+    overall = "Resistance Proportion by Age Group — All Centres Pooled",
+    faceted = "Resistance Proportion by Age Group",
+    single  = sprintf("Resistance Proportion by Age Group — %s", center)
+  )
+
+  # -- 10. shared plot body -----------------------------------------------------
+  p <- ggplot2::ggplot(
+    plot_df,
+    ggplot2::aes(x = !!age_sym, y = pct, fill = resistance)
+  ) +
+    ggplot2::geom_col(width = 0.7) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = label),
+      position = ggplot2::position_stack(vjust = 0.5),
+      size     = 3.2,
+      fontface = "bold",
+      color    = "white"
+    ) +
+    ggplot2::scale_y_continuous(
+      labels = function(x) paste0(x, "%"),
+      limits = c(0, 100),
+      expand = ggplot2::expansion(mult = c(0, 0.02))
+    ) +
+    ggplot2::coord_flip() +
+    ggplot2::scale_fill_manual(values = colours) +
+    ggplot2::labs(
+      x     = "Age Group",
+      y     = "Proportion of Patients (%)",
+      fill  = "Resistance",
+      title = auto_title
+    ) +
+    eda_theme(base_size = base_size)
+
+  if (mode == "faceted")
+    p <- p + ggplot2::facet_wrap(
+      stats::as.formula(paste("~", center_col)),
+      ncol   = ncol,
+      scales = "free_y"
+    )
+
+  return(p)
+}
+
+
+#' @title Resistance proportion for top N organisms
+#' @description 100% stacked horizontal bar showing the proportion of Resistant
+#'   vs Susceptible patients for the top \code{n} organisms (ranked by total
+#'   distinct patient count).  A patient × organism pair is classified as
+#'   Resistant if any antibiotic result for that pair is \code{"R"}
+#'   (worst-phenotype rule at patient × organism × antibiotic level).
+#'
+#' @param data           Data frame (one row per patient × organism × antibiotic result).
+#' @param n              Number of top organisms to display.
+#' @param mode           One of \code{"faceted"}, \code{"overall"}, or \code{"single"}.
+#' @param center         Centre name used when \code{mode = "single"}.
+#' @param patient_col    Column for patient ID.
+#' @param organism_col   Column for organism name.
+#' @param antibiotic_col Column for antibiotic name.
+#' @param value_col      Column for resistance result (\code{"R"} / \code{"S"}).
+#' @param center_col     Column for centre name.
+#' @param colours        Named character vector with \code{"R"} and \code{"S"} entries.
+#' @param base_size      Base font size for \code{eda_theme()}.
+#' @param ncol           Facet columns (faceted mode only).
+#' @param title          Optional title override.
+#' @param syndrome_col   Optional column used to pre-filter by syndrome.
+#' @param syndrome_name  Optional value of \code{syndrome_col} to keep.
+#' @export
+plot_resistance_by_organism <- function(
+    data,
+    n              = 5,
+    mode           = c("faceted", "overall", "single"),
+    center         = NULL,
+    patient_col    = "patient_id",
+    organism_col   = "organism_normalized",
+    antibiotic_col = "antibiotic_name",
+    value_col      = "result",
+    center_col     = "center_name",
+    colours        = NULL,
+    base_size      = 11,
+    ncol           = 3,
+    title          = NULL,
+    syndrome_col   = NULL,
+    syndrome_name  = NULL
+) {
+  mode <- match.arg(mode)
+
+  # -- 1. validate columns -------------------------------------------------------
+  required_cols <- c(patient_col, organism_col, antibiotic_col, value_col)
+  if (mode != "overall") required_cols <- c(required_cols, center_col)
+  missing_cols  <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0L)
+    stop(sprintf("Column(s) not found in data: %s", paste(missing_cols, collapse = ", ")))
+
+  if (mode == "single") {
+    if (is.null(center))
+      stop("'center' must be provided when mode = 'single'.")
+  }
+
+  if (!is.null(syndrome_name) && is.null(syndrome_col))
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+
+  # -- 2. syndrome pre-filter ---------------------------------------------------
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0L)
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+  }
+
+  # -- 3. default colours -------------------------------------------------------
+  if (is.null(colours))
+    colours <- c("R" = "#E74C3C", "S" = "#2ECC71")
+
+  # -- 4. tidy-eval symbols -----------------------------------------------------
+  pt_sym  <- rlang::sym(patient_col)
+  org_sym <- rlang::sym(organism_col)
+  abx_sym <- rlang::sym(antibiotic_col)
+  val_sym <- rlang::sym(value_col)
+  ctr_sym <- rlang::sym(center_col)
+
+  # -- 5. keep only R/S rows; drop blank organisms ------------------------------
+  clean <- data %>%
+    dplyr::filter(
+      !!val_sym %in% c("R", "S"),
+      !is.na(!!org_sym), trimws(as.character(!!org_sym)) != ""
+    )
+
+  if (nrow(clean) == 0L)
+    stop("No R/S result rows found after filtering.")
+
+  # -- 6. single-centre filter --------------------------------------------------
+  if (mode == "single")
+    clean <- clean %>% dplyr::filter(!!ctr_sym == center)
+
+  # -- 7. worst-phenotype dedup → one resistance call per (patient, organism) ---
+  # Step A: (patient, organism, antibiotic) → any R = R, else S
+  # Step B: (patient, organism) → any antibiotic call is R → organism call is R
+  if (mode == "overall") {
+    resist <- clean %>%
+      dplyr::distinct(!!pt_sym, !!org_sym, !!abx_sym, !!val_sym) %>%
+      dplyr::group_by(!!pt_sym, !!org_sym, !!abx_sym) %>%
+      dplyr::summarise(abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
+                       .groups = "drop") %>%
+      dplyr::group_by(!!pt_sym, !!org_sym) %>%
+      dplyr::summarise(resistance = ifelse(any(abx_call == "R"), "R", "S"),
+                       .groups = "drop")
+  } else {
+    resist <- clean %>%
+      dplyr::distinct(!!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym, !!val_sym) %>%
+      dplyr::group_by(!!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym) %>%
+      dplyr::summarise(abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
+                       .groups = "drop") %>%
+      dplyr::group_by(!!ctr_sym, !!pt_sym, !!org_sym) %>%
+      dplyr::summarise(resistance = ifelse(any(abx_call == "R"), "R", "S"),
+                       .groups = "drop")
+  }
+
+  # -- 8. identify top N organisms by distinct patient count --------------------
+  if (mode == "overall") {
+    top_orgs <- resist %>%
+      dplyr::count(!!org_sym, name = "pt_count") %>%
+      dplyr::slice_max(pt_count, n = n, with_ties = FALSE) %>%
+      dplyr::pull(!!org_sym)
+  } else {
+    top_orgs <- resist %>%
+      dplyr::count(!!ctr_sym, !!org_sym, name = "pt_count") %>%
+      dplyr::group_by(!!ctr_sym) %>%
+      dplyr::slice_max(pt_count, n = n, with_ties = FALSE) %>%
+      dplyr::ungroup() %>%
+      dplyr::pull(!!org_sym) %>%
+      unique()
+  }
+
+  resist <- resist %>% dplyr::filter(!!org_sym %in% top_orgs)
+
+  # -- 9. count and compute proportions per (organism, resistance) --------------
+  if (mode == "overall") {
+    plot_df <- resist %>%
+      dplyr::count(!!org_sym, resistance, name = "n") %>%
+      dplyr::group_by(!!org_sym) %>%
+      dplyr::mutate(
+        total = sum(n),
+        pct   = round(100 * n / total, 1),
+        label = ifelse(pct >= 5, paste0(pct, "%"), "")
+      ) %>%
+      dplyr::ungroup() %>%
+      dplyr::mutate(
+        !!organism_col := stats::reorder(!!org_sym, total),
+        resistance     = factor(resistance, levels = c("S", "R"))
+      )
+  } else {
+    plot_df <- resist %>%
+      dplyr::count(!!ctr_sym, !!org_sym, resistance, name = "n") %>%
+      dplyr::group_by(!!ctr_sym, !!org_sym) %>%
+      dplyr::mutate(
+        total = sum(n),
+        pct   = round(100 * n / total, 1),
+        label = ifelse(pct >= 5, paste0(pct, "%"), "")
+      ) %>%
+      dplyr::ungroup() %>%
+      dplyr::mutate(
+        org_ordered = tidytext::reorder_within(!!org_sym, total, !!ctr_sym),
+        resistance  = factor(resistance, levels = c("S", "R"))
+      )
+  }
+
+  if (nrow(plot_df) == 0L)
+    stop("No data to plot after filtering to top organisms.")
+
+  # -- 10. auto title -----------------------------------------------------------
+  auto_title <- title %||% switch(
+    mode,
+    overall = sprintf("Resistance Proportion — Top %d Organisms, All Centres Pooled", n),
+    faceted = sprintf("Resistance Proportion — Top %d Organisms", n),
+    single  = sprintf("Resistance Proportion — Top %d Organisms, %s", n, center)
+  )
+
+  # -- 11. OVERALL plot ---------------------------------------------------------
+  if (mode == "overall") {
+    p <- ggplot2::ggplot(
+      plot_df,
+      ggplot2::aes(x = !!org_sym, y = pct, fill = resistance)
+    ) +
+      ggplot2::geom_col(width = 0.7) +
+      ggplot2::geom_text(
+        ggplot2::aes(label = label),
+        position = ggplot2::position_stack(vjust = 0.5),
+        size     = 3.2,
+        fontface = "bold",
+        color    = "white"
+      ) +
+      ggplot2::scale_y_continuous(
+        labels = function(x) paste0(x, "%"),
+        limits = c(0, 100),
+        expand = ggplot2::expansion(mult = c(0, 0.02))
+      ) +
+      ggplot2::coord_flip() +
+      ggplot2::scale_fill_manual(values = colours) +
+      ggplot2::labs(
+        x     = "Organism",
+        y     = "Proportion of Patients (%)",
+        fill  = "Resistance",
+        title = auto_title
+      ) +
+      eda_theme(base_size = base_size)
+
+    return(p)
+  }
+
+  # -- 12. FACETED + SINGLE (reorder_within for per-facet ordering) -------------
+  p <- ggplot2::ggplot(
+    plot_df,
+    ggplot2::aes(x = org_ordered, y = pct, fill = resistance)
+  ) +
+    ggplot2::geom_col(width = 0.7) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = label),
+      position = ggplot2::position_stack(vjust = 0.5),
+      size     = 3.2,
+      fontface = "bold",
+      color    = "white"
+    ) +
+    ggplot2::scale_y_continuous(
+      labels = function(x) paste0(x, "%"),
+      limits = c(0, 100),
+      expand = ggplot2::expansion(mult = c(0, 0.02))
+    ) +
+    tidytext::scale_x_reordered() +
+    ggplot2::coord_flip() +
+    ggplot2::scale_fill_manual(values = colours) +
+    ggplot2::labs(
+      x     = "Organism",
+      y     = "Proportion of Patients (%)",
+      fill  = "Resistance",
+      title = auto_title
+    ) +
+    eda_theme(base_size = base_size)
 
   if (mode == "faceted")
     p <- p + ggplot2::facet_wrap(
