@@ -96,6 +96,8 @@ reference:
   - print.amr_result
   - summary.amr_result
   - print.amr_preprocessing_report
+  - detect_preprocessing_capabilities
+  - prep_report_capabilities
 
 - title: "Standardization"
   desc: "Standardize column names, organisms, antibiotics, specimens, and values"
@@ -110,6 +112,11 @@ reference:
   - prep_recode_intermediate_ast
   - prep_parse_date_column
   - prep_coerce_dates
+  - prep_standardize_final_outcome
+  - prep_standardize_infection_type
+  - prep_harmonize_ast
+  - prep_flag_invalid_ast
+  - prep_decode_antibiotic_code
 
 - title: "Classification"
   desc: "MDR/XDR classification, organism grouping, AWaRe, and mortality"
@@ -122,6 +129,8 @@ reference:
   - prep_derive_hai_cai
   - prep_extract_genus
   - prep_extract_species
+  - prep_classify_readmission
+  - prep_flag_organism_unmatched
 
 - title: "Enrichment"
   desc: "Derive missing variables from existing data"
@@ -132,6 +141,11 @@ reference:
   - prep_assign_age_bins
   - prep_infer_department
   - prep_clean_optional_columns
+  - prep_derive_los_from_dates
+  - prep_derive_icu_flag
+  - prep_derive_dob_from_components
+  - prep_flag_hai_inferred
+  - prep_reconcile_hai_observed_inferred
 
 - title: "Deduplication and collapsing"
   desc: "Event IDs, deduplication, contaminant flagging, and data reshaping"
@@ -149,6 +163,13 @@ reference:
   - prep_create_wide_ast_matrix
   - prep_create_resistance_profile
   - prep_filter_analysis_ready
+  - prep_deduplicate_ast
+  - prep_compute_poly_weights
+  - prep_split_poly_episode
+  - prep_flag_polymicrobial
+  - prep_flag_readmission
+  - prep_filter_fungal
+  - prep_filter_minimally_usable
 
 - title: "Table validation"
   desc: "Column, key, and table-level validation helpers"
@@ -156,6 +177,26 @@ reference:
   - prep_check_columns
   - prep_check_keys
   - prep_validate_table
+  - prep_detect_schema_drift
+  - prep_apply_column_map
+  - prep_assert_standard_names
+  - prep_build_column_map
+
+- title: "Diagnosis and syndrome mapping"
+  desc: "Map free-text diagnoses to ICD-10 codes and clinical syndromes"
+  contents:
+  - prep_map_diagnosis_to_icd
+  - prep_map_icd_to_syndrome
+  - prep_diagnosis_text
+  - prep_assign_patient_syndrome
+  - infer_patient_syndrome_wide
+
+- title: "Outcome cohorts and attrition"
+  desc: "Build outcome cohorts and track patient counts through pipeline stages"
+  contents:
+  - prep_attrition_flow
+  - prep_build_fatal_cohort
+  - prep_build_nonfatal_cohort
 
 - title: "Resistance profiles"
   desc: "Marginal resistance, co-resistance, and profile computation"
@@ -164,7 +205,6 @@ reference:
   - compute_pairwise_coresistance
   - compute_resistance_profiles
   - select_resistance_class
-  - prioritize_resistance
 
 - title: "Burden estimation (YLL/YLD/DALY)"
   desc: "GBD-methodology burden calculations"
@@ -184,17 +224,41 @@ reference:
   - get_los_by_resistance
 
 - title: "Burden plots"
-  desc: "Hospital-level burden visualizations"
+  desc: "Hospital-level and organism-level burden visualizations"
   contents:
   - plot_burden_by_hospital
   - plot_burden_by_organism
   - plot_yll_heatmap
   - plot_yld_heatmap
 
+- title: "EDA plots"
+  desc: "Exploratory plots for AMR surveillance data"
+  contents:
+  - plot_top_organisms
+  - plot_abx_susceptibility
+  - plot_abx_heatmap
+  - plot_outcome_distribution
+  - plot_outcome_by_organism
+  - plot_death_discharged
+  - plot_resistance_by_sample
+  - plot_outcome_by_agebin
+  - plot_mono_poly_by_facility
+  - plot_hai_cai_by_facility
+  - plot_location_by_facility
+  - plot_los_ridge
+  - plot_age_ridge
+  - plot_los_by_agebin
+  - plot_outcome_by_year
+  - plot_patients_by_hospital
+  - plot_syndrome_distribution
+  - plot_resistance_by_agebin
+  - plot_resistance_by_organism
+
 - title: "Visualization"
   desc: "Generic AMR plotting utilities"
   contents:
   - amr_theme
+  - eda_theme
   - get_amr_palette
   - plot_bar
   - plot_grouped_bar
@@ -230,6 +294,10 @@ reference:
   - compute_processing_statistics
   - generate_preprocessing_report
   - export_report
+  - prep_check_organism_ast_consistency
+  - prep_validate_analysis_ready
+  - prep_validate_date_logic
+  - prep_missingness_report
 
 - title: "Utilities"
   desc: "Helper functions"
