@@ -104,5 +104,8 @@ utils::globalVariables(c(
   "temp_spec_input", "temp_spec_clean",
   "specimen_normalized", "sample_category", "sterile_classification",
   "sample_type", "culture_date", "admission_date", "outcome_date",
-  "unit_admission_date", "unit_duration_days", "location"
+  "unit_admission_date", "unit_duration_days", "location",
+
+  # plot_resistance_by_agebin / plot_resistance_by_organism -- dplyr NSE columns
+  "abx_call", "pct", "pt_count", "resistance"
 ))
