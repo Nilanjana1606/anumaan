@@ -4558,9 +4558,9 @@ plot_resistance_by_agebin <- function(
   if (mode == "single")
     clean <- clean %>% dplyr::filter(!!ctr_sym == center)
 
-  # -- 7. worst-phenotype dedup → one resistance call per patient ---------------
-  # Step A: (patient, organism, antibiotic) → any R = R, else S
-  # Step B: (patient) → any R across all organisms/antibiotics = patient is R
+  # -- 7. worst-phenotype dedup -> one resistance call per patient ---------------
+  # Step A: (patient, organism, antibiotic) -> any R = R, else S
+  # Step B: (patient) -> any R across all organisms/antibiotics = patient is R
   if (mode == "overall") {
     resist <- clean %>%
       dplyr::distinct(!!pt_sym, !!org_sym, !!abx_sym, !!val_sym) %>%
@@ -4628,9 +4628,9 @@ plot_resistance_by_agebin <- function(
   # -- 9. auto title ------------------------------------------------------------
   auto_title <- title %||% switch(
     mode,
-    overall = "Resistance Proportion by Age Group — All Centres Pooled",
+    overall = "Resistance Proportion by Age Group \u2014 All Centres Pooled",
     faceted = "Resistance Proportion by Age Group",
-    single  = sprintf("Resistance Proportion by Age Group — %s", center)
+    single  = sprintf("Resistance Proportion by Age Group \u2014 %s", center)
   )
 
   # -- 10. shared plot body -----------------------------------------------------
@@ -4675,11 +4675,11 @@ plot_resistance_by_agebin <- function(
 #' @title Resistance proportion for top N organisms
 #' @description 100% stacked horizontal bar showing the proportion of Resistant
 #'   vs Susceptible patients for the top \code{n} organisms (ranked by total
-#'   distinct patient count).  A patient × organism pair is classified as
+#'   distinct patient count).  A patient x organism pair is classified as
 #'   Resistant if any antibiotic result for that pair is \code{"R"}
-#'   (worst-phenotype rule at patient × organism × antibiotic level).
+#'   (worst-phenotype rule at patient x organism x antibiotic level).
 #'
-#' @param data           Data frame (one row per patient × organism × antibiotic result).
+#' @param data           Data frame (one row per patient x organism x antibiotic result).
 #' @param n              Number of top organisms to display.
 #' @param mode           One of \code{"faceted"}, \code{"overall"}, or \code{"single"}.
 #' @param center         Centre name used when \code{mode = "single"}.
@@ -4763,9 +4763,9 @@ plot_resistance_by_organism <- function(
   if (mode == "single")
     clean <- clean %>% dplyr::filter(!!ctr_sym == center)
 
-  # -- 7. worst-phenotype dedup → one resistance call per (patient, organism) ---
-  # Step A: (patient, organism, antibiotic) → any R = R, else S
-  # Step B: (patient, organism) → any antibiotic call is R → organism call is R
+  # -- 7. worst-phenotype dedup -> one resistance call per (patient, organism) ---
+  # Step A: (patient, organism, antibiotic) -> any R = R, else S
+  # Step B: (patient, organism) -> any antibiotic call is R -> organism call is R
   if (mode == "overall") {
     resist <- clean %>%
       dplyr::distinct(!!pt_sym, !!org_sym, !!abx_sym, !!val_sym) %>%
@@ -4841,9 +4841,9 @@ plot_resistance_by_organism <- function(
   # -- 10. auto title -----------------------------------------------------------
   auto_title <- title %||% switch(
     mode,
-    overall = sprintf("Resistance Proportion — Top %d Organisms, All Centres Pooled", n),
-    faceted = sprintf("Resistance Proportion — Top %d Organisms", n),
-    single  = sprintf("Resistance Proportion — Top %d Organisms, %s", n, center)
+    overall = sprintf("Resistance Proportion \u2014 Top %d Organisms, All Centres Pooled", n),
+    faceted = sprintf("Resistance Proportion \u2014 Top %d Organisms", n),
+    single  = sprintf("Resistance Proportion \u2014 Top %d Organisms, %s", n, center)
   )
 
   # -- 11. OVERALL plot ---------------------------------------------------------
