@@ -73,6 +73,8 @@ navbar:
       menu:
       - text: Getting Started
         href: articles/getting-started.html
+      - text: Preprocessing Workflow
+        href: articles/preprocessing-workflow.html
 
     news:
       text: Changelog
@@ -104,18 +106,15 @@ reference:
   - prep_standardize_specimens
   - prep_standardize_sex
   - prep_standardize_outcome
-  - prep_standardize_ast_values
   - prep_clean_ast_values
   - prep_recode_intermediate_ast
-  - prep_parse_dates
   - prep_parse_date_column
   - prep_coerce_dates
 
 - title: "Classification"
   desc: "MDR/XDR classification, organism grouping, AWaRe, and mortality"
   contents:
-  - prep_classify_mdr
-  - prep_classify_xdr
+  - prep_classify_mdr_xdr
   - prep_assign_organism_group
   - prep_classify_antibiotic_class
   - prep_classify_aware
@@ -128,9 +127,8 @@ reference:
   desc: "Derive missing variables from existing data"
   contents:
   - prep_fill_age
-  - prep_derive_age
-  - prep_fill_los
-  - prep_calculate_los
+  - prep_derive_dob_from_components
+  - prep_derive_los_from_dates
   - prep_assign_age_bins
   - prep_infer_department
   - prep_clean_optional_columns
@@ -145,19 +143,16 @@ reference:
   - prep_is_contaminant
   - flag_polymicrobial
   - compute_polymicrobial_weight
-  - prep_collapse_antibiotic_level
+  - prep_deduplicate_ast
   - prep_collapse_class_level
   - prep_pivot_ast_wide_to_long
   - prep_create_wide_ast_matrix
   - prep_create_resistance_profile
   - prep_filter_analysis_ready
 
-- title: "Multi-centre stewardship import"
-  desc: "Joining and validating ICMR multi-centre stewardship datasets"
+- title: "Table validation"
+  desc: "Column, key, and table-level validation helpers"
   contents:
-  - prep_join_stewardship_centre
-  - prep_bind_stewardship_centres
-  - prep_save_centre
   - prep_check_columns
   - prep_check_keys
   - prep_validate_table
@@ -189,14 +184,12 @@ reference:
   - get_los_by_resistance
 
 - title: "Burden plots"
-  desc: "GBD-style and hospital-level burden visualizations"
+  desc: "Hospital-level burden visualizations"
   contents:
-  - plot_gbd_fig4
-  - plot_gbd_fig6
-  - plot_burden_comparison
-  - plot_burden_heatmap
-  - plot_daly_lollipop
-  - plot_resistance_fraction
+  - plot_burden_by_hospital
+  - plot_burden_by_organism
+  - plot_yll_heatmap
+  - plot_yld_heatmap
 
 - title: "Visualization"
   desc: "Generic AMR plotting utilities"
@@ -228,7 +221,8 @@ reference:
   contents:
   - validate_data_quality
   - validate_required_fields
-  - check_logical_consistency
+  - prep_validate_date_logic
+  - prep_validate_analysis_ready
   - summarize_column_mapping
   - summarize_data_quality
   - summarize_raw_data
@@ -244,9 +238,6 @@ reference:
   - shorten_drug_class
   - default_column_mappings
   - get_age_bins
-  - get_antimicrobial_categories
-  - get_beta_lactam_hierarchy
-  - get_magiorakos_thresholds
 
 authors:
   Saket Choudhary:
