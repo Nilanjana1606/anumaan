@@ -1,7 +1,7 @@
 Package: anumaan
 Type: Package
 Title: Antimicrobial Resistance Surveillance Preprocessing and Burden Estimation
-Version: 0.1.0.9021
+Version: 0.1.0.9022
 Authors@R: c(
     person(
       "Nilanjana", "Dey",
@@ -63,14 +63,11 @@ Suggests:
     pkgdown,
     ggpubr (>= 0.4.0),
     reticulate (>= 1.28),
-    sf,
-    leaflet,
-    spdep,
-    tmap,
     Matrix,
     osqp,
     quadprog,
-    posterior (>= 1.0.0)
+    posterior (>= 1.0.0),
+    pbivnorm
 Additional_repositories: https://stan-dev.r-universe.dev
 VignetteBuilder: knitr
 URL: https://saketlab.github.io/anumaan/, https://github.com/saketlab/anumaan

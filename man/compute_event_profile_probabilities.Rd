@@ -2,7 +2,7 @@
 % Please edit documentation in R/daly_resistance_profiles.R
 \name{compute_event_profile_probabilities}
 \alias{compute_event_profile_probabilities}
-\title{Compute Posterior Resistance Profile Probabilities via MVN Simulation}
+\title{Compute Observed-Plus-Imputed Resistance Profile Probabilities}
 \usage{
 compute_event_profile_probabilities(
   fitted_model,
@@ -10,19 +10,18 @@ compute_event_profile_probabilities(
   outcome_col = NULL,
   nonfatal_values = c("Discharged", "Survived", "Alive", "discharged", "survived",
     "alive"),
-  seed = 123L
+  seed = 123L,
+  n_gibbs_burnin = 10L,
+  n_gibbs_kept = 20L
 )
 }
 \arguments{
 \item{fitted_model}{List returned by \code{fit_bayesian_multivariate_probit()}.}
 
-\item{n_posterior_draws_for_profiles}{Integer. Number of posterior draws to
-use for profile simulation. Subsampled without replacement when total draws
-exceed this value. Each draw generates one simulated latent profile per
-event; rare profiles may be underestimated when this is small. For finer
-Monte Carlo resolution of rare profiles, consider increasing this value or
-adding \code{n_predictive_replicates_per_draw} in a future extension.
-Default \code{2000L}.}
+\item{n_posterior_draws_for_profiles}{Integer. Number of posterior draws
+averaged over for both the event-level profile probabilities and the
+draw-level aggregates. Subsampled without replacement when total draws
+exceed this value. Default \code{2000L}.}
 
 \item{outcome_col}{Character or \code{NULL}. Patient outcome column in
 \code{fitted_model$event_metadata}. When \code{NULL}, all events are
@@ -31,27 +30,73 @@ treated as having a known outcome and R_NF is not computed separately.}
 \item{nonfatal_values}{Character vector. Outcome values for the non-fatal
 cohort (R_NF). Default covers common discharge/survival labels.}
 
-\item{seed}{Integer. Random seed for MVN simulation. Default \code{123L}.}
+\item{seed}{Integer. Random seed. Default \code{123L}.}
+
+\item{n_gibbs_burnin, n_gibbs_kept}{Integer. Only used when
+\code{fitted_model$residual_structure == "correlated"} -- see
+\code{.gibbs_conditional_profile_probs()}. Defaults \code{10L}/\code{20L}.}
 }
 \value{
-Named list: \code{event_profiles} (event-level posterior means) and
-  \code{aggregate_draws} (per-draw R_ALL and R_NF per hospital x pathogen x
-  profile, used by \code{aggregate_profiles_for_daly()} for credible
-  intervals). Both tibbles contain all \eqn{2^D} profiles per
-  hospital-pathogen pair.
+Named list: \code{event_profiles} (event-level posterior mean
+  observed-plus-imputed profile probabilities, with
+  \code{n_classes_observed}/\code{n_classes_missing} per event) and
+  \code{aggregate_draws} (per-draw \code{R_ALL} [truly all events in the
+  hp pair], \code{R_KNOWN_OUTCOME} [known-outcome cohort], and \code{R_NF}
+  [nonfatal cohort], used by \code{aggregate_profiles_for_daly()} for
+  credible intervals). Both tibbles contain all \eqn{2^D} profiles per
+  hospital-pathogen pair and carry \code{profile_generation_method} and
+  \code{panel_reason} columns.
 }
 \description{
-For each posterior draw, constructs the event-level linear predictor
-\eqn{\mu_e} using fixed effects and correlated random effects from the
-fitted model, simulates latent
-\eqn{Z_e = \mu_e + L_\Omega\,\varepsilon_e}, \eqn{\varepsilon_e \sim N(0,I_D)},
-converts to binary resistance profiles, and accumulates profile
-probabilities. All \eqn{2^D} profiles appear in the output; profiles not
-observed in simulation receive probability 0.
+For each event, retains every observed (tested) AST cell exactly and
+computes a probability distribution only over the genuinely untested
+(\code{NA}) antibiotic-class cells in that event's profile panel. Any
+enumerated profile inconsistent with the event's observed cells receives
+probability 0 -- this function never overwrites an observed R/S result.
 }
 \details{
-\strong{Estimand:} The posterior predictive distribution over the observed
-event case-mix -- the profile distribution you would see if you drew a new
-event uniformly from the set of observed events (same covariate distribution
-as the data). This is labelled \code{"observed_stewardship_event_mix"}.
+\strong{Identity residual structure} (\code{fitted_model$residual_structure
+== "identity"}): classes are conditionally independent given the linear
+predictor, so the missing-cell probabilities are computed analytically as
+\eqn{P(Y_{ed}=1 \mid \theta) = \Phi(\mu_{ed})} for each missing class
+\eqn{d}, and the profile probability over the missing dimensions is the
+exact product of per-class Bernoulli probabilities -- no latent-variable
+simulation is used, so there is no added latent-profile-simulation noise.
+Rows carry \code{profile_generation_method = "conditional_analytic_identity"}.
+
+\strong{Correlated residual structure} (Commit 6): the missing latent
+dimensions are sampled conditional on the observed resistance SIGNS of the
+tested classes via a Gibbs sampler on the truncated multivariate normal --
+see \code{.gibbs_conditional_profile_probs()}. This replaces the earlier
+unconditional latent-\eqn{Z} simulation, which resampled tested cells
+along with untested ones and was therefore not observed-plus-imputed.
+Rows carry \code{profile_generation_method = "conditional_gibbs_correlated"}
+and ARE eligible for downstream DALY use (subject to the same panel-support
+and sampler-acceptability gates as identity-residual profiles -- see
+\code{aggregate_profiles_for_daly()}). Because Gibbs is only run for
+\code{n_gibbs_burnin + n_gibbs_kept} iterations per draw rather than to
+full convergence, correlated-residual profiles carry additional Monte
+Carlo error beyond identity-residual profiles at the same
+\code{n_posterior_draws_for_profiles}; increase \code{n_gibbs_kept} (and/or
+\code{n_gibbs_burnin}) for lower-noise estimates at higher compute cost.
+
+Both residual structures produce, per event per posterior draw, a profile
+probability vector over the panel's \eqn{2^{D_p}} enumerated profiles that
+(a) sums to exactly 1 and (b) assigns exactly 0 to any profile
+inconsistent with that event's observed cells -- enforced by construction
+in both cases (an exact product for identity; Gibbs never visiting an
+inconsistent pattern for correlated), and checked with a hard
+\code{stop()} for the identity path since it has no other source of
+Monte Carlo noise to blur a genuine bug.
+
+\strong{Class panels}: the antibiotic-class panel enumerated for each
+hospital x pathogen pair is drawn from the approved eligibility rules
+computed at fit time (\code{fitted_model$eligibility_report}: marginal
+n_tested/n_resistant/n_susceptible thresholds, plus pairwise co-testing
+sufficiency for correlated-residual fits) -- not from "tested at least
+once". See \code{.resolve_profile_class_panel()}.
+
+\strong{Estimand:} The posterior distribution over the observed event
+case-mix, conditional on each event's own observed AST results. This is
+labelled \code{"observed_stewardship_event_mix"}.
 }
