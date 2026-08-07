@@ -26,20 +26,22 @@
 #' @return Data frame with \code{infection_type} enriched.
 #' @export
 prep_derive_hai_cai <- function(data,
-                                 infection_type_col = "infection_type",
-                                 admission_col      = "date_of_admission",
-                                 culture_col        = "date_of_culture",
-                                 hai_cutoff         = 2,
-                                 overwrite          = FALSE) {
+                                infection_type_col = "infection_type",
+                                admission_col = "date_of_admission",
+                                culture_col = "date_of_culture",
+                                hai_cutoff = 2,
+                                overwrite = FALSE) {
   has_infection_type <- infection_type_col %in% names(data)
-  has_admission      <- admission_col      %in% names(data)
-  has_culture        <- culture_col        %in% names(data)
+  has_admission <- admission_col %in% names(data)
+  has_culture <- culture_col %in% names(data)
 
   if (!has_infection_type) data[[infection_type_col]] <- NA_character_
 
   if (!has_admission || !has_culture) {
-    message(sprintf("[!] Cannot infer infection type: missing '%s' or '%s'",
-                    admission_col, culture_col))
+    message(sprintf(
+      "[!] Cannot infer infection type: missing '%s' or '%s'",
+      admission_col, culture_col
+    ))
     return(data)
   }
 
@@ -55,30 +57,31 @@ prep_derive_hai_cai <- function(data,
       ),
       inferred_type = dplyr::case_when(
         !is.na(days_to_culture) & days_to_culture >= hai_cutoff ~ "HAI",
-        !is.na(days_to_culture) & days_to_culture <  hai_cutoff ~ "CAI",
-        TRUE                                                      ~ NA_character_
+        !is.na(days_to_culture) & days_to_culture < hai_cutoff ~ "CAI",
+        TRUE ~ NA_character_
       ),
       !!infection_type_col := dplyr::case_when(
-        overwrite & !is.na(inferred_type)                                           ~ inferred_type,
-        is.na(!!rlang::sym(infection_type_col)) & !is.na(inferred_type)             ~ inferred_type,
-        TRUE                                                                          ~ !!rlang::sym(infection_type_col)
+        overwrite & !is.na(inferred_type) ~ inferred_type,
+        is.na(!!rlang::sym(infection_type_col)) & !is.na(inferred_type) ~ inferred_type,
+        TRUE ~ !!rlang::sym(infection_type_col)
       ),
       infection_type_method = dplyr::case_when(
-        !is.na(inferred_type)                          ~ sprintf("inferred_%dday_cutoff", hai_cutoff),
-        !is.na(!!rlang::sym(infection_type_col))       ~ "provided",
-        TRUE                                            ~ NA_character_
+        !is.na(inferred_type) ~ sprintf("inferred_%dday_cutoff", hai_cutoff),
+        !is.na(!!rlang::sym(infection_type_col)) ~ "provided",
+        TRUE ~ NA_character_
       ),
       infection_type_confidence = dplyr::case_when(
         infection_type_method == "provided" ~ "high",
-        !is.na(inferred_type)               ~ "medium",
-        TRUE                                 ~ NA_character_
+        !is.na(inferred_type) ~ "medium",
+        TRUE ~ NA_character_
       )
     ) %>%
     dplyr::select(-inferred_type, -days_to_culture)
 
   n_enriched <- n_before_missing - sum(is.na(data[[infection_type_col]]))
-  if (n_enriched > 0)
+  if (n_enriched > 0) {
     message(sprintf("Enriched infection_type: %d rows filled", n_enriched))
+  }
 
   message("\nInfection type distribution:")
   print(dplyr::arrange(
@@ -112,8 +115,8 @@ prep_derive_hai_cai <- function(data,
 #' @return Data frame with \code{infection_type_src} column added.
 #' @export
 prep_flag_hai_inferred <- function(data,
-                                    infection_type_col        = "infection_type",
-                                    infection_type_method_col = "infection_type_method") {
+                                   infection_type_col = "infection_type",
+                                   infection_type_method_col = "infection_type_method") {
   if (!infection_type_col %in% names(data)) {
     warning(sprintf("[prep_flag_hai_inferred] Column '%s' not found.", infection_type_col))
     data$infection_type_src <- NA_character_
@@ -126,8 +129,8 @@ prep_flag_hai_inferred <- function(data,
   data$infection_type_src <- dplyr::case_when(
     !is.na(method_vals) & method_vals == "provided" ~ "observed",
     !is.na(method_vals) & grepl("inferred", method_vals) ~ "inferred",
-    !is.na(data[[infection_type_col]])                   ~ "observed",
-    TRUE                                                  ~ "unknown"
+    !is.na(data[[infection_type_col]]) ~ "observed",
+    TRUE ~ "unknown"
   )
 
   dist <- table(data$infection_type_src, useNA = "ifany")
@@ -153,9 +156,9 @@ prep_flag_hai_inferred <- function(data,
 #'   \code{hai_discordant} logical flag.
 #' @export
 prep_reconcile_hai_observed_inferred <- function(data,
-                                                  observed_col = "infection_type_observed",
-                                                  inferred_col = "infection_type_inferred",
-                                                  output_col   = "infection_type") {
+                                                 observed_col = "infection_type_observed",
+                                                 inferred_col = "infection_type_inferred",
+                                                 output_col = "infection_type") {
   if (!any(c(observed_col, inferred_col) %in% names(data))) {
     message("[prep_reconcile_hai_observed_inferred] Neither observed nor inferred column found. Skipping.")
     return(data)
@@ -183,11 +186,14 @@ prep_reconcile_hai_observed_inferred <- function(data,
     data[[observed_col]] != data[[inferred_col]]
 
   n_discordant <- sum(data$hai_discordant, na.rm = TRUE)
-  if (n_discordant > 0)
-    warning(sprintf("[prep_reconcile_hai_observed_inferred] %d row(s) have discordant observed vs inferred HAI/CAI.",
-                    n_discordant))
-  else
+  if (n_discordant > 0) {
+    warning(sprintf(
+      "[prep_reconcile_hai_observed_inferred] %d row(s) have discordant observed vs inferred HAI/CAI.",
+      n_discordant
+    ))
+  } else {
     message("[prep_reconcile_hai_observed_inferred] No discordant HAI/CAI classifications found.")
+  }
 
   return(data)
 }
@@ -205,22 +211,24 @@ prep_reconcile_hai_observed_inferred <- function(data,
 #' @return Data frame with \code{icu_flag} logical column added.
 #' @export
 prep_derive_icu_flag <- function(data,
-                                  ward_col = "ward_icu",
-                                  dept_col = "hospital_department") {
+                                 ward_col = "ward_icu",
+                                 dept_col = "hospital_department") {
   icu_pattern <- "icu|intensive care|critical care|intensive therapy|itcu|nicu|picu|sicu|cicu"
 
-  icu_from_ward <- if (ward_col %in% names(data))
+  icu_from_ward <- if (ward_col %in% names(data)) {
     !is.na(data[[ward_col]]) &
       (grepl(icu_pattern, tolower(data[[ward_col]]), ignore.case = TRUE) |
-         toupper(trimws(data[[ward_col]])) == "ICU")
-  else
+        toupper(trimws(data[[ward_col]])) == "ICU")
+  } else {
     rep(FALSE, nrow(data))
+  }
 
-  icu_from_dept <- if (dept_col %in% names(data))
+  icu_from_dept <- if (dept_col %in% names(data)) {
     !is.na(data[[dept_col]]) &
       grepl(icu_pattern, tolower(data[[dept_col]]), ignore.case = TRUE)
-  else
+  } else {
     rep(FALSE, nrow(data))
+  }
 
   data$icu_flag <- icu_from_ward | icu_from_dept
 

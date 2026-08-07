@@ -4,17 +4,22 @@
 # they are skipped when cmdstanr / CmdStan are not available.
 
 .bprofile_cmdstan_available <- function() {
-  if (!requireNamespace("cmdstanr", quietly = TRUE)) return(FALSE)
-  isTRUE(tryCatch({
-    cmdstanr::cmdstan_path()
-    TRUE
-  }, error = function(e) FALSE))
+  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
+    return(FALSE)
+  }
+  isTRUE(tryCatch(
+    {
+      cmdstanr::cmdstan_path()
+      TRUE
+    },
+    error = function(e) FALSE
+  ))
 }
 
 .bprofile_make_wide_data <- function(seed = 42, n_hosp = 3, n_ev_per_hosp = 80,
-                                      class_cols = c("classA", "classB", "classC"),
-                                      sparse_class_at_last_hosp = TRUE,
-                                      all_died_at_last_hosp = FALSE) {
+                                     class_cols = c("classA", "classB", "classC"),
+                                     sparse_class_at_last_hosp = TRUE,
+                                     all_died_at_last_hosp = FALSE) {
   set.seed(seed)
   make_hosp_data <- function(h, n) {
     base_p <- c(0.3, 0.6, 0.45)[seq_along(class_cols)] + (h - 2) * 0.05
@@ -51,19 +56,21 @@
 .bprofile_fit <- function(wide, class_cols, residual_structure = "identity",
                           chains = 2L, iter = 250L, seed = 1L) {
   suppressWarnings(fit_bayesian_multivariate_probit(
-    event_class_data   = wide,
-    class_cols         = class_cols,
-    fixed_effects      = c("Age_normalised", "gender"),
-    random_effects     = c("center_name"),
-    pathogen           = "bug",
-    pathogen_col       = "pathogen",
-    event_id_col       = "event_id",
-    outcome_col        = "final_outcome",
+    event_class_data = wide,
+    class_cols = class_cols,
+    fixed_effects = c("Age_normalised", "gender"),
+    random_effects = c("center_name"),
+    pathogen = "bug",
+    pathogen_col = "pathogen",
+    event_id_col = "event_id",
+    outcome_col = "final_outcome",
     residual_structure = residual_structure,
-    prior_config       = list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0),
-    sampler_config     = list(chains = chains, iter_warmup = iter, iter_sampling = iter,
-                              seed = seed, parallel_chains = chains, adapt_delta = 0.9),
-    show_messages      = FALSE
+    prior_config = list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0),
+    sampler_config = list(
+      chains = chains, iter_warmup = iter, iter_sampling = iter,
+      seed = seed, parallel_chains = chains, adapt_delta = 0.9
+    ),
+    show_messages = FALSE
   ))
 }
 
@@ -81,7 +88,7 @@ test_that("identity residual: fully observed event gets a degenerate profile", {
 
   ev_meta <- fit$event_metadata
   fully_obs_idx <- which(ev_meta$center_name != "H3" &
-                          rowSums(is.na(ev_meta[, class_cols])) == 0)
+    rowSums(is.na(ev_meta[, class_cols])) == 0)
   skip_if(length(fully_obs_idx) == 0L, "no fully-observed event in this draw of synthetic data")
   test_ev <- ev_meta$.event_idx[fully_obs_idx[1]]
   obs_row <- ev_meta[ev_meta$.event_idx == test_ev, class_cols]
@@ -111,8 +118,8 @@ test_that("identity residual: partially observed event's profile distribution su
 
   ev_meta <- fit$event_metadata
   partial_idx <- which(ev_meta$center_name != "H3" &
-                        rowSums(is.na(ev_meta[, class_cols])) > 0 &
-                        rowSums(is.na(ev_meta[, class_cols])) < length(class_cols))
+    rowSums(is.na(ev_meta[, class_cols])) > 0 &
+    rowSums(is.na(ev_meta[, class_cols])) < length(class_cols))
   skip_if(length(partial_idx) == 0L, "no partially-observed event in this draw of synthetic data")
   test_ev <- ev_meta$.event_idx[partial_idx[1]]
   obs_row <- ev_meta[ev_meta$.event_idx == test_ev, class_cols]
@@ -158,9 +165,11 @@ test_that("identity residual: panel excludes marginally-ineligible class but not
 test_that("aggregate_profiles_for_daly: zero-nonfatal cohort yields NA (not NaN) and an explicit exclusion reason", {
   skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
 
-  wide <- .bprofile_make_wide_data(n_hosp = 2, class_cols = c("classA", "classB"),
-                                    sparse_class_at_last_hosp = FALSE,
-                                    all_died_at_last_hosp = TRUE)
+  wide <- .bprofile_make_wide_data(
+    n_hosp = 2, class_cols = c("classA", "classB"),
+    sparse_class_at_last_hosp = FALSE,
+    all_died_at_last_hosp = TRUE
+  )
   class_cols <- c("classA", "classB")
   fit <- .bprofile_fit(wide, class_cols, "identity")
 
@@ -176,7 +185,7 @@ test_that("aggregate_profiles_for_daly: zero-nonfatal cohort yields NA (not NaN)
   h2_rows <- daly_tbl[daly_tbl$center_name == "H2", ]
   expect_true(all(h2_rows$n_events_nonfatal == 0L))
   expect_true(all(is.na(h2_rows$R_NF_mean)))
-  expect_true(all(!is.nan(h2_rows$R_NF_mean[is.na(h2_rows$R_NF_mean)])))  # NA, not NaN
+  expect_true(all(!is.nan(h2_rows$R_NF_mean[is.na(h2_rows$R_NF_mean)]))) # NA, not NaN
   expect_true(all(h2_rows$exclusion_reason_YLD == "no_nonfatal_events"))
   expect_true(all(!h2_rows$eligible_for_YLD))
   # H2's known-outcome cohort is fully populated (every event is "Died", a
@@ -193,8 +202,10 @@ test_that("correlated residual: profile output uses conditional Gibbs imputation
   # AST signs. Correlated fits are therefore no longer categorically
   # DALY-ineligible -- eligibility now follows the same
   # sampler/events/draws-based rules as identity fits.
-  wide <- .bprofile_make_wide_data(class_cols = c("classA", "classB", "classC"),
-                                    sparse_class_at_last_hosp = FALSE)
+  wide <- .bprofile_make_wide_data(
+    class_cols = c("classA", "classB", "classC"),
+    sparse_class_at_last_hosp = FALSE
+  )
   class_cols <- c("classA", "classB", "classC")
   fit <- .bprofile_fit(wide, class_cols, "correlated")
 
@@ -203,12 +214,14 @@ test_that("correlated residual: profile output uses conditional Gibbs imputation
     outcome_col = "final_outcome", seed = 1
   )
   expect_true(all(profs$event_profiles$profile_generation_method ==
-                  "conditional_gibbs_correlated"))
+    "conditional_gibbs_correlated"))
 
   # Profile probabilities must still sum to 1 per event under the Gibbs path,
   # exactly as under the identity/analytic path.
-  by_event <- tapply(profs$event_profiles$profile_probability,
-                      profs$event_profiles$event_idx, sum)
+  by_event <- tapply(
+    profs$event_profiles$profile_probability,
+    profs$event_profiles$event_idx, sum
+  )
   expect_true(all(abs(by_event - 1) < 1e-6))
 
   daly_tbl <- aggregate_profiles_for_daly(

@@ -29,8 +29,7 @@ daly_fit_mortality_rr(
   icu_values = c("ICU", "Intensive Care", "Critical Care", "PICU", "NICU"),
   phi_threshold = 0.7,
   min_n = 20L,
-  min_deaths = 10L,
-  use_random_intercept = TRUE
+  min_deaths = 10L
 )
 }
 \arguments{
@@ -88,10 +87,6 @@ and the result contains one row per pathogen-class-hospital combination
 \item{min_n}{Integer. Minimum patients per fitted model.}
 
 \item{min_deaths}{Integer. Minimum deaths per fitted model.}
-
-\item{use_random_intercept}{Logical. Retained for backward compatibility;
-ignored when \code{facility_col} is provided (per-hospital fitting is
-used) or \code{NULL} (no facility information available).}
 }
 \value{
 Data frame with hospital (NA when \code{facility_col} is

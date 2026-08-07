@@ -1,11 +1,5 @@
-# prep_types.R
+# prep_optional_columns.R
 # Layer 3b: Type coercion - sex, outcome, infection type
-#
-# Functions:
-#   - prep_standardize_sex
-#   - prep_standardize_final_outcome  (canonical outcome standardizer)
-#   - prep_standardize_infection_type
-#   - prep_standardize_outcome        (deprecated wrapper -> prep_standardize_final_outcome)
 
 
 #' Standardize Sex Values
@@ -23,19 +17,22 @@ prep_standardize_sex <- function(data, col = "gender") {
   }
 
   data[[col]] <- dplyr::case_when(
-    toupper(data[[col]]) %in% c("M", "MALE", "MAN")        ~ "M",
-    toupper(data[[col]]) %in% c("F", "FEMALE", "WOMAN")    ~ "F",
-    TRUE                                                     ~ NA_character_
+    toupper(data[[col]]) %in% c("M", "MALE", "MAN") ~ "M",
+    toupper(data[[col]]) %in% c("F", "FEMALE", "WOMAN") ~ "F",
+    TRUE ~ NA_character_
   )
 
   na_count <- sum(is.na(data[[col]]))
-  if (na_count > 0)
+  if (na_count > 0) {
     warning(sprintf("Gender column: %d values could not be standardized to M/F", na_count))
+  }
 
-  message(sprintf("Standardized gender: M=%d, F=%d, NA=%d",
-                  sum(data[[col]] == "M", na.rm = TRUE),
-                  sum(data[[col]] == "F", na.rm = TRUE),
-                  na_count))
+  message(sprintf(
+    "Standardized gender: M=%d, F=%d, NA=%d",
+    sum(data[[col]] == "M", na.rm = TRUE),
+    sum(data[[col]] == "F", na.rm = TRUE),
+    na_count
+  ))
   return(data)
 }
 
@@ -56,10 +53,6 @@ prep_standardize_outcome <- function(data, col = "final_outcome") {
   prep_standardize_final_outcome(data, col = col)
 }
 
-
-# ---------------------------------------------------------------------------
-# New functions (Layer 3b)
-# ---------------------------------------------------------------------------
 
 #' Standardize Final Outcome Column
 #'
@@ -87,13 +80,19 @@ prep_standardize_final_outcome <- function(data, col = "final_outcome") {
   val_up <- toupper(trimws(as.character(data[[col]])))
 
   data$outcome_std <- dplyr::case_when(
-    val_up %in% c("SURVIVED", "ALIVE", "DISCHARGE", "DISCHARGED", "RECOVERED",
-                  "DISCHARGED ALIVE", "SURVIVED/DISCHARGED") ~ "Survived",
-    val_up %in% c("DIED", "DEATH", "EXPIRED", "DECEASED", "DEAD",
-                  "DIED/EXPIRED")                             ~ "Died",
-    val_up %in% c("UNKNOWN", "MISSING", "ABSCONDED", "LAMA", "DAMA",
-                  "LEFT AGAINST MEDICAL ADVICE", "NA", "")    ~ NA_character_,
-    TRUE                                                       ~ NA_character_
+    val_up %in% c(
+      "SURVIVED", "ALIVE", "DISCHARGE", "DISCHARGED", "RECOVERED",
+      "DISCHARGED ALIVE", "SURVIVED/DISCHARGED"
+    ) ~ "Survived",
+    val_up %in% c(
+      "DIED", "DEATH", "EXPIRED", "DECEASED", "DEAD",
+      "DIED/EXPIRED"
+    ) ~ "Died",
+    val_up %in% c(
+      "UNKNOWN", "MISSING", "ABSCONDED", "LAMA", "DAMA",
+      "LEFT AGAINST MEDICAL ADVICE", "NA", ""
+    ) ~ NA_character_,
+    TRUE ~ NA_character_
   )
 
   dist <- table(data$outcome_std, useNA = "ifany")
@@ -122,12 +121,16 @@ prep_standardize_infection_type <- function(data, col = "infection_type") {
   val_up <- toupper(trimws(as.character(data[[col]])))
 
   data[[col]] <- dplyr::case_when(
-    val_up %in% c("HAI", "HOSPITAL", "HOSPITAL-ACQUIRED", "HOSPITAL ACQUIRED",
-                  "NOSOCOMIAL", "HEALTHCARE ASSOCIATED",
-                  "HEALTHCARE-ASSOCIATED")                    ~ "HAI",
-    val_up %in% c("CAI", "COMMUNITY", "COMMUNITY-ACQUIRED",
-                  "COMMUNITY ACQUIRED")                       ~ "CAI",
-    TRUE                                                       ~ NA_character_
+    val_up %in% c(
+      "HAI", "HOSPITAL", "HOSPITAL-ACQUIRED", "HOSPITAL ACQUIRED",
+      "NOSOCOMIAL", "HEALTHCARE ASSOCIATED",
+      "HEALTHCARE-ASSOCIATED"
+    ) ~ "HAI",
+    val_up %in% c(
+      "CAI", "COMMUNITY", "COMMUNITY-ACQUIRED",
+      "COMMUNITY ACQUIRED"
+    ) ~ "CAI",
+    TRUE ~ NA_character_
   )
 
   dist <- table(data[[col]], useNA = "ifany")

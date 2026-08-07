@@ -14,9 +14,7 @@
 # All other methods work without Python.
 
 
-# ---------------------------------------------------------------------------
 # Internal helpers
-# ---------------------------------------------------------------------------
 
 #' Normalize syndrome name for case-insensitive matching
 #' @keywords internal
@@ -29,9 +27,7 @@ normalize_syndrome_name <- function(x) {
 }
 
 
-# ---------------------------------------------------------------------------
 # Internal reference loaders
-# ---------------------------------------------------------------------------
 
 #' Load ICD-10 Reference Table
 #'
@@ -44,14 +40,16 @@ normalize_syndrome_name <- function(x) {
 #' @noRd
 load_icd_reference <- function(path = NULL) {
   if (!is.null(path)) {
-    if (!file.exists(path))
+    if (!file.exists(path)) {
       stop(sprintf("[load_icd_reference] File not found: %s", path))
+    }
     return(utils::read.csv(path, stringsAsFactors = FALSE))
   }
 
   pkg_path <- find_extdata_file("icd10_who.csv")
-  if (pkg_path == "" || !file.exists(pkg_path))
+  if (pkg_path == "" || !file.exists(pkg_path)) {
     stop("[load_icd_reference] icd10_who.csv not found in inst/extdata.")
+  }
 
   utils::read.csv(pkg_path, stringsAsFactors = FALSE)
 }
@@ -70,33 +68,37 @@ load_icd_reference <- function(path = NULL) {
 #' @noRd
 load_syndrome_hierarchy <- function(path = NULL) {
   if (!is.null(path)) {
-    if (!file.exists(path))
+    if (!file.exists(path)) {
       stop(sprintf("[load_syndrome_hierarchy] File not found: %s", path))
+    }
     h <- utils::read.csv(path, stringsAsFactors = FALSE)
   } else {
     pkg_path <- find_extdata_file("infectious_syndrome_hierarchy.csv")
-    if (pkg_path == "" || !file.exists(pkg_path))
+    if (pkg_path == "" || !file.exists(pkg_path)) {
       stop("[load_syndrome_hierarchy] infectious_syndrome_hierarchy.csv not found in inst/extdata.")
+    }
     h <- utils::read.csv(pkg_path, stringsAsFactors = FALSE)
   }
 
   required_cols <- c("rank", "infectious_syndrome", "contributes_to_amr_burden")
-  missing_cols  <- setdiff(required_cols, names(h))
-  if (length(missing_cols) > 0)
-    stop(sprintf("[load_syndrome_hierarchy] Missing required columns: %s",
-                 paste(missing_cols, collapse = ", ")))
+  missing_cols <- setdiff(required_cols, names(h))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "[load_syndrome_hierarchy] Missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
 
   h$syndrome_norm <- normalize_syndrome_name(h$infectious_syndrome)
-  resp_norm       <- normalize_syndrome_name("Other unspecified respiratory site infections")
-  h$aggregate_to  <- ifelse(h$syndrome_norm == resp_norm,
-                            "Lower respiratory infections", NA_character_)
+  resp_norm <- normalize_syndrome_name("Other unspecified respiratory site infections")
+  h$aggregate_to <- ifelse(h$syndrome_norm == resp_norm,
+    "Lower respiratory infections", NA_character_
+  )
   h[order(h$rank), ]
 }
 
 
-# ---------------------------------------------------------------------------
 # Layer 1: Prepare diagnosis text
-# ---------------------------------------------------------------------------
 
 #' Prepare Diagnosis Text
 #'
@@ -122,21 +124,23 @@ load_syndrome_hierarchy <- function(path = NULL) {
 #' @export
 prep_diagnosis_text <- function(data,
                                 diagnosis_col,
-                                fallback_col      = NULL,
-                                output_col        = "diagnosis_text",
-                                include_organism  = FALSE,
-                                organism_col      = "organism_normalized",
-                                keep_original     = TRUE) {
-  if (!diagnosis_col %in% names(data))
+                                fallback_col = NULL,
+                                output_col = "diagnosis_text",
+                                include_organism = FALSE,
+                                organism_col = "organism_normalized",
+                                keep_original = TRUE) {
+  if (!diagnosis_col %in% names(data)) {
     stop(sprintf("[prep_diagnosis_text] Column '%s' not found.", diagnosis_col))
+  }
 
-  if (!is.null(fallback_col) && !fallback_col %in% names(data))
+  if (!is.null(fallback_col) && !fallback_col %in% names(data)) {
     stop(sprintf("[prep_diagnosis_text] Fallback column '%s' not found.", fallback_col))
+  }
 
-  if (include_organism && !organism_col %in% names(data))
+  if (include_organism && !organism_col %in% names(data)) {
     stop(sprintf("[prep_diagnosis_text] Organism column '%s' not found.", organism_col))
+  }
 
-  # Combine primary + fallback
   text <- as.character(data[[diagnosis_col]])
   text <- trimws(text)
   text[text %in% c("", "NA")] <- NA_character_
@@ -159,8 +163,8 @@ prep_diagnosis_text <- function(data,
     org[org %in% c("", "NA")] <- NA_character_
     text <- dplyr::case_when(
       !is.na(text) & !is.na(org) ~ paste0(text, " | organism: ", org),
-      !is.na(text)               ~ text,
-      TRUE                       ~ NA_character_
+      !is.na(text) ~ text,
+      TRUE ~ NA_character_
     )
   }
 
@@ -176,9 +180,7 @@ prep_diagnosis_text <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # Layer 2: Map diagnosis text to ICD candidates
-# ---------------------------------------------------------------------------
 
 #' Map Diagnosis Text to ICD Candidates
 #'
@@ -223,31 +225,36 @@ prep_diagnosis_text <- function(data,
 #'
 #' @export
 prep_map_diagnosis_to_icd <- function(data,
-                                      text_col     = "diagnosis_text",
-                                      reference    = NULL,
-                                      method       = c("exact", "fuzzy", "python_embedding"),
+                                      text_col = "diagnosis_text",
+                                      reference = NULL,
+                                      method = c("exact", "fuzzy", "python_embedding"),
                                       icd_desc_col = "description3",
                                       icd_code_col = "icd_code_who_eq",
-                                      top_k        = 5L,
-                                      threshold    = 0.0,
-                                      model        = "FremyCompany/BioLORD-2023",
-                                      id_col       = NULL) {
+                                      top_k = 5L,
+                                      threshold = 0.0,
+                                      model = "FremyCompany/BioLORD-2023",
+                                      id_col = NULL) {
   method <- match.arg(method)
 
-  if (!text_col %in% names(data))
+  if (!text_col %in% names(data)) {
     stop(sprintf("[prep_map_diagnosis_to_icd] Column '%s' not found.", text_col))
+  }
 
-  if (!is.null(id_col) && !id_col %in% names(data))
+  if (!is.null(id_col) && !id_col %in% names(data)) {
     stop(sprintf("[prep_map_diagnosis_to_icd] id_col '%s' not found.", id_col))
+  }
 
-  if (is.null(reference))
+  if (is.null(reference)) {
     reference <- load_icd_reference()
+  }
 
-  if (!icd_desc_col %in% names(reference))
+  if (!icd_desc_col %in% names(reference)) {
     stop(sprintf("[prep_map_diagnosis_to_icd] ICD description column '%s' not in reference.", icd_desc_col))
+  }
 
-  if (!icd_code_col %in% names(reference))
+  if (!icd_code_col %in% names(reference)) {
     stop(sprintf("[prep_map_diagnosis_to_icd] ICD code column '%s' not in reference.", icd_code_col))
+  }
 
   # Work on unique non-NA diagnosis texts
   all_texts <- data[[text_col]]
@@ -257,67 +264,80 @@ prep_map_diagnosis_to_icd <- function(data,
     length(unique_texts), method
   ))
 
-  ref_desc  <- reference[[icd_desc_col]]
+  ref_desc <- reference[[icd_desc_col]]
   ref_codes <- reference[[icd_code_col]]
 
   results <- switch(method,
-
     exact = {
       lapply(unique_texts, function(txt) {
         hits <- which(tolower(ref_desc) == tolower(txt))
-        if (length(hits) == 0L) return(NULL)
+        if (length(hits) == 0L) {
+          return(NULL)
+        }
         hits <- utils::head(hits, top_k)
         data.frame(
           diagnosis_text = txt,
           icd_prediction = ref_desc[hits],
-          icd_code       = ref_codes[hits],
-          icd_score      = 1.0,
-          icd_rank       = seq_along(hits),
-          icd_method     = "exact",
+          icd_code = ref_codes[hits],
+          icd_score = 1.0,
+          icd_rank = seq_along(hits),
+          icd_method = "exact",
           stringsAsFactors = FALSE
         )
       })
     },
-
     fuzzy = {
-      if (!requireNamespace("stringdist", quietly = TRUE))
+      if (!requireNamespace("stringdist", quietly = TRUE)) {
         stop("[prep_map_diagnosis_to_icd] Package 'stringdist' required for method='fuzzy'. Install it with install.packages('stringdist').")
+      }
 
       unique_refs <- unique(ref_desc)
-      lapply(unique_texts, function(txt) {
-        dists <- stringdist::stringdist(tolower(txt), tolower(unique_refs), method = "jw")
-        scores <- 1 - dists
+      # One distance matrix (all texts x all refs) instead of one
+      # stringdist() call per text.
+      dist_mat <- stringdist::stringdistmatrix(
+        tolower(unique_texts), tolower(unique_refs),
+        method = "jw"
+      )
+
+      lapply(seq_along(unique_texts), function(i) {
+        scores <- 1 - dist_mat[i, ]
         keep <- order(scores, decreasing = TRUE)[seq_len(min(top_k, length(scores)))]
         keep <- keep[scores[keep] >= threshold]
-        if (length(keep) == 0L) return(NULL)
+        if (length(keep) == 0L) {
+          return(NULL)
+        }
 
-        matched_desc  <- unique_refs[keep]
+        matched_desc <- unique_refs[keep]
         matched_codes <- ref_codes[match(matched_desc, ref_desc)]
         data.frame(
-          diagnosis_text = txt,
+          diagnosis_text = unique_texts[i],
           icd_prediction = matched_desc,
-          icd_code       = matched_codes,
-          icd_score      = scores[keep],
-          icd_rank       = seq_along(keep),
-          icd_method     = "fuzzy_jw",
+          icd_code = matched_codes,
+          icd_score = scores[keep],
+          icd_rank = seq_along(keep),
+          icd_method = "fuzzy_jw",
           stringsAsFactors = FALSE
         )
       })
     },
-
     python_embedding = {
-      if (!requireNamespace("reticulate", quietly = TRUE))
+      if (!requireNamespace("reticulate", quietly = TRUE)) {
         stop("[prep_map_diagnosis_to_icd] Package 'reticulate' required for method='python_embedding'.")
+      }
 
-      alethia_available <- tryCatch({
-        reticulate::import("alethia")
-        TRUE
-      }, error = function(e) FALSE)
+      alethia_available <- tryCatch(
+        {
+          reticulate::import("alethia")
+          TRUE
+        },
+        error = function(e) FALSE
+      )
 
-      if (!alethia_available)
+      if (!alethia_available) {
         stop("[prep_map_diagnosis_to_icd] Python package 'alethia' not found. Install it in the active Python environment.")
+      }
 
-      alethia  <- reticulate::import("alethia")
+      alethia <- reticulate::import("alethia")
       ref_uniq <- unique(ref_desc)
 
       result_df <- alethia$alethia(
@@ -345,8 +365,10 @@ prep_map_diagnosis_to_icd <- function(data,
           icd_code   = ref_codes[match(icd_prediction, ref_desc)],
           icd_method = paste0("embedding_", model)
         ) %>%
-        dplyr::select(diagnosis_text, icd_prediction, icd_code,
-                      icd_score, icd_rank, icd_method)
+        dplyr::select(
+          diagnosis_text, icd_prediction, icd_code,
+          icd_score, icd_rank, icd_method
+        )
 
       list(result_df)
     }
@@ -365,7 +387,8 @@ prep_map_diagnosis_to_icd <- function(data,
       dplyr::select(dplyr::all_of(c(id_col, text_col))) %>%
       dplyr::distinct()
     matched <- dplyr::left_join(matched, id_map,
-                                by = stats::setNames(text_col, "diagnosis_text"))
+      by = stats::setNames(text_col, "diagnosis_text")
+    )
     matched <- dplyr::relocate(matched, dplyr::all_of(id_col))
   }
 
@@ -378,9 +401,7 @@ prep_map_diagnosis_to_icd <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # Layer 3: Map ICD code to syndrome
-# ---------------------------------------------------------------------------
 
 #' Map ICD Codes to Infectious Syndromes
 #'
@@ -406,20 +427,23 @@ prep_map_diagnosis_to_icd <- function(data,
 #' @return Data frame with \code{output_col} added.
 #' @export
 prep_map_icd_to_syndrome <- function(data,
-                                     icd_col           = "icd_code",
+                                     icd_col = "icd_code",
                                      icd_to_syndrome_ref,
-                                     ref_icd_col       = "icd_code",
-                                     ref_syndrome_col  = "infectious_syndrome",
-                                     output_col        = "syndrome",
-                                     unmatched_label   = NA_character_) {
-  if (!icd_col %in% names(data))
+                                     ref_icd_col = "icd_code",
+                                     ref_syndrome_col = "infectious_syndrome",
+                                     output_col = "syndrome",
+                                     unmatched_label = NA_character_) {
+  if (!icd_col %in% names(data)) {
     stop(sprintf("[prep_map_icd_to_syndrome] Column '%s' not found in data.", icd_col))
+  }
 
-  if (!ref_icd_col %in% names(icd_to_syndrome_ref))
+  if (!ref_icd_col %in% names(icd_to_syndrome_ref)) {
     stop(sprintf("[prep_map_icd_to_syndrome] Column '%s' not found in reference.", ref_icd_col))
+  }
 
-  if (!ref_syndrome_col %in% names(icd_to_syndrome_ref))
+  if (!ref_syndrome_col %in% names(icd_to_syndrome_ref)) {
     stop(sprintf("[prep_map_icd_to_syndrome] Column '%s' not found in reference.", ref_syndrome_col))
+  }
 
   ref_slim <- icd_to_syndrome_ref %>%
     dplyr::select(dplyr::all_of(c(ref_icd_col, ref_syndrome_col))) %>%
@@ -436,7 +460,7 @@ prep_map_icd_to_syndrome <- function(data,
     data[[output_col]][is.na(data[[output_col]])] <- unmatched_label
   }
 
-  n_matched   <- sum(!is.na(data[[output_col]]))
+  n_matched <- sum(!is.na(data[[output_col]]))
   n_unmatched <- sum(is.na(data[[output_col]]))
   message(sprintf(
     "[prep_map_icd_to_syndrome] Syndrome assigned: %d matched, %d unmatched.",
@@ -447,9 +471,7 @@ prep_map_icd_to_syndrome <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # Layer 4: Assign one syndrome per patient / event
-# ---------------------------------------------------------------------------
 
 #' Assign One Syndrome Per Patient or Event
 #'
@@ -487,42 +509,52 @@ prep_map_icd_to_syndrome <- function(data,
 #'   \code{contributes_to_amr_burden} column from the hierarchy.
 #' @export
 prep_assign_patient_syndrome <- function(data,
-                                         patient_col                      = "patient_id",
-                                         syndrome_col                     = "syndrome",
-                                         score_col                        = "icd_score",
-                                         hierarchy_ref                    = NULL,
-                                         hierarchy_syndrome_col           = "infectious_syndrome",
-                                         hierarchy_rank_col               = "rank",
-                                         keep_all_candidates              = TRUE,
+                                         patient_col = "patient_id",
+                                         syndrome_col = "syndrome",
+                                         score_col = "icd_score",
+                                         hierarchy_ref = NULL,
+                                         hierarchy_syndrome_col = "infectious_syndrome",
+                                         hierarchy_rank_col = "rank",
+                                         keep_all_candidates = TRUE,
                                          collapse_unspecified_respiratory = FALSE,
-                                         keep_only_burden_syndromes       = FALSE) {
-  if (!patient_col %in% names(data))
+                                         keep_only_burden_syndromes = FALSE) {
+  if (!patient_col %in% names(data)) {
     stop(sprintf("[prep_assign_patient_syndrome] Column '%s' not found.", patient_col))
-  if (!syndrome_col %in% names(data))
+  }
+  if (!syndrome_col %in% names(data)) {
     stop(sprintf("[prep_assign_patient_syndrome] Column '%s' not found.", syndrome_col))
+  }
 
   use_score <- !is.null(score_col) && score_col %in% names(data)
 
-  if (is.null(hierarchy_ref))
+  if (is.null(hierarchy_ref)) {
     hierarchy_ref <- load_syndrome_hierarchy()
+  }
 
-  if (!hierarchy_syndrome_col %in% names(hierarchy_ref))
+  if (!hierarchy_syndrome_col %in% names(hierarchy_ref)) {
     stop(sprintf("[prep_assign_patient_syndrome] Hierarchy column '%s' not found.", hierarchy_syndrome_col))
-  if (!hierarchy_rank_col %in% names(hierarchy_ref))
+  }
+  if (!hierarchy_rank_col %in% names(hierarchy_ref)) {
     stop(sprintf("[prep_assign_patient_syndrome] Rank column '%s' not found.", hierarchy_rank_col))
+  }
 
   # Ensure hierarchy has normalized names (load_syndrome_hierarchy adds these,
   # but a user-supplied ref might not)
-  if (!"syndrome_norm" %in% names(hierarchy_ref))
+  if (!"syndrome_norm" %in% names(hierarchy_ref)) {
     hierarchy_ref$syndrome_norm <- normalize_syndrome_name(hierarchy_ref[[hierarchy_syndrome_col]])
-  if (!"aggregate_to" %in% names(hierarchy_ref))
+  }
+  if (!"aggregate_to" %in% names(hierarchy_ref)) {
     hierarchy_ref$aggregate_to <- NA_character_
+  }
 
   # Build named-vector lookups indexed by normalized syndrome name
-  rank_map      <- stats::setNames(hierarchy_ref[[hierarchy_rank_col]], hierarchy_ref$syndrome_norm)
-  aggregate_map <- stats::setNames(hierarchy_ref$aggregate_to,          hierarchy_ref$syndrome_norm)
-  burden_map    <- if ("contributes_to_amr_burden" %in% names(hierarchy_ref))
-    stats::setNames(hierarchy_ref$contributes_to_amr_burden, hierarchy_ref$syndrome_norm) else NULL
+  rank_map <- stats::setNames(hierarchy_ref[[hierarchy_rank_col]], hierarchy_ref$syndrome_norm)
+  aggregate_map <- stats::setNames(hierarchy_ref$aggregate_to, hierarchy_ref$syndrome_norm)
+  burden_map <- if ("contributes_to_amr_burden" %in% names(hierarchy_ref)) {
+    stats::setNames(hierarchy_ref$contributes_to_amr_burden, hierarchy_ref$syndrome_norm)
+  } else {
+    NULL
+  }
 
   max_rank <- max(rank_map, na.rm = TRUE) + 1L
 
@@ -536,28 +568,31 @@ prep_assign_patient_syndrome <- function(data,
     if (any(collapse_rows, na.rm = TRUE)) {
       data[[syndrome_col]][collapse_rows] <- agg_target[collapse_rows]
       data$.norm_syn <- normalize_syndrome_name(data[[syndrome_col]])
-      message(sprintf("[prep_assign_patient_syndrome] %d row(s) collapsed to aggregate syndrome.",
-                      sum(collapse_rows)))
+      message(sprintf(
+        "[prep_assign_patient_syndrome] %d row(s) collapsed to aggregate syndrome.",
+        sum(collapse_rows)
+      ))
     }
   }
 
-  # Assign rank and optional burden flag
   data$.syndrome_rank <- dplyr::coalesce(rank_map[data$.norm_syn], max_rank)
-  if (!is.null(burden_map))
+  if (!is.null(burden_map)) {
     data$contributes_to_amr_burden <- burden_map[data$.norm_syn]
+  }
 
   # Optionally restrict to burden syndromes
   if (keep_only_burden_syndromes && !is.null(burden_map)) {
     data <- data[!is.na(data$contributes_to_amr_burden) &
-                   as.logical(data$contributes_to_amr_burden) == TRUE, ]
+      as.logical(data$contributes_to_amr_burden) == TRUE, ]
   }
 
-  # Select best syndrome per patient
   if (use_score) {
     data <- data %>%
       dplyr::group_by(!!rlang::sym(patient_col)) %>%
       dplyr::arrange(.syndrome_rank, dplyr::desc(!!rlang::sym(score_col)),
-                     !!rlang::sym(syndrome_col), .by_group = TRUE) %>%
+        !!rlang::sym(syndrome_col),
+        .by_group = TRUE
+      ) %>%
       dplyr::mutate(syndrome_selected = dplyr::row_number() == 1L) %>%
       dplyr::ungroup()
   } else {
@@ -571,8 +606,10 @@ prep_assign_patient_syndrome <- function(data,
   data <- data %>% dplyr::select(-.syndrome_rank, -.norm_syn)
 
   n_assigned <- sum(data$syndrome_selected, na.rm = TRUE)
-  message(sprintf("[prep_assign_patient_syndrome] Syndrome selected for %d %s(s).",
-                  n_assigned, patient_col))
+  message(sprintf(
+    "[prep_assign_patient_syndrome] Syndrome selected for %d %s(s).",
+    n_assigned, patient_col
+  ))
 
   if (!keep_all_candidates) {
     data <- data %>%
@@ -584,9 +621,7 @@ prep_assign_patient_syndrome <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # Layer 5: Wide-format entry point
-# ---------------------------------------------------------------------------
 
 #' Assign Syndrome from Wide-Format Syndrome Flags
 #'
@@ -613,23 +648,30 @@ prep_assign_patient_syndrome <- function(data,
 #' @return Data frame with one row per patient and the selected syndrome.
 #' @export
 infer_patient_syndrome_wide <- function(data,
-                                        patient_col                      = "patient_id",
-                                        syndrome_cols                    = NULL,
-                                        positive_values                  = c(1, "1", TRUE, "TRUE",
-                                                                             "True", "true",
-                                                                             "Yes", "YES", "yes"),
+                                        patient_col = "patient_id",
+                                        syndrome_cols = NULL,
+                                        positive_values = c(
+                                          1, "1", TRUE, "TRUE",
+                                          "True", "true",
+                                          "Yes", "YES", "yes"
+                                        ),
                                         collapse_unspecified_respiratory = TRUE,
-                                        keep_only_burden_syndromes       = FALSE) {
-  if (!patient_col %in% names(data))
+                                        keep_only_burden_syndromes = FALSE) {
+  if (!patient_col %in% names(data)) {
     stop(sprintf("[infer_patient_syndrome_wide] Column '%s' not found.", patient_col))
+  }
 
-  if (is.null(syndrome_cols))
+  if (is.null(syndrome_cols)) {
     syndrome_cols <- setdiff(names(data), patient_col)
+  }
 
   missing_cols <- setdiff(syndrome_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("[infer_patient_syndrome_wide] Missing syndrome columns: %s",
-                 paste(missing_cols, collapse = ", ")))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "[infer_patient_syndrome_wide] Missing syndrome columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
 
   long_df <- data %>%
     tidyr::pivot_longer(
@@ -640,8 +682,10 @@ infer_patient_syndrome_wide <- function(data,
     dplyr::filter(as.character(.data$.present) %in% as.character(positive_values)) %>%
     dplyr::select(-.present)
 
-  message(sprintf("[infer_patient_syndrome_wide] %d positive syndrome rows after pivot.",
-                  nrow(long_df)))
+  message(sprintf(
+    "[infer_patient_syndrome_wide] %d positive syndrome rows after pivot.",
+    nrow(long_df)
+  ))
 
   prep_assign_patient_syndrome(
     data                             = long_df,

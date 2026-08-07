@@ -1,7 +1,6 @@
 # daly_cohorts.R
 # Cohort-level death and incidence calculations for DALY burden estimation
 
-# burden_yld.R
 # YLD (Years Lived with Disability) calculation functions for AMR burden estimation
 #
 # Implements the GBD AMR methodology for computing deaths by infectious syndrome,
@@ -1187,44 +1186,3 @@ daly_calc_incidence_from_cfr <- function(deaths_L,
   ))
   return(result)
 }
-
-
-# ==============================================================================
-# LOS-BASED RR AND PAF FOR YLD ATTRIBUTABLE TO AMR
-# ==============================================================================
-#
-# Implements two procedures for estimating RR_LOS(k, c):
-#
-#   Procedure 1 -- fit_los_rr_nima()
-#     Distribution fitting (Weibull / Lognormal / Gamma) on drug-level R vs S
-#     LOS vectors per centre. Produces one overall RR per pathogen. Validation.
-#
-#   Procedure 2 -- fit_los_rr_poisson()
-#     Quasi-Poisson regression on class-level binary wide matrix, with HAI as
-#     covariate. Produces per-class RR(k, c) with 95% CI. Primary PAF input.
-#     Two model options:
-#       "pooled_fe"  (default) -- one model across all centres with centre FE
-#       "per_centre"           -- per-centre models, RRs pooled afterwards
-#
-#   LOS computation:
-#     HAI: LOS = date_discharge - date_of_first_positive_culture
-#     CAI: LOS = date_discharge - date_of_admission
-#     HAI/CAI derived from type_of_infection; NULL / "Not known" rows are
-#     classified by the gap (culture - admission): <= threshold -> CAI, else HAI.
-#
-#   Downstream:
-#     assign_rr_to_profiles() -- max rule: RR_kd = max RR_kc for c in C_R(d)
-#     compute_paf_los()       -- PAF_LOS(k,d) and overall PAF_k
-#
-# NOTE (stated limitation): when syndrome_name is supplied, RR_LOS is
-#   syndrome-specific. It is then applied to all profiles of pathogen k,
-#   assuming syndrome-invariant LOS prolongation across infection sources.
-#   Set syndrome_name = NULL for a universal RR pooled over all syndromes.
-#
-# References:
-#   Antimicrobial Resistance Collaborators. Lancet. 2022.
-
-# -- Internal helpers ----------------------------------------------------------
-
-#' Compute analytical mean LOS from a fitdistrplus fit object
-#' @keywords internal

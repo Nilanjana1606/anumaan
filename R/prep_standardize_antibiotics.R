@@ -24,9 +24,9 @@
 #' @export
 prep_standardize_antibiotics <- function(data,
                                          antibiotic_col = "antibiotic_name",
-                                         who_table      = NULL,
-                                         add_class      = TRUE,
-                                         add_aware      = TRUE) {
+                                         who_table = NULL,
+                                         add_class = TRUE,
+                                         add_aware = TRUE) {
   if (!antibiotic_col %in% names(data)) {
     stop(sprintf("Column '%s' not found in data", antibiotic_col))
   }
@@ -36,7 +36,7 @@ prep_standardize_antibiotics <- function(data,
     if (who_path == "" || !file.exists(who_path)) {
       warning("WHO_aware_class.csv not found. Antibiotic normalization skipped.")
       data$antibiotic_normalized <- data[[antibiotic_col]]
-      if (add_class) data$antibiotic_class  <- NA_character_
+      if (add_class) data$antibiotic_class <- NA_character_
       if (add_aware) data$aware_category <- NA_character_
       return(data)
     }
@@ -44,39 +44,46 @@ prep_standardize_antibiotics <- function(data,
   }
 
   # Normalise column names in who_table
-  if ("Antibiotic" %in% names(who_table) && !"antibiotic_name" %in% names(who_table))
+  if ("Antibiotic" %in% names(who_table) && !"antibiotic_name" %in% names(who_table)) {
     who_table <- who_table %>% dplyr::rename(antibiotic_name = Antibiotic)
-  if ("Class" %in% names(who_table) && !"antibiotic_class" %in% names(who_table))
+  }
+  if ("Class" %in% names(who_table) && !"antibiotic_class" %in% names(who_table)) {
     who_table <- who_table %>% dplyr::rename(antibiotic_class = Class)
+  }
   if ("Category " %in% names(who_table) && !"aware_category" %in% names(who_table)) {
     who_table <- who_table %>% dplyr::rename(aware_category = `Category `)
   } else if ("Category" %in% names(who_table) && !"aware_category" %in% names(who_table)) {
     who_table <- who_table %>% dplyr::rename(aware_category = Category)
   }
 
-  if (!all(c("antibiotic_name", "antibiotic_class") %in% names(who_table)))
+  if (!all(c("antibiotic_name", "antibiotic_class") %in% names(who_table))) {
     stop("WHO table must have 'antibiotic_name' and 'antibiotic_class' columns")
+  }
 
   n_unique_before <- dplyr::n_distinct(data[[antibiotic_col]], na.rm = TRUE)
-  message(sprintf("Normalizing %d unique antibiotic names against WHO reference (%d antibiotics)...",
-                  n_unique_before, nrow(who_table)))
+  message(sprintf(
+    "Normalizing %d unique antibiotic names against WHO reference (%d antibiotics)...",
+    n_unique_before, nrow(who_table)
+  ))
 
   extract_abx_keywords <- function(name) {
-    if (is.na(name) || name == "") return(character(0))
+    if (is.na(name) || name == "") {
+      return(character(0))
+    }
     cleaned <- tolower(gsub("[^a-z0-9\\s/-]", " ", name))
-    words   <- unlist(strsplit(cleaned, "[\\s/-]+"))
-    filler  <- c("iv", "oral", "injection", "tablet", "mg", "strip", "mic", "done", "by")
-    words   <- words[!words %in% filler & nchar(words) > 2]
+    words <- unlist(strsplit(cleaned, "[\\s/-]+"))
+    filler <- c("iv", "oral", "injection", "tablet", "mg", "strip", "mic", "done", "by")
+    words <- words[!words %in% filler & nchar(words) > 2]
     unique(words)
   }
 
-  who_table$keywords  <- lapply(who_table$antibiotic_name, extract_abx_keywords)
+  who_table$keywords <- lapply(who_table$antibiotic_name, extract_abx_keywords)
   who_table$ref_lower <- tolower(trimws(who_table$antibiotic_name))
 
-  data$temp_abx_input    <- trimws(as.character(data[[antibiotic_col]]))
+  data$temp_abx_input <- trimws(as.character(data[[antibiotic_col]]))
   data$antibiotic_normalized <- NA_character_
 
-  unique_inputs  <- unique(data$temp_abx_input[!is.na(data$temp_abx_input) & data$temp_abx_input != ""])
+  unique_inputs <- unique(data$temp_abx_input[!is.na(data$temp_abx_input) & data$temp_abx_input != ""])
   antibiotic_map <- setNames(rep(NA_character_, length(unique_inputs)), unique_inputs)
 
   for (input_abx in unique_inputs) {
@@ -89,14 +96,21 @@ prep_standardize_antibiotics <- function(data,
 
     scores <- sapply(seq_len(nrow(who_table)), function(i) {
       ref_keywords <- who_table$keywords[[i]]
-      if (length(ref_keywords) == 0) return(0)
+      if (length(ref_keywords) == 0) {
+        return(0)
+      }
       overlap <- sum(input_keywords %in% ref_keywords)
-      if (tolower(input_abx) == who_table$ref_lower[i]) return(1000)
+      if (tolower(input_abx) == who_table$ref_lower[i]) {
+        return(1000)
+      }
       if (grepl(who_table$ref_lower[i], tolower(input_abx), fixed = TRUE) ||
-            grepl(tolower(input_abx), who_table$ref_lower[i], fixed = TRUE))
+        grepl(tolower(input_abx), who_table$ref_lower[i], fixed = TRUE)) {
         overlap <- overlap + 2
+      }
       total_unique <- length(union(input_keywords, ref_keywords))
-      if (total_unique == 0) return(0)
+      if (total_unique == 0) {
+        return(0)
+      }
       overlap / total_unique
     })
 
@@ -106,15 +120,13 @@ prep_standardize_antibiotics <- function(data,
       if (length(top_matches) == 1) {
         antibiotic_map[input_abx] <- who_table$ref_lower[top_matches[1]]
       } else {
-        input_lower   <- tolower(input_abx)
-        tie_distances <- sapply(top_matches, function(idx)
-          adist(input_lower, who_table$ref_lower[idx], ignore.case = TRUE)[1, 1])
+        input_lower <- tolower(input_abx)
+        tie_distances <- adist(input_lower, who_table$ref_lower[top_matches], ignore.case = TRUE)[1, ]
         antibiotic_map[input_abx] <- who_table$ref_lower[top_matches[which.min(tie_distances)]]
       }
     } else {
       input_lower <- tolower(input_abx)
-      distances   <- sapply(who_table$ref_lower, function(ref)
-        adist(input_lower, ref, ignore.case = TRUE)[1, 1])
+      distances <- adist(input_lower, who_table$ref_lower, ignore.case = TRUE)[1, ]
       min_dist_idx <- which.min(distances)
       if (distances[min_dist_idx] <= 3) {
         antibiotic_map[input_abx] <- who_table$ref_lower[min_dist_idx]
@@ -127,17 +139,19 @@ prep_standardize_antibiotics <- function(data,
   data$antibiotic_normalized <- antibiotic_map[data$temp_abx_input]
   data$antibiotic_normalized[is.na(data$temp_abx_input) | data$temp_abx_input == ""] <- NA_character_
   data$antibiotic_normalized[!is.na(data$antibiotic_normalized) &
-                               trimws(data$antibiotic_normalized) == ""]              <- NA_character_
+    trimws(data$antibiotic_normalized) == ""] <- NA_character_
 
   if (add_class || add_aware) {
     select_cols <- "ref_lower"
     if (add_class) select_cols <- c(select_cols, "antibiotic_class")
-    if (add_aware && "aware_category" %in% names(who_table))
+    if (add_aware && "aware_category" %in% names(who_table)) {
       select_cols <- c(select_cols, "aware_category")
+    }
 
     data <- data %>%
       dplyr::left_join(who_table %>% dplyr::select(dplyr::all_of(select_cols)),
-                       by = c("antibiotic_normalized" = "ref_lower"))
+        by = c("antibiotic_normalized" = "ref_lower")
+      )
   }
 
   orig_empty <- is.na(data$temp_abx_input) | data$temp_abx_input == ""
@@ -145,25 +159,32 @@ prep_standardize_antibiotics <- function(data,
     data$antibiotic_class[orig_empty] <- NA_character_
     # Special corrections
     orig_lower <- tolower(data$temp_abx_input)
-    data$antibiotic_class[!is.na(orig_lower) & orig_lower == "colistin"]         <- "Colistin"
-    data$antibiotic_class[!is.na(orig_lower) & grepl("nalidixic", orig_lower)]   <- "Nalidixic acid"
+    data$antibiotic_class[!is.na(orig_lower) & orig_lower == "colistin"] <- "Colistin"
+    data$antibiotic_class[!is.na(orig_lower) & grepl("nalidixic", orig_lower)] <- "Nalidixic acid"
     data$antibiotic_class[!is.na(orig_lower) & grepl("polymyxin.*b", orig_lower)] <- "Polymyxins"
   }
-  if (add_aware && "aware_category" %in% names(data))
+  if (add_aware && "aware_category" %in% names(data)) {
     data$aware_category[orig_empty] <- NA_character_
+  }
 
   data$temp_abx_input <- NULL
 
   n_unique_after <- dplyr::n_distinct(data$antibiotic_normalized, na.rm = TRUE)
   message(sprintf("Normalized: %d unique names -> %d", n_unique_before, n_unique_after))
-  if (add_class && "antibiotic_class" %in% names(data))
-    message(sprintf("With antibiotic_class: %d (%.1f%%)",
-                    sum(!is.na(data$antibiotic_class)),
-                    100 * sum(!is.na(data$antibiotic_class)) / nrow(data)))
-  if (add_aware && "aware_category" %in% names(data))
-    message(sprintf("With AWaRe category: %d (%.1f%%)",
-                    sum(!is.na(data$aware_category)),
-                    100 * sum(!is.na(data$aware_category)) / nrow(data)))
+  if (add_class && "antibiotic_class" %in% names(data)) {
+    message(sprintf(
+      "With antibiotic_class: %d (%.1f%%)",
+      sum(!is.na(data$antibiotic_class)),
+      100 * sum(!is.na(data$antibiotic_class)) / nrow(data)
+    ))
+  }
+  if (add_aware && "aware_category" %in% names(data)) {
+    message(sprintf(
+      "With AWaRe category: %d (%.1f%%)",
+      sum(!is.na(data$aware_category)),
+      100 * sum(!is.na(data$aware_category)) / nrow(data)
+    ))
+  }
 
   return(data)
 }
@@ -181,7 +202,7 @@ prep_standardize_antibiotics <- function(data,
 #' @export
 prep_classify_antibiotic_class <- function(data,
                                            antibiotic_col = "antibiotic_normalized",
-                                           who_table      = NULL) {
+                                           who_table = NULL) {
   if (!antibiotic_col %in% names(data)) {
     stop(sprintf("Antibiotic column '%s' not found", antibiotic_col))
   }
@@ -189,19 +210,22 @@ prep_classify_antibiotic_class <- function(data,
   if (is.null(who_table)) {
     message("Using built-in WHO class mapping")
     data$antibiotic_class <- NA_character_
-    data$class_source     <- "needs_who_table"
+    data$class_source <- "needs_who_table"
     warning("WHO table not provided.")
     return(data)
   }
 
   data <- data %>%
     dplyr::left_join(who_table %>% dplyr::select(Antibiotic, Class),
-                     by = stats::setNames("Antibiotic", antibiotic_col)) %>%
+      by = stats::setNames("Antibiotic", antibiotic_col)
+    ) %>%
     dplyr::rename(antibiotic_class = Class)
 
   n_classified <- sum(!is.na(data$antibiotic_class))
-  message(sprintf("Classified antibiotics: %d/%d (%.1f%%)",
-                  n_classified, nrow(data), 100 * n_classified / nrow(data)))
+  message(sprintf(
+    "Classified antibiotics: %d/%d (%.1f%%)",
+    n_classified, nrow(data), 100 * n_classified / nrow(data)
+  ))
   return(data)
 }
 
@@ -218,7 +242,7 @@ prep_classify_antibiotic_class <- function(data,
 #' @export
 prep_classify_aware <- function(data,
                                 antibiotic_col = "antibiotic_normalized",
-                                who_table      = NULL) {
+                                who_table = NULL) {
   if (!antibiotic_col %in% names(data)) {
     stop(sprintf("Antibiotic column '%s' not found", antibiotic_col))
   }
@@ -226,14 +250,15 @@ prep_classify_aware <- function(data,
   if (is.null(who_table)) {
     message("Using built-in AWaRe mapping")
     data$aware_category <- NA_character_
-    data$aware_source   <- "needs_who_table"
+    data$aware_source <- "needs_who_table"
     warning("WHO AWaRe table not provided.")
     return(data)
   }
 
   data <- data %>%
     dplyr::left_join(who_table %>% dplyr::select(Antibiotic, Category),
-                     by = stats::setNames("Antibiotic", antibiotic_col)) %>%
+      by = stats::setNames("Antibiotic", antibiotic_col)
+    ) %>%
     dplyr::rename(aware_category = Category)
 
   message(sprintf("Classified AWaRe: %d records", sum(!is.na(data$aware_category))))
@@ -267,9 +292,9 @@ prep_classify_aware <- function(data,
 #' @return Data frame with \code{output_col} column added.
 #' @export
 prep_decode_antibiotic_code <- function(data,
-                                         code_col   = "antibiotic_name_raw",
-                                         map_path   = NULL,
-                                         output_col = "antibiotic_name_std") {
+                                        code_col = "antibiotic_name_raw",
+                                        map_path = NULL,
+                                        output_col = "antibiotic_name_std") {
   if (!code_col %in% names(data)) {
     warning(sprintf("[prep_decode_antibiotic_code] Column '%s' not found. Skipping.", code_col))
     data[[output_col]] <- NA_character_
@@ -288,20 +313,23 @@ prep_decode_antibiotic_code <- function(data,
 
   code_map <- readr::read_csv(map_path, show_col_types = FALSE)
 
-  if (!all(c("code", "antibiotic_name_full") %in% names(code_map)))
+  if (!all(c("code", "antibiotic_name_full") %in% names(code_map))) {
     stop("[prep_decode_antibiotic_code] Code map must have columns 'code' and 'antibiotic_name_full'.")
+  }
 
   lookup <- stats::setNames(code_map$antibiotic_name_full, toupper(code_map$code))
 
-  raw_upper            <- toupper(trimws(as.character(data[[code_col]])))
-  decoded              <- lookup[raw_upper]
+  raw_upper <- toupper(trimws(as.character(data[[code_col]])))
+  decoded <- lookup[raw_upper]
   decoded[is.na(decoded)] <- data[[code_col]][is.na(decoded)]
-  data[[output_col]]   <- decoded
+  data[[output_col]] <- decoded
 
-  n_mapped   <- sum(!is.na(lookup[raw_upper]), na.rm = TRUE)
+  n_mapped <- sum(!is.na(lookup[raw_upper]), na.rm = TRUE)
   n_unmapped <- sum(is.na(lookup[raw_upper]), na.rm = TRUE)
-  message(sprintf("[prep_decode_antibiotic_code] %d codes decoded, %d passed through unchanged.",
-                  n_mapped, n_unmapped))
+  message(sprintf(
+    "[prep_decode_antibiotic_code] %d codes decoded, %d passed through unchanged.",
+    n_mapped, n_unmapped
+  ))
 
   return(data)
 }

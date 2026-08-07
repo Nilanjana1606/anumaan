@@ -34,27 +34,27 @@ compute_hospital_daly <- function(hospital_counts,
                                   yld_attributable) {
   hospital_counts %>%
     dplyr::mutate(
-      .death_frac       = deaths_h / total_deaths,
-      .disch_frac       = discharged_h / total_discharged,
-      .per_1k           = 1000 / cases_h,
+      .death_frac = deaths_h / total_deaths,
+      .disch_frac = discharged_h / total_discharged,
+      .per_1k = 1000 / cases_h,
       # Absolute
-      YLL_base          = yll_base          * .data$.death_frac,
-      YLD_base          = yld_base          * .data$.disch_frac,
-      YLL_associated    = yll_associated    * .data$.death_frac,
-      YLD_associated    = yld_associated    * .data$.disch_frac,
-      DALY_associated   = .data$YLL_associated + .data$YLD_associated,
-      YLL_attributable  = yll_attributable  * .data$.death_frac,
-      YLD_attributable  = yld_attributable  * .data$.disch_frac,
+      YLL_base = yll_base * .data$.death_frac,
+      YLD_base = yld_base * .data$.disch_frac,
+      YLL_associated = yll_associated * .data$.death_frac,
+      YLD_associated = yld_associated * .data$.disch_frac,
+      DALY_associated = .data$YLL_associated + .data$YLD_associated,
+      YLL_attributable = yll_attributable * .data$.death_frac,
+      YLD_attributable = yld_attributable * .data$.disch_frac,
       DALY_attributable = .data$YLL_attributable + .data$YLD_attributable,
       # Per 1 000 cases
-      YLL_base_per_1000   = .data$YLL_base          * .data$.per_1k,
-      YLD_base_per_1000   = .data$YLD_base          * .data$.per_1k,
-      YLL_assoc_per_1000  = .data$YLL_associated    * .data$.per_1k,
-      YLD_assoc_per_1000  = .data$YLD_associated    * .data$.per_1k,
-      DALY_assoc_per_1000 = .data$DALY_associated   * .data$.per_1k,
-      YLL_attr_per_1000   = .data$YLL_attributable  * .data$.per_1k,
-      YLD_attr_per_1000   = .data$YLD_attributable  * .data$.per_1k,
-      DALY_attr_per_1000  = .data$DALY_attributable * .data$.per_1k
+      YLL_base_per_1000 = .data$YLL_base * .data$.per_1k,
+      YLD_base_per_1000 = .data$YLD_base * .data$.per_1k,
+      YLL_assoc_per_1000 = .data$YLL_associated * .data$.per_1k,
+      YLD_assoc_per_1000 = .data$YLD_associated * .data$.per_1k,
+      DALY_assoc_per_1000 = .data$DALY_associated * .data$.per_1k,
+      YLL_attr_per_1000 = .data$YLL_attributable * .data$.per_1k,
+      YLD_attr_per_1000 = .data$YLD_attributable * .data$.per_1k,
+      DALY_attr_per_1000 = .data$DALY_attributable * .data$.per_1k
     ) %>%
     dplyr::select(-".death_frac", -".disch_frac", -".per_1k") %>%
     dplyr::mutate(dplyr::across(dplyr::where(is.numeric), ~ round(.x, 4)))
@@ -79,13 +79,14 @@ compute_hospital_daly <- function(hospital_counts,
 #'
 #' @param data         Data frame. One row per hospital (or one row per
 #'   hospital x syndrome). Must contain the columns named by
-#'   \code{center_col}, \code{assoc_col}, and \code{attr_col}.
+#'   \code{facility_col}, \code{assoc_col}, and \code{attr_col}.
 #' @param metric       Character. \code{"YLL"} or \code{"YLD"}. Controls
 #'   which default column names and axis labels are used. Ignored when
 #'   \code{assoc_col} and \code{attr_col} are supplied explicitly.
 #'   Default \code{"YLL"}.
-#' @param center_col   Character. Column containing hospital / centre names.
-#'   Default \code{"center_name"}.
+#' @param facility_col Character. Column containing hospital / facility
+#'   names. Default \code{"center_name"}.
+#' @param center_col   Deprecated alias for \code{facility_col}.
 #' @param assoc_col    Character or \code{NULL}. Column for the associated
 #'   per-1 000 value. If \code{NULL} (default), auto-set to
 #'   \code{"YLL_assoc_per_1000"} or \code{"YLD_assoc_per_1000"} based on
@@ -119,50 +120,62 @@ compute_hospital_daly <- function(hospital_counts,
 #' @export
 #'
 plot_burden_by_hospital <- function(data,
-                                    metric        = c("YLL", "YLD"),
-                                    center_col    = "center_name",
-                                    assoc_col     = NULL,
-                                    attr_col      = NULL,
-                                    syndrome_col  = NULL,
+                                    metric = c("YLL", "YLD"),
+                                    facility_col = "center_name",
+                                    center_col = NULL,
+                                    assoc_col = NULL,
+                                    attr_col = NULL,
+                                    syndrome_col = NULL,
                                     syndrome_name = NULL,
-                                    sort_by       = c("associated", "attributable", "none"),
-                                    label_digits  = 1,
-                                    colours       = NULL,
-                                    base_size     = 14,
-                                    title         = NULL,
-                                    subtitle      = NULL) {
-
-  # -- 0. match args -----------------------------------------------------------
-  metric  <- match.arg(metric)
+                                    sort_by = c("associated", "attributable", "none"),
+                                    label_digits = 1,
+                                    colours = NULL,
+                                    base_size = 14,
+                                    title = NULL,
+                                    subtitle = NULL) {
+  # 0. match args
+  metric <- match.arg(metric)
   sort_by <- match.arg(sort_by)
-
-  # -- 1. resolve column names -------------------------------------------------
-  if (is.null(assoc_col))
-    assoc_col <- if (metric == "YLL") "YLL_assoc_per_1000" else "YLD_assoc_per_1000"
-  if (is.null(attr_col))
-    attr_col  <- if (metric == "YLL") "YLL_attr_per_1000"  else "YLD_attr_per_1000"
-
-  # -- 2. validate columns -----------------------------------------------------
-  required_cols <- c(center_col, assoc_col, attr_col)
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Column(s) not found in data: %s",
-                 paste(missing_cols, collapse = ", ")))
-
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
-    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
-    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- 3. syndrome filter ------------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+  if (!is.null(center_col)) {
+    warning("'center_col' is deprecated; use 'facility_col' instead.")
+    facility_col <- center_col
   }
 
-  # -- 4. default colours ------------------------------------------------------
+  # 1. resolve column names
+  if (is.null(assoc_col)) {
+    assoc_col <- if (metric == "YLL") "YLL_assoc_per_1000" else "YLD_assoc_per_1000"
+  }
+  if (is.null(attr_col)) {
+    attr_col <- if (metric == "YLL") "YLL_attr_per_1000" else "YLD_attr_per_1000"
+  }
+
+  # 2. validate columns
+  required_cols <- c(facility_col, assoc_col, attr_col)
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "Column(s) not found in data: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
+
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
+
+  # 3. syndrome filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 4. default colours
   if (is.null(colours)) {
     colours <- if (metric == "YLL") {
       c("associated" = "#d73027", "attributable" = "#f4a582")
@@ -170,17 +183,18 @@ plot_burden_by_hospital <- function(data,
       c("associated" = "#4393c3", "attributable" = "#92c5de")
     }
   }
-  if (!all(c("associated", "attributable") %in% names(colours)))
+  if (!all(c("associated", "attributable") %in% names(colours))) {
     stop("'colours' must be a named vector with elements 'associated' and 'attributable'.")
+  }
 
-  # -- 5. legend label strings -------------------------------------------------
+  # 5. legend label strings
   assoc_label <- paste(metric, "Associated")
-  attr_label  <- paste(metric, "Attributable")
-  y_label     <- sprintf("%s per 1 000 admissions", metric)
+  attr_label <- paste(metric, "Attributable")
+  y_label <- sprintf("%s per 1 000 admissions", metric)
 
-  # -- 6. sort hospitals -------------------------------------------------------
-  ctr_sym   <- rlang::sym(center_col)
-  sort_col  <- if (sort_by == "attributable") attr_col else assoc_col
+  # 6. sort hospitals
+  ctr_sym <- rlang::sym(facility_col)
+  sort_col <- if (sort_by == "attributable") attr_col else assoc_col
 
   if (sort_by != "none") {
     ordered_levels <- data %>%
@@ -190,7 +204,7 @@ plot_burden_by_hospital <- function(data,
     ordered_levels <- data %>% dplyr::pull(!!ctr_sym)
   }
 
-  # -- 7. reshape to long format -----------------------------------------------
+  # 7. reshape to long format
   plot_df <- data %>%
     dplyr::select(
       center       = !!ctr_sym,
@@ -203,28 +217,28 @@ plot_burden_by_hospital <- function(data,
       values_to = "value"
     ) %>%
     dplyr::mutate(
-      center      = factor(center, levels = ordered_levels),
+      center = factor(center, levels = ordered_levels),
       metric_type = factor(
         dplyr::case_when(
-          metric_type == "associated"   ~ assoc_label,
+          metric_type == "associated" ~ assoc_label,
           metric_type == "attributable" ~ attr_label
         ),
         levels = c(assoc_label, attr_label)
       )
     )
 
-  # -- 8. auto titles ----------------------------------------------------------
-  syndrome_tag  <- if (!is.null(syndrome_name)) sprintf(" \u2014 %s", syndrome_name) else ""
-  auto_title    <- title    %||% sprintf("%s Associated vs Attributable per Hospital%s", metric, syndrome_tag)
+  # 8. auto titles
+  syndrome_tag <- if (!is.null(syndrome_name)) sprintf(" \u2014 %s", syndrome_name) else ""
+  auto_title <- title %||% sprintf("%s Associated vs Attributable per Hospital%s", metric, syndrome_tag)
   auto_subtitle <- subtitle %||% "Per 1 000 admissions  |  Attributable = burden directly due to resistance"
 
-  # -- 9. colour vector keyed to legend labels ---------------------------------
+  # 9. colour vector keyed to legend labels
   fill_values <- stats::setNames(
     c(colours["associated"], colours["attributable"]),
     c(assoc_label, attr_label)
   )
 
-  # -- 10. build plot ----------------------------------------------------------
+  # 10. build plot
   p <- ggplot2::ggplot(
     plot_df,
     ggplot2::aes(x = center, y = value, fill = metric_type)
@@ -238,8 +252,8 @@ plot_burden_by_hospital <- function(data,
     ggplot2::geom_text(
       ggplot2::aes(label = round(value, label_digits)),
       position = ggplot2::position_dodge(width = 0.75),
-      hjust    = -0.2,
-      size     = 3.8,
+      hjust = -0.2,
+      size = 3.8,
       fontface = "bold"
     ) +
     ggplot2::coord_flip() +
@@ -324,62 +338,71 @@ plot_burden_by_hospital <- function(data,
 #' @export
 #'
 plot_burden_by_organism <- function(data,
-                                    metric        = c("YLL", "YLD"),
-                                    n             = 10,
-                                    organism_col  = NULL,
-                                    assoc_col     = NULL,
-                                    attr_col      = NULL,
-                                    n_admissions  = NULL,
-                                    syndrome_col  = NULL,
+                                    metric = c("YLL", "YLD"),
+                                    n = 10,
+                                    organism_col = NULL,
+                                    assoc_col = NULL,
+                                    attr_col = NULL,
+                                    n_admissions = NULL,
+                                    syndrome_col = NULL,
                                     syndrome_name = NULL,
-                                    label_digits  = 1,
-                                    colours       = NULL,
-                                    base_size     = 14,
-                                    title         = NULL,
-                                    subtitle      = NULL) {
-
-  # -- 0. match args -----------------------------------------------------------
+                                    label_digits = 1,
+                                    colours = NULL,
+                                    base_size = 14,
+                                    title = NULL,
+                                    subtitle = NULL) {
+  # 0. match args
   metric <- match.arg(metric)
 
-  # -- 1. resolve column names -------------------------------------------------
+  # 1. resolve column names
   # YLL: pathogen column is "organism_name" (daly_calc_yll_* examples)
   # YLD: pathogen column is "pathogen"      (daly_calc_yld_* defaults)
-  if (is.null(organism_col))
+  if (is.null(organism_col)) {
     organism_col <- if (metric == "YLL") "organism_name" else "pathogen"
-  if (is.null(assoc_col))
+  }
+  if (is.null(assoc_col)) {
     assoc_col <- if (metric == "YLL") "YLL_associated_k" else "YLD_associated"
-  if (is.null(attr_col))
-    attr_col  <- if (metric == "YLL") "YLL_attributable_k" else "YLD_attributable"
+  }
+  if (is.null(attr_col)) {
+    attr_col <- if (metric == "YLL") "YLL_attributable_k" else "YLD_attributable"
+  }
 
-  # -- 2. validate columns -----------------------------------------------------
+  # 2. validate columns
   required_cols <- c(organism_col, assoc_col, attr_col)
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Column(s) not found in data: %s",
-                 paste(missing_cols, collapse = ", ")))
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "Column(s) not found in data: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
 
-  # -- 3. syndrome filter ------------------------------------------------------
+  # 3. syndrome filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
   }
 
-  # -- 4. normalise if n_admissions provided -----------------------------------
+  # 4. normalise if n_admissions provided
   if (!is.null(n_admissions)) {
-    if (!is.numeric(n_admissions) || n_admissions <= 0)
+    if (!is.numeric(n_admissions) || n_admissions <= 0) {
       stop("'n_admissions' must be a positive number.")
+    }
     data[[assoc_col]] <- data[[assoc_col]] / n_admissions * 1000
-    data[[attr_col]]  <- data[[attr_col]]  / n_admissions * 1000
+    data[[attr_col]] <- data[[attr_col]] / n_admissions * 1000
   }
 
-  # -- 5. default colours ------------------------------------------------------
+  # 5. default colours
   if (is.null(colours)) {
     colours <- if (metric == "YLL") {
       c("associated" = "#d73027", "attributable" = "#f4a582")
@@ -387,22 +410,23 @@ plot_burden_by_organism <- function(data,
       c("associated" = "#4393c3", "attributable" = "#92c5de")
     }
   }
-  if (!all(c("associated", "attributable") %in% names(colours)))
+  if (!all(c("associated", "attributable") %in% names(colours))) {
     stop("'colours' must be a named vector with elements 'associated' and 'attributable'.")
+  }
 
-  # -- 6. legend label strings -------------------------------------------------
+  # 6. legend label strings
   assoc_label <- paste(metric, "Associated")
-  attr_label  <- paste(metric, "Attributable")
-  y_label     <- if (!is.null(n_admissions)) {
+  attr_label <- paste(metric, "Attributable")
+  y_label <- if (!is.null(n_admissions)) {
     sprintf("%s per 1 000 admissions", metric)
   } else {
     sprintf("%s (thousands)", metric)
   }
 
-  # -- 7. select top n organisms by associated value ---------------------------
-  org_sym   <- rlang::sym(organism_col)
+  # 7. select top n organisms by associated value
+  org_sym <- rlang::sym(organism_col)
   assoc_sym <- rlang::sym(assoc_col)
-  attr_sym  <- rlang::sym(attr_col)
+  attr_sym <- rlang::sym(attr_col)
 
   top_orgs <- data %>%
     dplyr::filter(!is.na(!!assoc_sym)) %>%
@@ -423,32 +447,32 @@ plot_burden_by_organism <- function(data,
       values_to = "value"
     ) %>%
     dplyr::mutate(
-      organism    = factor(organism, levels = top_orgs),
+      organism = factor(organism, levels = top_orgs),
       metric_type = factor(
         dplyr::case_when(
-          metric_type == "associated"   ~ assoc_label,
+          metric_type == "associated" ~ assoc_label,
           metric_type == "attributable" ~ attr_label
         ),
         levels = c(assoc_label, attr_label)
       )
     )
 
-  # -- 7. auto titles ----------------------------------------------------------
-  syndrome_tag  <- if (!is.null(syndrome_name)) sprintf(" \u2014 %s", syndrome_name) else ""
-  auto_title    <- title    %||% sprintf("Top %d Organisms by %s Burden%s", n, metric, syndrome_tag)
+  # 8. auto titles
+  syndrome_tag <- if (!is.null(syndrome_name)) sprintf(" \u2014 %s", syndrome_name) else ""
+  auto_title <- title %||% sprintf("Top %d Organisms by %s Burden%s", n, metric, syndrome_tag)
   auto_subtitle <- subtitle %||% if (!is.null(n_admissions)) {
     "Per 1 000 admissions  |  Attributable = burden directly due to resistance"
   } else {
     "Attributable = burden directly due to resistance"
   }
 
-  # -- 8. colour vector keyed to legend labels ---------------------------------
+  # 9. colour vector keyed to legend labels
   fill_values <- stats::setNames(
     c(colours["associated"], colours["attributable"]),
     c(assoc_label, attr_label)
   )
 
-  # -- 9. build plot -----------------------------------------------------------
+  # 10. build plot
   p <- ggplot2::ggplot(
     plot_df,
     ggplot2::aes(x = organism, y = value, fill = metric_type)
@@ -462,8 +486,8 @@ plot_burden_by_organism <- function(data,
     ggplot2::geom_text(
       ggplot2::aes(label = round(value, label_digits)),
       position = ggplot2::position_dodge(width = 0.75),
-      hjust    = -0.2,
-      size     = 3.8,
+      hjust = -0.2,
+      size = 3.8,
       fontface = "bold"
     ) +
     ggplot2::coord_flip() +
@@ -542,55 +566,62 @@ plot_burden_by_organism <- function(data,
 #' @return A \code{ggplot} object.
 #' @export
 plot_yll_heatmap <- function(data,
-                             type          = c("associated", "attributable"),
+                             type = c("associated", "attributable"),
                              value_col,
-                             n_admissions  = NULL,
-                             pathogen_col  = "pathogen",
-                             class_col     = "profile",
-                             group_col     = NULL,
-                             syndrome_col  = NULL,
+                             n_admissions = NULL,
+                             pathogen_col = "pathogen",
+                             class_col = "profile",
+                             group_col = NULL,
+                             syndrome_col = NULL,
                              syndrome_name = NULL,
-                             show_values   = TRUE,
-                             value_digits  = 2,
-                             palette       = "Spectral",
-                             base_size     = 14,
-                             title         = NULL,
-                             subtitle      = NULL) {
-
-  # -- 0. match args -----------------------------------------------------------
+                             show_values = TRUE,
+                             value_digits = 2,
+                             palette = "Spectral",
+                             base_size = 14,
+                             title = NULL,
+                             subtitle = NULL) {
+  # 0. match args
   type <- match.arg(type)
 
-  # -- 1. validate required args -----------------------------------------------
-  if (missing(value_col) || is.null(value_col))
+  # 1. validate required args
+  if (missing(value_col) || is.null(value_col)) {
     stop("'value_col' is required. Supply the column name containing your YLL values (e.g. \"YLL_class\" or \"YLL_attributable_k\").")
-  if (!is.null(n_admissions) && (!is.numeric(n_admissions) || n_admissions <= 0))
+  }
+  if (!is.null(n_admissions) && (!is.numeric(n_admissions) || n_admissions <= 0)) {
     stop("'n_admissions' must be a positive number.")
-
-  # -- 2. determine y-axis column (group if available, else pathogen) -----------
-  use_group <- !is.null(group_col) && group_col %in% names(data)
-  y_col     <- if (use_group) group_col else pathogen_col
-
-  # -- 3. validate columns -----------------------------------------------------
-  required_cols <- unique(c(pathogen_col, class_col, value_col,
-                             if (use_group) group_col else NULL))
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Column(s) not found in data: %s", paste(missing_cols, collapse = ", ")))
-
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
-    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
-    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- 4. syndrome filter ------------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
   }
 
-  # -- 5. aggregate and normalise ----------------------------------------------
-  y_sym     <- rlang::sym(y_col)
+  # 2. determine y-axis column (group if available, else pathogen)
+  use_group <- !is.null(group_col) && group_col %in% names(data)
+  y_col <- if (use_group) group_col else pathogen_col
+
+  # 3. validate columns
+  required_cols <- unique(c(
+    pathogen_col, class_col, value_col,
+    if (use_group) group_col else NULL
+  ))
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop(sprintf("Column(s) not found in data: %s", paste(missing_cols, collapse = ", ")))
+  }
+
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
+
+  # 4. syndrome filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 5. aggregate and normalise
+  y_sym <- rlang::sym(y_col)
   class_sym <- rlang::sym(class_col)
   value_sym <- rlang::sym(value_col)
 
@@ -602,7 +633,7 @@ plot_yll_heatmap <- function(data,
       yll_per_1000 = ifelse(yll_per_1000 < 0, NA_real_, yll_per_1000)
     )
 
-  # -- 6. axis ordering by total burden ----------------------------------------
+  # 6. axis ordering by total burden
   class_order <- heat_df %>%
     dplyr::group_by(!!class_sym) %>%
     dplyr::summarise(tot = sum(yll_per_1000, na.rm = TRUE), .groups = "drop") %>%
@@ -618,20 +649,22 @@ plot_yll_heatmap <- function(data,
   heat_df <- heat_df %>%
     dplyr::mutate(
       !!class_sym := factor(!!class_sym, levels = class_order),
-      !!y_sym      := factor(!!y_sym,    levels = group_order)
+      !!y_sym := factor(!!y_sym, levels = group_order)
     )
 
-  # -- 7. midpoint for dynamic text colour -------------------------------------
+  # 7. midpoint for dynamic text colour
   mid_val <- stats::median(heat_df$yll_per_1000, na.rm = TRUE)
 
-  # -- 8. auto titles ----------------------------------------------------------
-  type_label    <- if (type == "associated") "Associated" else "Attributable"
-  syndrome_tag  <- if (!is.null(syndrome_name)) sprintf(" \u2014 %s", syndrome_name) else ""
-  auto_title    <- title    %||% sprintf("YLL %s per 1 000 Admissions by Resistance Class%s",
-                                         type_label, syndrome_tag)
+  # 8. auto titles
+  type_label <- if (type == "associated") "Associated" else "Attributable"
+  syndrome_tag <- if (!is.null(syndrome_name)) sprintf(" \u2014 %s", syndrome_name) else ""
+  auto_title <- title %||% sprintf(
+    "YLL %s per 1 000 Admissions by Resistance Class%s",
+    type_label, syndrome_tag
+  )
   auto_subtitle <- subtitle %||% "YLL delta (thousands) normalised to total admissions; negative values masked"
 
-  # -- 9. build base plot ------------------------------------------------------
+  # 9. build base plot
   p <- ggplot2::ggplot(
     heat_df,
     ggplot2::aes(x = !!class_sym, y = !!y_sym, fill = yll_per_1000)
@@ -657,27 +690,29 @@ plot_yll_heatmap <- function(data,
       panel.border = ggplot2::element_rect(colour = "grey70", fill = NA)
     )
 
-  # -- 10. optional cell labels with dynamic text colour -----------------------
+  # 10. optional cell labels with dynamic text colour
   if (show_values) {
-    dark_df  <- heat_df %>%
+    dark_df <- heat_df %>%
       dplyr::filter(!is.na(yll_per_1000) & yll_per_1000 >= mid_val) %>%
       dplyr::mutate(cell_lbl = format(round(yll_per_1000, value_digits), nsmall = value_digits))
     light_df <- heat_df %>%
       dplyr::filter(!is.na(yll_per_1000) & yll_per_1000 < mid_val) %>%
       dplyr::mutate(cell_lbl = format(round(yll_per_1000, value_digits), nsmall = value_digits))
 
-    if (nrow(dark_df) > 0)
+    if (nrow(dark_df) > 0) {
       p <- p + ggplot2::geom_text(
         data = dark_df,
         ggplot2::aes(label = cell_lbl),
         colour = "white", size = 3.2, fontface = "bold"
       )
-    if (nrow(light_df) > 0)
+    }
+    if (nrow(light_df) > 0) {
       p <- p + ggplot2::geom_text(
         data = light_df,
         ggplot2::aes(label = cell_lbl),
         colour = "grey20", size = 3.2
       )
+    }
   }
 
   return(p)
@@ -734,65 +769,71 @@ plot_yll_heatmap <- function(data,
 #' @return A \code{ggplot} object.
 #' @export
 plot_yld_heatmap <- function(data,
-                             n_admissions  = NULL,
-                             pathogen_col  = "pathogen",
-                             assoc_col     = "YLD_associated",
-                             attr_col      = "YLD_attributable",
-                             group_col     = NULL,
-                             syndrome_col  = NULL,
+                             n_admissions = NULL,
+                             pathogen_col = "pathogen",
+                             assoc_col = "YLD_associated",
+                             attr_col = "YLD_attributable",
+                             group_col = NULL,
+                             syndrome_col = NULL,
                              syndrome_name = NULL,
-                             show_values   = TRUE,
-                             value_digits  = 2,
-                             palette       = "Blues",
-                             coord_fixed   = TRUE,
-                             base_size     = 14,
-                             title         = NULL,
-                             subtitle      = NULL) {
-
-  # -- 1. validate n_admissions if provided ------------------------------------
-  if (!is.null(n_admissions) && (!is.numeric(n_admissions) || n_admissions <= 0))
+                             show_values = TRUE,
+                             value_digits = 2,
+                             palette = "Blues",
+                             coord_fixed = TRUE,
+                             base_size = 14,
+                             title = NULL,
+                             subtitle = NULL) {
+  # 1. validate n_admissions if provided
+  if (!is.null(n_admissions) && (!is.numeric(n_admissions) || n_admissions <= 0)) {
     stop("'n_admissions' must be a positive number.")
-
-  # -- 2. determine y-axis column ----------------------------------------------
-  use_group <- !is.null(group_col) && group_col %in% names(data)
-  y_col     <- if (use_group) group_col else pathogen_col
-
-  # -- 3. validate columns -----------------------------------------------------
-  required_cols <- unique(c(pathogen_col, assoc_col, attr_col,
-                             if (use_group) group_col else NULL))
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Column(s) not found in data: %s", paste(missing_cols, collapse = ", ")))
-
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
-    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
-    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- 4. syndrome filter ------------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
   }
 
-  # -- 5. aggregate by y-axis group --------------------------------------------
-  y_sym     <- rlang::sym(y_col)
+  # 2. determine y-axis column
+  use_group <- !is.null(group_col) && group_col %in% names(data)
+  y_col <- if (use_group) group_col else pathogen_col
+
+  # 3. validate columns
+  required_cols <- unique(c(
+    pathogen_col, assoc_col, attr_col,
+    if (use_group) group_col else NULL
+  ))
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop(sprintf("Column(s) not found in data: %s", paste(missing_cols, collapse = ", ")))
+  }
+
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
+
+  # 4. syndrome filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 5. aggregate by y-axis group
+  y_sym <- rlang::sym(y_col)
   assoc_sym <- rlang::sym(assoc_col)
-  attr_sym  <- rlang::sym(attr_col)
+  attr_sym <- rlang::sym(attr_col)
 
   agg_df <- data %>%
     dplyr::group_by(!!y_sym) %>%
     dplyr::summarise(
-      associated   = sum(!!assoc_sym, na.rm = TRUE),
-      attributable = sum(!!attr_sym,  na.rm = TRUE),
+      associated = sum(!!assoc_sym, na.rm = TRUE),
+      attributable = sum(!!attr_sym, na.rm = TRUE),
       .groups = "drop"
     )
 
-  # -- 6. normalise (if n_admissions provided) and pivot to long ---------------
+  # 6. normalise (if n_admissions provided) and pivot to long
   heat_df <- agg_df %>%
     dplyr::mutate(
-      associated   = if (!is.null(n_admissions)) associated   / n_admissions * 1000 else associated,
+      associated   = if (!is.null(n_admissions)) associated / n_admissions * 1000 else associated,
       attributable = if (!is.null(n_admissions)) attributable / n_admissions * 1000 else attributable
     ) %>%
     tidyr::pivot_longer(
@@ -802,14 +843,14 @@ plot_yld_heatmap <- function(data,
     ) %>%
     dplyr::mutate(
       yld_per_1000 = ifelse(yld_per_1000 < 0, NA_real_, yld_per_1000),
-      metric_type  = dplyr::recode(metric_type,
+      metric_type = dplyr::recode(metric_type,
         associated   = "YLD Associated",
         attributable = "YLD Attributable"
       ),
       metric_type = factor(metric_type, levels = c("YLD Associated", "YLD Attributable"))
     )
 
-  # -- 7. y-axis ordering by total YLD (highest at top) -----------------------
+  # 7. y-axis ordering by total YLD (highest at top)
   group_order <- heat_df %>%
     dplyr::group_by(!!y_sym) %>%
     dplyr::summarise(tot = sum(yld_per_1000, na.rm = TRUE), .groups = "drop") %>%
@@ -819,15 +860,15 @@ plot_yld_heatmap <- function(data,
   heat_df <- heat_df %>%
     dplyr::mutate(!!y_sym := factor(!!y_sym, levels = group_order))
 
-  # -- 8. midpoint for dynamic text colour ------------------------------------
+  # 8. midpoint for dynamic text colour
   mid_val <- stats::median(heat_df$yld_per_1000, na.rm = TRUE)
 
-  # -- 9. auto titles ----------------------------------------------------------
-  syndrome_tag  <- if (!is.null(syndrome_name)) sprintf(" \u2014 %s", syndrome_name) else ""
-  auto_title    <- title    %||% sprintf("YLD per 1 000 Admissions by Organism Group%s", syndrome_tag)
+  # 9. auto titles
+  syndrome_tag <- if (!is.null(syndrome_name)) sprintf(" \u2014 %s", syndrome_name) else ""
+  auto_title <- title %||% sprintf("YLD per 1 000 Admissions by Organism Group%s", syndrome_tag)
   auto_subtitle <- subtitle %||% "Attributable = YLD directly due to resistance"
 
-  # -- 10. build base plot -----------------------------------------------------
+  # 10. build base plot
   p <- ggplot2::ggplot(
     heat_df,
     ggplot2::aes(x = metric_type, y = !!y_sym, fill = yld_per_1000)
@@ -852,20 +893,21 @@ plot_yld_heatmap <- function(data,
       panel.border = ggplot2::element_rect(colour = "grey80", fill = NA, linewidth = 0.5)
     )
 
-  if (coord_fixed)
+  if (coord_fixed) {
     p <- p + ggplot2::coord_fixed()
+  }
 
-  # -- 11. optional cell labels ------------------------------------------------
+  # 11. optional cell labels
   if (show_values) {
     label_df <- heat_df %>%
       dplyr::filter(!is.na(yld_per_1000)) %>%
       dplyr::mutate(cell_lbl = format(round(yld_per_1000, value_digits), nsmall = value_digits))
 
     p <- p + ggplot2::geom_text(
-      data     = label_df,
+      data = label_df,
       ggplot2::aes(label = cell_lbl),
-      colour   = "black",
-      size     = 3.5,
+      colour = "black",
+      size = 3.5,
       fontface = "bold"
     )
   }

@@ -1,47 +1,18 @@
 # daly_resistance_profiles.R
 #
-# Estimates antimicrobial resistance profiles for two complementary data sources.
-# All profile probability distributions produced by either pathway feed directly
-# into the DALY burden pipeline (YLL and YLD calculations).
+# Estimates antimicrobial resistance profiles for two data sources that both
+# feed the DALY (YLL/YLD) pipeline: Pathway 1 solves a simplex-constrained QP
+# over aggregate/surveillance marginals (estimate_profiles_convex()); Pathway 2
+# fits a Bayesian multivariate probit model to facility-level AST records.
 #
-# Pathway 1 -- Convex optimisation (aggregate surveillance or GBD-style data)
-#   Accepts marginal resistance prevalences and optional pairwise co-resistance
-#   rates per pathogen, enumerates all 2^n binary resistance profiles, and
-#   recovers a valid probability distribution over those profiles by solving a
-#   simplex-constrained weighted least-squares quadratic programme.
-#   Supports bootstrapped uncertainty intervals, stratification by geography
-#   and year, and integration of externally modelled marginals.
-#
-#   Key functions:
-#     validate_profile_inputs()       input checks, format detection
-#     preprocess_for_profiles()       full AST preprocessing pipeline
-#     compute_marginals_from_data()   marginal resistance from wide isolate data
-#     compute_pairwise_from_data()    pairwise co-resistance via Pearson back-calculation
-#     validate_aggregate_inputs()     validates pre-computed aggregate inputs
-#     enumerate_binary_profiles()     enumerates 2^n binary profiles
-#     build_constraint_matrix()       constructs QP constraint matrix and target vector
-#     estimate_profiles_convex()      solves the QP and returns profile probabilities
-#     bootstrap_profiles_convex()     quantifies uncertainty via binomial resampling
-#     check_profile_constraints()     verifies non-negativity, sum-to-one, and residuals
-#     compute_marginal_resistance()   class-level marginals with any-R collapse rule
-#     compute_pairwise_coresistance() pairwise co-resistance matrices per pathogen
-#     compute_resistance_profiles()   QP profile estimation from isolate-level inputs
-#     select_resistance_class()       selects one resistance class per event for attribution
-#
-# Pathway 2 -- Bayesian hierarchical modelling (facility-level AST data)
-#   Fits a multivariate probit model to event-level AST records, accounting for
-#   partial and selective testing, hospital-level heterogeneity, patient-admission
-#   clustering, and correlated resistance outcomes across antibiotic classes.
-#   Produces hospital-specific R_ALL and R_NF profile distributions for YLL
-#   and YLD calculations respectively.
-#
-#   Key functions:
-#     [Pathway 2 functions follow below]
+# compute_marginal_resistance()/compute_pairwise_coresistance()/
+# compute_resistance_profiles() is a second, independent implementation of the
+# Pathway 1 QP, taking isolate-level input; only bootstrap_profiles_convex()
+# uses it. Merging the two needs numerical equivalence tests first -- neither
+# path has test coverage.
 
 
-# ---------------------------------------------------------------------------
 # Internal helpers
-# ---------------------------------------------------------------------------
 
 .null_default <- function(x, default) if (is.null(x)) default else x
 
@@ -69,9 +40,9 @@
 # Resolve antibiotic-class and metadata columns from a wide data frame.
 # Used by compute_marginals_from_data() and compute_pairwise_from_data().
 .resolve_class_cols <- function(data_wide, col_map, panel_map, outcome_col = NULL) {
-  pathogen_col  <- .null_default(col_map$pathogen_col,  "pathogen")
+  pathogen_col <- .null_default(col_map$pathogen_col, "pathogen")
   geography_col <- .null_default(col_map$geography_col, "state")
-  isolate_col   <- .null_default(col_map$isolate_col,   "isolate_id")
+  isolate_col <- .null_default(col_map$isolate_col, "isolate_id")
 
   meta_cols <- unique(c(
     isolate_col, pathogen_col,
@@ -79,7 +50,7 @@
     col_map$specimen_col, col_map$age_col, col_map$dob_col,
     col_map$location_col, outcome_col, "year"
   ))
-  meta_cols  <- meta_cols[!is.null(meta_cols) & meta_cols %in% names(data_wide)]
+  meta_cols <- meta_cols[!is.null(meta_cols) & meta_cols %in% names(data_wide)]
   class_cols <- setdiff(names(data_wide), meta_cols)
   class_cols <- class_cols[class_cols %in% unlist(panel_map)]
 
@@ -95,31 +66,33 @@
 # Build the stratification column vector from stratify_by flags.
 # Used by compute_marginals_from_data() and compute_pairwise_from_data().
 .build_strat_cols <- function(stratify_by = NULL,
-                              outcome_col  = NULL,
+                              outcome_col = NULL,
                               geography_col = "state",
                               data) {
   strat_cols <- character(0)
-  if ("geography" %in% stratify_by && geography_col %in% names(data))
+  if ("geography" %in% stratify_by && geography_col %in% names(data)) {
     strat_cols <- c(strat_cols, geography_col)
-  if ("year" %in% stratify_by && "year" %in% names(data))
+  }
+  if ("year" %in% stratify_by && "year" %in% names(data)) {
     strat_cols <- c(strat_cols, "year")
-  if (!is.null(outcome_col) && outcome_col %in% names(data))
+  }
+  if (!is.null(outcome_col) && outcome_col %in% names(data)) {
     strat_cols <- c(strat_cols, outcome_col)
+  }
   unique(strat_cols)
 }
 
 # Validate that paired arguments are both supplied or both NULL.
 .check_paired_args <- function(col, val, col_arg, val_arg) {
-  if (xor(is.null(col), is.null(val)))
-    stop(sprintf("Both %s and %s must be provided together, or both NULL.",
-                 col_arg, val_arg), call. = FALSE)
+  if (xor(is.null(col), is.null(val))) {
+    stop(sprintf(
+      "Both %s and %s must be provided together, or both NULL.",
+      col_arg, val_arg
+    ), call. = FALSE)
+  }
   invisible(TRUE)
 }
 
-
-# ---------------------------------------------------------------------------
-# validate_profile_inputs()
-# ---------------------------------------------------------------------------
 
 #' Validate Inputs for Resistance Profile Estimation (Pathway 1)
 #'
@@ -178,64 +151,62 @@
 #' @examples
 #' \dontrun{
 #' report <- validate_profile_inputs(
-#'   data        = my_ast_data,
-#'   col_map     = list(
-#'     isolate_col   = "isolate_id",
-#'     pathogen_col  = "organism",
-#'     ast_col       = "result",
-#'     patient_col   = "pid",
-#'     date_col      = "culture_date",
+#'   data = my_ast_data,
+#'   col_map = list(
+#'     isolate_col = "isolate_id",
+#'     pathogen_col = "organism",
+#'     ast_col = "result",
+#'     patient_col = "pid",
+#'     date_col = "culture_date",
 #'     geography_col = "state",
-#'     specimen_col  = "specimen",
-#'     age_col       = "age_years",
-#'     dob_col       = NULL,
+#'     specimen_col = "specimen",
+#'     age_col = "age_years",
+#'     dob_col = NULL,
 #'     antibiotic_col = "drug_name",
-#'     class_col     = NULL,
-#'     location_col  = "ward",
-#'     outcome_col   = "discharge_status"
+#'     class_col = NULL,
+#'     location_col = "ward",
+#'     outcome_col = "discharge_status"
 #'   ),
 #'   stratify_by = c("geography", "year"),
 #'   outcome_col = "discharge_status"
 #' )
 #' }
 validate_profile_inputs <- function(
-    data,
-    col_map = list(
-      isolate_col    = "isolate_id",
-      pathogen_col   = "pathogen",
-      ast_col        = "ast_value",
-      patient_col    = "patient_id",
-      date_col       = "date_of_culture",
-      geography_col  = "state",
-      specimen_col   = "specimen_type",
-      age_col        = "age",
-      dob_col        = "dob",
-      antibiotic_col = "antibiotic_name",
-      class_col      = "antibiotic_class",
-      location_col   = NULL,
-      outcome_col    = NULL
-    ),
-    stratify_by = NULL,
-    outcome_col = NULL
+  data,
+  col_map = list(
+    isolate_col    = "isolate_id",
+    pathogen_col   = "pathogen",
+    ast_col        = "ast_value",
+    patient_col    = "patient_id",
+    date_col       = "date_of_culture",
+    geography_col  = "state",
+    specimen_col   = "specimen_type",
+    age_col        = "age",
+    dob_col        = "dob",
+    antibiotic_col = "antibiotic_name",
+    class_col      = "antibiotic_class",
+    location_col   = NULL,
+    outcome_col    = NULL
+  ),
+  stratify_by = NULL,
+  outcome_col = NULL
 ) {
   if (!is.data.frame(data)) stop("`data` must be a data frame.")
-  if (nrow(data) == 0L)    stop("`data` has zero rows.")
+  if (nrow(data) == 0L) stop("`data` has zero rows.")
 
   results <- list()
 
-  # ------------------------------------------------------------------
   # 1. Format detection
-  # ------------------------------------------------------------------
   abx_col <- .null_default(col_map$antibiotic_col, "antibiotic_name")
-  iso_col <- .null_default(col_map$isolate_col,    "isolate_id")
+  iso_col <- .null_default(col_map$isolate_col, "isolate_id")
 
-  has_abx_col   <- abx_col %in% names(data)
-  has_iso_col   <- iso_col %in% names(data)
+  has_abx_col <- abx_col %in% names(data)
+  has_iso_col <- iso_col %in% names(data)
 
   if (has_abx_col && has_iso_col) {
     # Long format: each isolate appears in multiple rows (one per antibiotic)
     max_rows_per_iso <- max(table(data[[iso_col]]), na.rm = TRUE)
-    detected_format  <- if (max_rows_per_iso > 1L) "long" else "wide"
+    detected_format <- if (max_rows_per_iso > 1L) "long" else "wide"
   } else if (has_abx_col) {
     detected_format <- "long"
   } else {
@@ -244,21 +215,21 @@ validate_profile_inputs <- function(
 
   results <- .add_check(
     results, "format_detection", "pass",
-    sprintf("Data detected as '%s' format. %d rows x %d columns.",
-            detected_format, nrow(data), ncol(data))
+    sprintf(
+      "Data detected as '%s' format. %d rows x %d columns.",
+      detected_format, nrow(data), ncol(data)
+    )
   )
 
-  # ------------------------------------------------------------------
   # 2. Mandatory columns (all formats)
-  # ------------------------------------------------------------------
   mandatory_always <- c(
-    isolate_col   = .null_default(col_map$isolate_col,   "isolate_id"),
-    pathogen_col  = .null_default(col_map$pathogen_col,  "pathogen"),
-    ast_col       = .null_default(col_map$ast_col,       "ast_value"),
-    patient_col   = .null_default(col_map$patient_col,   "patient_id"),
-    date_col      = .null_default(col_map$date_col,      "date_of_culture"),
+    isolate_col   = .null_default(col_map$isolate_col, "isolate_id"),
+    pathogen_col  = .null_default(col_map$pathogen_col, "pathogen"),
+    ast_col       = .null_default(col_map$ast_col, "ast_value"),
+    patient_col   = .null_default(col_map$patient_col, "patient_id"),
+    date_col      = .null_default(col_map$date_col, "date_of_culture"),
     geography_col = .null_default(col_map$geography_col, "state"),
-    specimen_col  = .null_default(col_map$specimen_col,  "specimen_type")
+    specimen_col  = .null_default(col_map$specimen_col, "specimen_type")
   )
 
   for (role in names(mandatory_always)) {
@@ -278,9 +249,7 @@ validate_profile_inputs <- function(
     }
   }
 
-  # ------------------------------------------------------------------
   # 3. Mandatory in long format: antibiotic_name column
-  # ------------------------------------------------------------------
   if (detected_format == "long") {
     if (!has_abx_col) {
       results <- .add_check(
@@ -300,9 +269,7 @@ validate_profile_inputs <- function(
     }
   }
 
-  # ------------------------------------------------------------------
   # 4. Age OR DOB -- at least one mandatory
-  # ------------------------------------------------------------------
   age_col <- col_map$age_col
   dob_col <- col_map$dob_col
   has_age <- !is.null(age_col) && age_col %in% names(data)
@@ -318,8 +285,10 @@ validate_profile_inputs <- function(
     )
   } else {
     found_desc <- paste(
-      c(if (has_age) sprintf("age ('%s')", age_col),
-        if (has_dob) sprintf("dob ('%s')", dob_col)),
+      c(
+        if (has_age) sprintf("age ('%s')", age_col),
+        if (has_dob) sprintf("dob ('%s')", dob_col)
+      ),
       collapse = " and "
     )
     results <- .add_check(
@@ -328,13 +297,11 @@ validate_profile_inputs <- function(
     )
   }
 
-  # ------------------------------------------------------------------
   # 5. Optional columns -- warn but do not stop
-  # ------------------------------------------------------------------
   eff_outcome_col <- .null_default(outcome_col, col_map$outcome_col)
 
   optional_checks <- list(
-    class_col    = list(
+    class_col = list(
       col = col_map$class_col,
       msg_absent = "Antibiotic class column '%s' absent. Will derive classes from antibiotic names via WHO AWaRe reference."
     ),
@@ -342,7 +309,7 @@ validate_profile_inputs <- function(
       col = col_map$location_col,
       msg_absent = "Location column '%s' absent. Ward/ICU/OPD subgroup outputs will not be available."
     ),
-    outcome_col  = list(
+    outcome_col = list(
       col = eff_outcome_col,
       msg_absent = "Outcome column '%s' absent. Outcome stratification will not be possible."
     )
@@ -366,14 +333,12 @@ validate_profile_inputs <- function(
     }
   }
 
-  # ------------------------------------------------------------------
   # 6. AST value content check
-  # ------------------------------------------------------------------
   ast_col_name <- .null_default(col_map$ast_col, "ast_value")
   if (ast_col_name %in% names(data)) {
-    ast_raw   <- toupper(trimws(as.character(data[[ast_col_name]])))
+    ast_raw <- toupper(trimws(as.character(data[[ast_col_name]])))
     valid_sir <- c("S", "I", "R")
-    n_valid   <- sum(ast_raw %in% valid_sir, na.rm = TRUE)
+    n_valid <- sum(ast_raw %in% valid_sir, na.rm = TRUE)
     n_missing <- sum(is.na(data[[ast_col_name]]))
     n_invalid <- nrow(data) - n_valid - n_missing
     pct_valid <- 100 * n_valid / nrow(data)
@@ -389,16 +354,16 @@ validate_profile_inputs <- function(
     results <- .add_check(results, "ast_value_content", check_status, check_msg, n_invalid)
   }
 
-  # ------------------------------------------------------------------
   # 7. Isolate ID uniqueness (wide format only)
-  # ------------------------------------------------------------------
   if (detected_format == "wide" && has_iso_col) {
     n_dup <- sum(duplicated(data[[iso_col]], incomparables = NA))
     if (n_dup > 0L) {
       results <- .add_check(
         results, "isolate_id_uniqueness", "warn",
-        sprintf("%d duplicate isolate IDs in '%s' (wide format expects one row per isolate).",
-                n_dup, iso_col),
+        sprintf(
+          "%d duplicate isolate IDs in '%s' (wide format expects one row per isolate).",
+          n_dup, iso_col
+        ),
         n_dup
       )
     } else {
@@ -409,9 +374,7 @@ validate_profile_inputs <- function(
     }
   }
 
-  # ------------------------------------------------------------------
   # 8. Stratification-specific checks
-  # ------------------------------------------------------------------
   # outcome_col is a separate split variable, not a stratify_by dimension.
   valid_strat <- c("geography", "year")
   if (!is.null(stratify_by)) {
@@ -439,12 +402,16 @@ validate_profile_inputs <- function(
   # Separate check: outcome column required when outcome_col is supplied
   if (!is.null(eff_outcome_col)) {
     if (!eff_outcome_col %in% names(data)) {
-      results <- .add_check(results, "outcome_col", "fail",
-        sprintf("outcome_col '%s' requested but not found in data.", eff_outcome_col))
+      results <- .add_check(
+        results, "outcome_col", "fail",
+        sprintf("outcome_col '%s' requested but not found in data.", eff_outcome_col)
+      )
     } else {
       n_na_out <- sum(is.na(data[[eff_outcome_col]]))
-      results <- .add_check(results, "outcome_col", "pass",
-        sprintf("Outcome column '%s' found. %d NA value(s).", eff_outcome_col, n_na_out), n_na_out)
+      results <- .add_check(
+        results, "outcome_col", "pass",
+        sprintf("Outcome column '%s' found. %d NA value(s).", eff_outcome_col, n_na_out), n_na_out
+      )
     }
   }
 
@@ -457,21 +424,23 @@ validate_profile_inputs <- function(
       )
     } else {
       n_strata <- dplyr::n_distinct(data[[col]], na.rm = TRUE)
-      extra    <- if (dim == "year")
+      extra <- if (dim == "year") {
         " Year will be extracted as integer from this column."
-      else ""
+      } else {
+        ""
+      }
       results <- .add_check(
         results, paste0("stratify_", dim), "pass",
-        sprintf("Stratification by %s: column '%s' found with %d unique value(s).%s",
-                dim, col, n_strata, extra),
+        sprintf(
+          "Stratification by %s: column '%s' found with %d unique value(s).%s",
+          dim, col, n_strata, extra
+        ),
         n_strata
       )
     }
   }
 
-  # ------------------------------------------------------------------
   # 9. Collate, report, and stop/warn
-  # ------------------------------------------------------------------
   results_tbl <- dplyr::bind_rows(results)
   n_fail <- sum(results_tbl$status == "fail")
   n_warn <- sum(results_tbl$status == "warn")
@@ -490,8 +459,10 @@ validate_profile_inputs <- function(
   if (n_fail > 0L) {
     fail_msgs <- results_tbl$message[results_tbl$status == "fail"]
     stop(
-      sprintf("%d mandatory check(s) failed:\n%s",
-              n_fail, paste(sprintf("  - %s", fail_msgs), collapse = "\n")),
+      sprintf(
+        "%d mandatory check(s) failed:\n%s",
+        n_fail, paste(sprintf("  - %s", fail_msgs), collapse = "\n")
+      ),
       call. = FALSE
     )
   }
@@ -500,10 +471,6 @@ validate_profile_inputs <- function(
   invisible(results_tbl)
 }
 
-
-# ---------------------------------------------------------------------------
-# preprocess_for_profiles()
-# ---------------------------------------------------------------------------
 
 #' Preprocess AST Data for Resistance Profile Estimation (Pathway 1)
 #'
@@ -580,19 +547,19 @@ validate_profile_inputs <- function(
 #' @examples
 #' \dontrun{
 #' result <- preprocess_for_profiles(
-#'   data        = raw_ast,
-#'   col_map     = list(
-#'     isolate_col   = "isolate_id",
-#'     pathogen_col  = "organism",
-#'     ast_col       = "result",
-#'     patient_col   = "pid",
-#'     date_col      = "culture_date",
+#'   data = raw_ast,
+#'   col_map = list(
+#'     isolate_col = "isolate_id",
+#'     pathogen_col = "organism",
+#'     ast_col = "result",
+#'     patient_col = "pid",
+#'     date_col = "culture_date",
 #'     geography_col = "state",
-#'     specimen_col  = "specimen",
-#'     age_col       = "age",
+#'     specimen_col = "specimen",
+#'     age_col = "age",
 #'     antibiotic_col = "drug_name"
 #'   ),
-#'   panel_map   = list(
+#'   panel_map = list(
 #'     "Klebsiella pneumoniae" = c("3GC", "Carbapenems", "Fluoroquinolones"),
 #'     "Escherichia coli"      = c("3GC", "Fluoroquinolones", "Aminoglycosides")
 #'   ),
@@ -600,36 +567,33 @@ validate_profile_inputs <- function(
 #'   outcome_col = "final_outcome"
 #' )
 #'
-#' result$data_wide           # ready for compute_marginals_from_data()
-#' result$preprocessing_log   # step-by-step row counts
-#' result$panel_exclusions    # classes dropped per organism
+#' result$data_wide # ready for compute_marginals_from_data()
+#' result$preprocessing_log # step-by-step row counts
+#' result$panel_exclusions # classes dropped per organism
 #' }
 preprocess_for_profiles <- function(
-    data,
-    col_map = list(
-      isolate_col    = "isolate_id",
-      pathogen_col   = "pathogen",
-      ast_col        = "ast_value",
-      patient_col    = "patient_id",
-      date_col       = "date_of_culture",
-      geography_col  = "state",
-      specimen_col   = "specimen_type",
-      age_col        = "age",
-      dob_col        = "dob",
-      antibiotic_col = "antibiotic_name",
-      class_col      = "antibiotic_class",
-      location_col   = NULL,
-      outcome_col    = NULL
-    ),
-    panel_map,
-    stratify_by = NULL,
-    outcome_col = NULL,
-    who_table   = NULL
+  data,
+  col_map = list(
+    isolate_col    = "isolate_id",
+    pathogen_col   = "pathogen",
+    ast_col        = "ast_value",
+    patient_col    = "patient_id",
+    date_col       = "date_of_culture",
+    geography_col  = "state",
+    specimen_col   = "specimen_type",
+    age_col        = "age",
+    dob_col        = "dob",
+    antibiotic_col = "antibiotic_name",
+    class_col      = "antibiotic_class",
+    location_col   = NULL,
+    outcome_col    = NULL
+  ),
+  panel_map,
+  stratify_by = NULL,
+  outcome_col = NULL,
+  who_table = NULL
 ) {
-
-  # ------------------------------------------------------------------
   # Argument checks
-  # ------------------------------------------------------------------
   if (missing(panel_map) || is.null(panel_map) || length(panel_map) == 0L) {
     stop(
       "`panel_map` is mandatory. Supply a named list mapping each pathogen ",
@@ -640,31 +604,30 @@ preprocess_for_profiles <- function(
   }
   if (!is.list(panel_map) || is.null(names(panel_map))) {
     stop("`panel_map` must be a named list (pathogen names as names, class vectors as values).",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   eff_outcome_col <- .null_default(outcome_col, col_map$outcome_col)
 
   # Resolve column names with defaults
-  isolate_col   <- .null_default(col_map$isolate_col,    "isolate_id")
-  pathogen_col  <- .null_default(col_map$pathogen_col,   "pathogen")
-  ast_col       <- .null_default(col_map$ast_col,        "ast_value")
-  patient_col   <- .null_default(col_map$patient_col,    "patient_id")
-  date_col      <- .null_default(col_map$date_col,       "date_of_culture")
-  geography_col <- .null_default(col_map$geography_col,  "state")
-  specimen_col  <- .null_default(col_map$specimen_col,   "specimen_type")
-  age_col       <- col_map$age_col
-  dob_col       <- col_map$dob_col
+  isolate_col <- .null_default(col_map$isolate_col, "isolate_id")
+  pathogen_col <- .null_default(col_map$pathogen_col, "pathogen")
+  ast_col <- .null_default(col_map$ast_col, "ast_value")
+  patient_col <- .null_default(col_map$patient_col, "patient_id")
+  date_col <- .null_default(col_map$date_col, "date_of_culture")
+  geography_col <- .null_default(col_map$geography_col, "state")
+  specimen_col <- .null_default(col_map$specimen_col, "specimen_type")
+  age_col <- col_map$age_col
+  dob_col <- col_map$dob_col
   antibiotic_col <- .null_default(col_map$antibiotic_col, "antibiotic_name")
-  class_col     <- col_map$class_col
-  location_col  <- col_map$location_col
+  class_col <- col_map$class_col
+  location_col <- col_map$location_col
 
-  plog       <- list()
+  plog <- list()
   exclusions <- list()
 
-  # ------------------------------------------------------------------
   # Step 0: Input validation
-  # ------------------------------------------------------------------
   message("\n[preprocess_for_profiles] Step 0: Validating inputs...")
   validation_report <- validate_profile_inputs(
     data        = data,
@@ -673,12 +636,12 @@ preprocess_for_profiles <- function(
     outcome_col = eff_outcome_col
   )
   detected_format <- attr(validation_report, "detected_format")
-  plog <- .log_step(plog, "0_validate", nrow(data), nrow(data),
-                    sprintf("Validation passed. Format: %s.", detected_format))
+  plog <- .log_step(
+    plog, "0_validate", nrow(data), nrow(data),
+    sprintf("Validation passed. Format: %s.", detected_format)
+  )
 
-  # ------------------------------------------------------------------
   # Step 1: Wide -> long conversion
-  # ------------------------------------------------------------------
   message("\n[preprocess_for_profiles] Step 1: Format handling...")
   n_in <- nrow(data)
 
@@ -690,32 +653,33 @@ preprocess_for_profiles <- function(
       geography_col, specimen_col,
       age_col, dob_col, location_col, eff_outcome_col
     ))
-    known_meta    <- known_meta[!is.null(known_meta) & known_meta %in% names(data)]
+    known_meta <- known_meta[!is.null(known_meta) & known_meta %in% names(data)]
     candidate_abx <- setdiff(names(data), known_meta)
 
     if (length(candidate_abx) == 0L) {
       stop("Wide format detected but no antibiotic/class columns found after excluding metadata columns.",
-           call. = FALSE)
+        call. = FALSE
+      )
     }
     message(sprintf("  Wide -> long: pivoting %d antibiotic column(s).", length(candidate_abx)))
 
     data <- prep_pivot_ast_wide_to_long(
-      data             = data,
-      antibiotic_cols  = candidate_abx,
-      id_cols          = known_meta,
-      antibiotic_name_col  = antibiotic_col,
+      data = data,
+      antibiotic_cols = candidate_abx,
+      id_cols = known_meta,
+      antibiotic_name_col = antibiotic_col,
       antibiotic_value_col = ast_col,
-      remove_missing   = FALSE   # keep NA rows; will be handled in harmonisation
+      remove_missing = FALSE # keep NA rows; will be handled in harmonisation
     )
-    plog <- .log_step(plog, "1_wide_to_long", n_in, nrow(data),
-                      sprintf("Wide -> long: pivoted %d antibiotic column(s).", length(candidate_abx)))
+    plog <- .log_step(
+      plog, "1_wide_to_long", n_in, nrow(data),
+      sprintf("Wide -> long: pivoted %d antibiotic column(s).", length(candidate_abx))
+    )
   } else {
     plog <- .log_step(plog, "1_format", n_in, nrow(data), "Long format confirmed. No pivot needed.")
   }
 
-  # ------------------------------------------------------------------
   # Step 2: AST harmonisation
-  # ------------------------------------------------------------------
   message("\n[preprocess_for_profiles] Step 2: Harmonising AST values...")
   n_in <- nrow(data)
 
@@ -730,12 +694,12 @@ preprocess_for_profiles <- function(
   )
   # After harmonisation, the clean values are in ast_value_harmonized
   harmonised_ast_col <- "ast_value_harmonized"
-  plog <- .log_step(plog, "2_harmonise_ast", n_in, nrow(data),
-                    sprintf("AST values harmonised into '%s'. I values recoded.", harmonised_ast_col))
+  plog <- .log_step(
+    plog, "2_harmonise_ast", n_in, nrow(data),
+    sprintf("AST values harmonised into '%s'. I values recoded.", harmonised_ast_col)
+  )
 
-  # ------------------------------------------------------------------
   # Step 3: Antibiotic name standardisation + class assignment
-  # ------------------------------------------------------------------
   message("\n[preprocess_for_profiles] Step 3: Antibiotic standardisation and class assignment...")
   n_in <- nrow(data)
 
@@ -754,8 +718,10 @@ preprocess_for_profiles <- function(
       )
       # prep_standardize_antibiotics adds antibiotic_normalized and antibiotic_class
       class_col <- "antibiotic_class"
-      plog <- .log_step(plog, "3a_standardize_abx", n_in, nrow(data),
-                        "Antibiotic names standardised via WHO AWaRe; antibiotic_class derived.")
+      plog <- .log_step(
+        plog, "3a_standardize_abx", n_in, nrow(data),
+        "Antibiotic names standardised via WHO AWaRe; antibiotic_class derived."
+      )
     } else {
       stop(sprintf(
         "No antibiotic class column ('%s') and no antibiotic name column ('%s') found. Cannot derive classes.",
@@ -763,8 +729,10 @@ preprocess_for_profiles <- function(
       ), call. = FALSE)
     }
   } else {
-    plog <- .log_step(plog, "3a_class_col", n_in, nrow(data),
-                      sprintf("Antibiotic class column '%s' already present. Standardisation skipped.", class_col))
+    plog <- .log_step(
+      plog, "3a_class_col", n_in, nrow(data),
+      sprintf("Antibiotic class column '%s' already present. Standardisation skipped.", class_col)
+    )
   }
 
   # Ensure class_col is set
@@ -773,14 +741,14 @@ preprocess_for_profiles <- function(
     class_col <- "antibiotic_class"
   }
 
-  plog <- .log_step(plog, "3b_class_assignment", n_in, nrow(data),
-                    sprintf("Antibiotic class column resolved to '%s'.", class_col))
+  plog <- .log_step(
+    plog, "3b_class_assignment", n_in, nrow(data),
+    sprintf("Antibiotic class column resolved to '%s'.", class_col)
+  )
 
-  # ------------------------------------------------------------------
   # Step 4: Class-level collapse
   #   Rule: any R in class => class = R   (ertapenem NA + imipenem S + meropenem R -> Carbapenems R)
   #   Counting unit: isolate_id (not patient_id)
-  # ------------------------------------------------------------------
   message("\n[preprocess_for_profiles] Step 4: Collapsing to class level (any R -> class R)...")
   n_in <- nrow(data)
 
@@ -788,10 +756,11 @@ preprocess_for_profiles <- function(
   # for the drugs_tested summary column. Ensure it exists so the call never
   # errors when the user supplied antibiotic_class directly (skipping Step 3).
   if (!"antibiotic_normalized" %in% names(data)) {
-    data$antibiotic_normalized <- if (antibiotic_col %in% names(data))
+    data$antibiotic_normalized <- if (antibiotic_col %in% names(data)) {
       data[[antibiotic_col]]
-    else
+    } else {
       NA_character_
+    }
   }
 
   # Determine which metadata columns to carry through collapse
@@ -804,36 +773,40 @@ preprocess_for_profiles <- function(
   carry_cols <- carry_cols[!is.null(carry_cols) & carry_cols %in% names(data)]
   # Remove columns that are already part of the grouping keys in collapse
   grouping_keys <- c(isolate_col, pathogen_col, class_col)
-  carry_cols    <- setdiff(carry_cols, grouping_keys)
+  carry_cols <- setdiff(carry_cols, grouping_keys)
 
   data_collapsed <- prep_collapse_class_level(
-    data             = data,
-    event_col        = isolate_col,      # isolate_id is the counting unit
-    organism_col     = pathogen_col,
-    class_col        = class_col,
+    data = data,
+    event_col = isolate_col, # isolate_id is the counting unit
+    organism_col = pathogen_col,
+    class_col = class_col,
     susceptibility_col = harmonised_ast_col,
-    extra_cols       = if (length(carry_cols) > 0L) carry_cols else NULL
+    extra_cols = if (length(carry_cols) > 0L) carry_cols else NULL
   )
 
-  plog <- .log_step(plog, "4_collapse_class", n_in, nrow(data_collapsed),
-                    sprintf(
-                      "Class-level collapse: %d drug rows -> %d isolate-class rows. Unit: %s.",
-                      n_in, nrow(data_collapsed), isolate_col
-                    ))
+  plog <- .log_step(
+    plog, "4_collapse_class", n_in, nrow(data_collapsed),
+    sprintf(
+      "Class-level collapse: %d drug rows -> %d isolate-class rows. Unit: %s.",
+      n_in, nrow(data_collapsed), isolate_col
+    )
+  )
   data <- data_collapsed
 
-  # ------------------------------------------------------------------
   # Step 4b: Isolate deduplication
   #   Same isolate_id x antibiotic combination can appear more than once
   #   (e.g. duplicate data entry, multi-join artefact). Keep the worst
   #   phenotype per isolate x drug (R > I > S > NA).
-  # ------------------------------------------------------------------
   message("\n[preprocess_for_profiles] Step 4b: Deduplicating isolate x drug rows...")
   n_in <- nrow(data)
 
-  abx_dedup_col <- if ("antibiotic_normalized" %in% names(data)) "antibiotic_normalized"
-                   else if (antibiotic_col %in% names(data))      antibiotic_col
-                   else NULL
+  abx_dedup_col <- if ("antibiotic_normalized" %in% names(data)) {
+    "antibiotic_normalized"
+  } else if (antibiotic_col %in% names(data)) {
+    antibiotic_col
+  } else {
+    NULL
+  }
 
   if (!is.null(abx_dedup_col)) {
     sir_rank <- c("R" = 3L, "I" = 2L, "S" = 1L)
@@ -850,46 +823,53 @@ preprocess_for_profiles <- function(
       dplyr::ungroup() %>%
       dplyr::select(-.sir_rank)
     n_removed <- n_in - nrow(data)
-    plog <- .log_step(plog, "4b_dedup", n_in, nrow(data),
-                      sprintf("Dedup: %d duplicate isolate-drug row(s) removed (kept worst phenotype).",
-                              n_removed))
+    plog <- .log_step(
+      plog, "4b_dedup", n_in, nrow(data),
+      sprintf(
+        "Dedup: %d duplicate isolate-drug row(s) removed (kept worst phenotype).",
+        n_removed
+      )
+    )
   } else {
     plog <- .log_step(plog, "4b_dedup", n_in, nrow(data),
-                      "Dedup skipped: no antibiotic name column identified.", status = "warn")
+      "Dedup skipped: no antibiotic name column identified.",
+      status = "warn"
+    )
   }
 
-  # ------------------------------------------------------------------
   # Step 5: Year derivation -- always performed when date_col is present.
   #   Year is always added to the output so downstream stratification
   #   by year does not require re-running preprocessing.
-  # ------------------------------------------------------------------
   message("\n[preprocess_for_profiles] Step 5: Deriving year from date column...")
   n_in <- nrow(data)
 
   if (date_col %in% names(data)) {
     parsed_dates <- suppressWarnings(as.Date(as.character(data[[date_col]])))
-    data$year    <- as.integer(format(parsed_dates, "%Y"))
+    data$year <- as.integer(format(parsed_dates, "%Y"))
     n_missing_yr <- sum(is.na(data$year))
-    plog <- .log_step(plog, "5_year_derivation", n_in, nrow(data),
-                      sprintf("Year derived from '%s'. %d missing year value(s).", date_col, n_missing_yr))
+    plog <- .log_step(
+      plog, "5_year_derivation", n_in, nrow(data),
+      sprintf("Year derived from '%s'. %d missing year value(s).", date_col, n_missing_yr)
+    )
   } else {
     warning(sprintf("Date column '%s' not found. 'year' column not added.", date_col),
-            call. = FALSE)
+      call. = FALSE
+    )
     plog <- .log_step(plog, "5_year_derivation", n_in, nrow(data),
-                      sprintf("Skipped: date column '%s' not present.", date_col), status = "warn")
+      sprintf("Skipped: date column '%s' not present.", date_col),
+      status = "warn"
+    )
   }
 
-  # ------------------------------------------------------------------
   # Step 6: Panel filter
   #   For each pathogen, retain only classes listed in panel_map.
   #   Everything else is logged as excluded with reason_code.
-  # ------------------------------------------------------------------
   message("\n[preprocess_for_profiles] Step 6: Applying organism-specific class panels...")
   n_in <- nrow(data)
 
   panel_tbl <- dplyr::bind_rows(lapply(names(panel_map), function(org) {
     tibble::tibble(
-      !!pathogen_col   := org,
+      !!pathogen_col := org,
       antibiotic_class = panel_map[[org]]
     )
   }))
@@ -908,7 +888,7 @@ preprocess_for_profiles <- function(
   }
 
   # Pathogens not in panel_map at all -- flag but keep (no panel defined for them)
-  pathogens_in_data  <- unique(data[[pathogen_col]])
+  pathogens_in_data <- unique(data[[pathogen_col]])
   pathogens_no_panel <- setdiff(pathogens_in_data, names(panel_map))
   if (length(pathogens_no_panel) > 0L) {
     warning(sprintf(
@@ -917,10 +897,10 @@ preprocess_for_profiles <- function(
       paste(head(pathogens_no_panel, 5L), collapse = ", ")
     ), call. = FALSE)
     exclusions <- c(exclusions, list(tibble::tibble(
-      !!pathogen_col  := pathogens_no_panel,
+      !!pathogen_col := pathogens_no_panel,
       antibiotic_class = NA_character_,
-      reason_code     = "no_panel_defined",
-      reason_text     = "Pathogen has no entry in panel_map; excluded from profiling."
+      reason_code = "no_panel_defined",
+      reason_text = "Pathogen has no entry in panel_map; excluded from profiling."
     )))
   }
 
@@ -950,15 +930,17 @@ preprocess_for_profiles <- function(
   # Apply filter: keep only panel-matching rows
   data_filtered <- dplyr::semi_join(data, panel_tbl, by = c(pathogen_col, "antibiotic_class"))
 
-  plog <- .log_step(plog, "6_panel_filter", n_in, nrow(data_filtered),
-                    sprintf("Panel filter: %d -> %d rows. %d exclusion(s) logged.",
-                            n_in, nrow(data_filtered), nrow(excluded_rows)))
+  plog <- .log_step(
+    plog, "6_panel_filter", n_in, nrow(data_filtered),
+    sprintf(
+      "Panel filter: %d -> %d rows. %d exclusion(s) logged.",
+      n_in, nrow(data_filtered), nrow(excluded_rows)
+    )
+  )
   data <- data_filtered
 
-  # ------------------------------------------------------------------
   # Step 7: Long -> wide with antibiotic classes as columns
   #   One row per isolate_id. Class columns: S / R / NA.
-  # ------------------------------------------------------------------
   message("\n[preprocess_for_profiles] Step 7: Pivoting to wide format (classes as columns)...")
   n_in <- nrow(data)
 
@@ -971,30 +953,32 @@ preprocess_for_profiles <- function(
   wide_keep_cols <- wide_keep_cols[!is.null(wide_keep_cols) & wide_keep_cols %in% names(data)]
 
   data_wide <- prep_create_wide_ast_matrix(
-    data             = data,
-    event_col        = isolate_col,
-    antibiotic_col   = "antibiotic_class",
+    data = data,
+    event_col = isolate_col,
+    antibiotic_col = "antibiotic_class",
     susceptibility_col = "class_resistance",
-    prefix           = "",                    # class names become column names directly
-    keep_cols        = wide_keep_cols
+    prefix = "", # class names become column names directly
+    keep_cols = wide_keep_cols
   )
 
   # Sanitise column names (prep_create_wide_ast_matrix already does this, but be explicit)
   names(data_wide) <- gsub("[^A-Za-z0-9_]", "_", names(data_wide))
-  names(data_wide) <- gsub("_{2,}", "_",          names(data_wide))
+  names(data_wide) <- gsub("_{2,}", "_", names(data_wide))
 
-  plog <- .log_step(plog, "7_wide_pivot", n_in, nrow(data_wide),
-                    sprintf("Long -> wide: %d isolates x %d class column(s).",
-                            nrow(data_wide),
-                            ncol(data_wide) - length(wide_keep_cols) - 1L))
+  plog <- .log_step(
+    plog, "7_wide_pivot", n_in, nrow(data_wide),
+    sprintf(
+      "Long -> wide: %d isolates x %d class column(s).",
+      nrow(data_wide),
+      ncol(data_wide) - length(wide_keep_cols) - 1L
+    )
+  )
 
-  # ------------------------------------------------------------------
   # Collate outputs
-  # ------------------------------------------------------------------
   col_map_resolved <- col_map
   col_map_resolved$ast_col_harmonised <- harmonised_ast_col
-  col_map_resolved$class_col          <- "antibiotic_class"
-  col_map_resolved$outcome_col        <- eff_outcome_col
+  col_map_resolved$class_col <- "antibiotic_class"
+  col_map_resolved$outcome_col <- eff_outcome_col
 
   exclusions_tbl <- if (length(exclusions) > 0L) {
     dplyr::bind_rows(exclusions)
@@ -1014,18 +998,14 @@ preprocess_for_profiles <- function(
   ))
 
   list(
-    data_wide        = tibble::as_tibble(data_wide),
+    data_wide = tibble::as_tibble(data_wide),
     preprocessing_log = log_tbl,
     panel_exclusions = exclusions_tbl,
     col_map_resolved = col_map_resolved,
-    detected_format  = detected_format
+    detected_format = detected_format
   )
 }
 
-
-# ---------------------------------------------------------------------------
-# check_profile_constraints()
-# ---------------------------------------------------------------------------
 
 #' Formally Check Resistance Profile Probability Constraints
 #'
@@ -1096,15 +1076,15 @@ preprocess_for_profiles <- function(
 #'
 #' @examples
 #' \dontrun{
-#' marg    <- compute_marginal_resistance(amr_clean)
-#' co_res  <- compute_pairwise_coresistance(marg)
-#' rp      <- compute_resistance_profiles(marg, co_res)
+#' marg <- compute_marginal_resistance(amr_clean)
+#' co_res <- compute_pairwise_coresistance(marg)
+#' rp <- compute_resistance_profiles(marg, co_res)
 #'
 #' # Using stored constraint residuals only
-#' checks  <- check_profile_constraints(rp)
+#' checks <- check_profile_constraints(rp)
 #'
 #' # Full re-verification with original rates
-#' checks  <- check_profile_constraints(
+#' checks <- check_profile_constraints(
 #'   rp,
 #'   marginals = marg$marginal,
 #'   pairwise  = NULL,
@@ -1115,20 +1095,21 @@ preprocess_for_profiles <- function(
 #' checks[!checks$pass, ]
 #' }
 check_profile_constraints <- function(
-    profiles_output,
-    marginals        = NULL,
-    pairwise         = NULL,
-    tolerance        = 1e-6,
-    pathogen_col     = "pathogen",
-    class_col        = "antibiotic_class",
-    rate_col         = "marginal_resistance",
-    class1_col       = "antibiotic_class_1",
-    class2_col       = "antibiotic_class_2",
-    pairwise_rate_col = "pairwise_resistance_prevalence"
+  profiles_output,
+  marginals = NULL,
+  pairwise = NULL,
+  tolerance = 1e-6,
+  pathogen_col = "pathogen",
+  class_col = "antibiotic_class",
+  rate_col = "marginal_resistance",
+  class1_col = "antibiotic_class_1",
+  class2_col = "antibiotic_class_2",
+  pairwise_rate_col = "pairwise_resistance_prevalence"
 ) {
   if (!is.list(profiles_output) || length(profiles_output) == 0L) {
     stop("`profiles_output` must be the non-empty named list from compute_resistance_profiles().",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   # Non-class columns that should not be treated as class indicator columns
@@ -1148,15 +1129,18 @@ check_profile_constraints <- function(
       next
     }
 
-    prof_df  <- entry$profiles
-    p_hat    <- prof_df$probability
-    n_prof   <- length(p_hat)
-    classes  <- if ("classes" %in% names(entry)) entry$classes else
+    prof_df <- entry$profiles
+    p_hat <- prof_df$probability
+    n_prof <- length(p_hat)
+    classes <- if ("classes" %in% names(entry)) {
+      entry$classes
+    } else {
       setdiff(names(prof_df), non_class_cols)
+    }
 
     .row <- function(type, name, target, reconstructed, source) {
       abs_res <- if (is.na(target)) NA_real_ else abs(reconstructed - target)
-      pass    <- if (is.na(target)) reconstructed >= -tolerance else abs_res < tolerance
+      pass <- if (is.na(target)) reconstructed >= -tolerance else abs_res < tolerance
       tibble::tibble(
         pathogen        = path,
         constraint_type = type,
@@ -1169,43 +1153,38 @@ check_profile_constraints <- function(
       )
     }
 
-    # ------------------------------------------------------------------
     # Check 1: Non-negativity -- all p_hat >= 0
-    # ------------------------------------------------------------------
-    min_p   <- min(p_hat, na.rm = TRUE)
+    min_p <- min(p_hat, na.rm = TRUE)
     all_rows <- c(all_rows, list(.row(
       "nonneg", "min_probability",
-      target        = NA_real_,
+      target = NA_real_,
       reconstructed = min_p,
-      source        = "recomputed"
+      source = "recomputed"
     )))
 
-    # ------------------------------------------------------------------
     # Check 2: Sum-to-one
-    # ------------------------------------------------------------------
     p_sum <- sum(p_hat, na.rm = TRUE)
     all_rows <- c(all_rows, list(.row(
       "sum_to_one", "sum_probability",
-      target        = 1.0,
+      target = 1.0,
       reconstructed = p_sum,
-      source        = "recomputed"
+      source = "recomputed"
     )))
 
-    # ------------------------------------------------------------------
     # Check 3a: Marginal constraints from stored constraint_residuals
-    # ------------------------------------------------------------------
     if ("constraint_residuals" %in% names(entry)) {
-      resid   <- entry$constraint_residuals
-      targets <- if ("constraint_targets" %in% names(entry))
-                   entry$constraint_targets
-                 else
-                   setNames(rep(NA_real_, length(resid)), names(resid))
+      resid <- entry$constraint_residuals
+      targets <- if ("constraint_targets" %in% names(entry)) {
+        entry$constraint_targets
+      } else {
+        setNames(rep(NA_real_, length(resid)), names(resid))
+      }
 
       marg_nms <- names(resid)[grepl("^marg_", names(resid))]
       pair_nms <- names(resid)[grepl("^pair_", names(resid))]
 
       for (nm in marg_nms) {
-        tgt   <- targets[[nm]]
+        tgt <- targets[[nm]]
         recon <- if (!is.na(tgt)) tgt + resid[[nm]] else NA_real_
         all_rows <- c(all_rows, list(tibble::tibble(
           pathogen        = path,
@@ -1219,7 +1198,7 @@ check_profile_constraints <- function(
         )))
       }
       for (nm in pair_nms) {
-        tgt   <- targets[[nm]]
+        tgt <- targets[[nm]]
         recon <- if (!is.na(tgt)) tgt + resid[[nm]] else NA_real_
         all_rows <- c(all_rows, list(tibble::tibble(
           pathogen        = path,
@@ -1234,9 +1213,7 @@ check_profile_constraints <- function(
       }
     }
 
-    # ------------------------------------------------------------------
     # Check 3b: Marginal constraints recomputed from supplied marginals
-    # ------------------------------------------------------------------
     if (!is.null(marginals) && pathogen_col %in% names(marginals)) {
       marg_k <- marginals[marginals[[pathogen_col]] == path, ]
       marg_k <- marg_k[marg_k[[class_col]] %in% classes, ]
@@ -1246,7 +1223,7 @@ check_profile_constraints <- function(
         storage.mode(bin_mat) <- "double"
 
         for (i in seq_len(nrow(marg_k))) {
-          cls    <- marg_k[[class_col]][i]
+          cls <- marg_k[[class_col]][i]
           target <- marg_k[[rate_col]][i]
           if (!cls %in% colnames(bin_mat)) next
           reconstructed <- sum(p_hat * bin_mat[, cls], na.rm = TRUE)
@@ -1258,21 +1235,18 @@ check_profile_constraints <- function(
       }
     }
 
-    # ------------------------------------------------------------------
     # Check 3c: Pairwise constraints recomputed from supplied pairwise
-    # ------------------------------------------------------------------
     if (!is.null(pairwise) && pathogen_col %in% names(pairwise)) {
       pair_k <- pairwise[pairwise[[pathogen_col]] == path, ]
 
       if (nrow(pair_k) > 0L && class1_col %in% names(pair_k) &&
-          class2_col %in% names(pair_k) && pairwise_rate_col %in% names(pair_k)) {
-
+        class2_col %in% names(pair_k) && pairwise_rate_col %in% names(pair_k)) {
         bin_mat <- as.matrix(prof_df[, classes, drop = FALSE])
         storage.mode(bin_mat) <- "double"
 
         for (i in seq_len(nrow(pair_k))) {
-          c1     <- pair_k[[class1_col]][i]
-          c2     <- pair_k[[class2_col]][i]
+          c1 <- pair_k[[class1_col]][i]
+          c2 <- pair_k[[class2_col]][i]
           target <- pair_k[[pairwise_rate_col]][i]
           if (is.na(target) || !c1 %in% colnames(bin_mat) || !c2 %in% colnames(bin_mat)) next
           reconstructed <- sum(p_hat * bin_mat[, c1] * bin_mat[, c2], na.rm = TRUE)
@@ -1287,22 +1261,20 @@ check_profile_constraints <- function(
 
   result_tbl <- dplyr::bind_rows(all_rows)
 
-  # ------------------------------------------------------------------
   # Per-pathogen summary printed to console
-  # ------------------------------------------------------------------
   if (nrow(result_tbl) > 0L) {
     summary_tbl <- result_tbl %>%
       dplyr::group_by(pathogen) %>%
       dplyr::summarise(
         n_checks = dplyr::n(),
-        n_pass   = sum(pass, na.rm = TRUE),
-        n_fail   = sum(!pass, na.rm = TRUE),
+        n_pass = sum(pass, na.rm = TRUE),
+        n_fail = sum(!pass, na.rm = TRUE),
         max_abs_residual = max(abs_residual, na.rm = TRUE),
-        .groups  = "drop"
+        .groups = "drop"
       )
     message("\n[check_profile_constraints] Results (tolerance = ", tolerance, "):")
     for (i in seq_len(nrow(summary_tbl))) {
-      r      <- summary_tbl[i, ]
+      r <- summary_tbl[i, ]
       status <- if (r$n_fail == 0L) "[OK]" else "[!!]"
       message(sprintf(
         "  %s %-40s  %d/%d passed | max |residual| = %.2e",
@@ -1314,10 +1286,6 @@ check_profile_constraints <- function(
   result_tbl
 }
 
-
-# ---------------------------------------------------------------------------
-# bootstrap_profiles_convex()
-# ---------------------------------------------------------------------------
 
 #' Bootstrap Uncertainty Intervals for Resistance Profile Probabilities
 #'
@@ -1394,14 +1362,14 @@ check_profile_constraints <- function(
 #'
 #' @examples
 #' \dontrun{
-#' marg   <- compute_marginal_resistance(amr_clean)
+#' marg <- compute_marginal_resistance(amr_clean)
 #' co_res <- compute_pairwise_coresistance(marg)
 #'
-#' boot   <- bootstrap_profiles_convex(
-#'   marginals          = marg$marginal,
+#' boot <- bootstrap_profiles_convex(
+#'   marginals = marg$marginal,
 #'   coresistance_output = co_res,
-#'   B                  = 500,
-#'   seed               = 42
+#'   B = 500,
+#'   seed = 42
 #' )
 #'
 #' # 95% intervals for K. pneumoniae
@@ -1411,27 +1379,25 @@ check_profile_constraints <- function(
 #' attr(boot[["Klebsiella pneumoniae"]], "point_estimate")
 #' }
 bootstrap_profiles_convex <- function(
-    marginals,
-    coresistance_output = NULL,
-    B                   = 500L,
-    seed                = 123L,
-    alpha               = 0.05,
-    n_cores             = 1L,
-    exclude_near_zero   = TRUE,
-    top_n_classes       = NULL,
-    sigma_sq            = 1,
-    ridge               = 1e-8,
-    pathogen_col        = "organism_name",
-    class_col           = "antibiotic_class",
-    n_tested_col        = "n_tested",
-    n_resistant_col     = "n_resistant",
-    org_group_col       = "org_group"
+  marginals,
+  coresistance_output = NULL,
+  B = 500L,
+  seed = 123L,
+  alpha = 0.05,
+  n_cores = 1L,
+  exclude_near_zero = TRUE,
+  top_n_classes = NULL,
+  sigma_sq = 1,
+  ridge = 1e-8,
+  pathogen_col = "organism_name",
+  class_col = "antibiotic_class",
+  n_tested_col = "n_tested",
+  n_resistant_col = "n_resistant",
+  org_group_col = "org_group"
 ) {
-  # ------------------------------------------------------------------
   # Input validation
-  # ------------------------------------------------------------------
   required_marg <- c(pathogen_col, class_col, n_tested_col, n_resistant_col)
-  missing_marg  <- setdiff(required_marg, names(marginals))
+  missing_marg <- setdiff(required_marg, names(marginals))
   if (length(missing_marg) > 0L) {
     stop(sprintf(
       "Columns not found in `marginals`: %s",
@@ -1439,9 +1405,9 @@ bootstrap_profiles_convex <- function(
     ), call. = FALSE)
   }
 
-  B      <- as.integer(B)
+  B <- as.integer(B)
   n_cores <- as.integer(n_cores)
-  if (is.na(B) || B < 1L)      stop("`B` must be a positive integer.", call. = FALSE)
+  if (is.na(B) || B < 1L) stop("`B` must be a positive integer.", call. = FALSE)
   if (is.na(n_cores) || n_cores < 1L) stop("`n_cores` must be a positive integer.", call. = FALSE)
   if (alpha <= 0 || alpha >= 1) stop("`alpha` must be in (0, 1).", call. = FALSE)
 
@@ -1455,9 +1421,7 @@ bootstrap_profiles_convex <- function(
     marginals$marginal_resistance <- marginals[[n_resistant_col]] / marginals[[n_tested_col]]
   }
 
-  # ------------------------------------------------------------------
   # Point estimate on original marginals (stored as attribute)
-  # ------------------------------------------------------------------
   message(sprintf(
     "[bootstrap_profiles_convex] Computing point estimate before bootstrap (B=%d, seed=%d)...",
     B, seed
@@ -1475,24 +1439,22 @@ bootstrap_profiles_convex <- function(
   }
 
   point_out <- compute_resistance_profiles(
-    marginal_output     = .build_marginal_output(marginals),
+    marginal_output = .build_marginal_output(marginals),
     coresistance_output = if (is.null(coresistance_output)) list() else coresistance_output,
-    exclude_near_zero   = exclude_near_zero,
-    top_n_classes       = top_n_classes,
-    sigma_sq            = sigma_sq,
-    ridge               = ridge,
-    pathogen_col        = pathogen_col,
+    exclude_near_zero = exclude_near_zero,
+    top_n_classes = top_n_classes,
+    sigma_sq = sigma_sq,
+    ridge = ridge,
+    pathogen_col = pathogen_col,
     antibiotic_class_col = class_col,
-    n_cores             = 1L
+    n_cores = 1L
   )
 
   if (length(point_out) == 0L) {
     stop("Point estimate returned no profiles. Check marginals and class filters.", call. = FALSE)
   }
 
-  # ------------------------------------------------------------------
   # Bootstrap replicates
-  # ------------------------------------------------------------------
   set.seed(seed)
   # Pre-draw all random seeds for replicates (ensures reproducibility
   # regardless of parallel vs sequential execution order)
@@ -1508,11 +1470,11 @@ bootstrap_profiles_convex <- function(
 
     # Resample resistant counts from Binomial(n_tested, observed_prevalence)
     marg_b <- marginals
-    n_t    <- marg_b[[n_tested_col]]
-    r_obs  <- pmin(pmax(marg_b$marginal_resistance, 0), 1)  # guard [0,1]
+    n_t <- marg_b[[n_tested_col]]
+    r_obs <- pmin(pmax(marg_b$marginal_resistance, 0), 1) # guard [0,1]
     r_obs[is.na(r_obs)] <- 0
 
-    n_r_b                    <- stats::rbinom(nrow(marg_b), size = n_t, prob = r_obs)
+    n_r_b <- stats::rbinom(nrow(marg_b), size = n_t, prob = r_obs)
     marg_b$marginal_resistance <- n_r_b / n_t
 
     # Resample pairwise T and R matrices if available
@@ -1521,21 +1483,32 @@ bootstrap_profiles_convex <- function(
       co_b <- lapply(co_b, function(co_path) {
         T_mat <- co_path$T_matrix
         R_mat <- co_path$R_matrix
-        prev  <- co_path$prevalence
-        n_c   <- nrow(T_mat)
-        R_b   <- matrix(0L, n_c, n_c, dimnames = dimnames(T_mat))
+        prev <- co_path$prevalence
+        n_c <- nrow(T_mat)
+        R_b <- matrix(0L, n_c, n_c, dimnames = dimnames(T_mat))
         prev_b <- matrix(NA_real_, n_c, n_c, dimnames = dimnames(T_mat))
 
-        for (i in seq_len(n_c)) {
-          for (j in i:n_c) {
-            if (i == j) next
-            t_ij <- T_mat[i, j]
-            if (is.na(t_ij) || t_ij == 0L) next
-            p_ij  <- if (!is.na(prev[i, j])) prev[i, j] else 0
-            r_ij  <- stats::rbinom(1L, size = t_ij, prob = pmin(pmax(p_ij, 0), 1))
-            R_b[i, j] <- R_b[j, i] <- r_ij
-            pv <- r_ij / t_ij
-            prev_b[i, j] <- prev_b[j, i] <- pv
+        if (n_c >= 2L) {
+          # Same i-outer/j-inner pair order as the old nested loop, so this
+          # keeps rbinom() draw-for-draw reproducible for a given seed.
+          idx <- do.call(rbind, lapply(seq_len(n_c - 1L), function(i) cbind(i, (i + 1L):n_c)))
+          t_vec <- T_mat[idx]
+          valid <- !is.na(t_vec) & t_vec != 0L
+          idx <- idx[valid, , drop = FALSE]
+          t_vec <- t_vec[valid]
+
+          if (length(t_vec) > 0L) {
+            p_vec <- prev[idx]
+            p_vec[is.na(p_vec)] <- 0
+            p_vec <- pmin(pmax(p_vec, 0), 1)
+            r_vec <- stats::rbinom(length(t_vec), size = t_vec, prob = p_vec)
+
+            idx_lo <- idx[, c(2L, 1L), drop = FALSE]
+            R_b[idx] <- r_vec
+            R_b[idx_lo] <- r_vec
+            pv <- r_vec / t_vec
+            prev_b[idx] <- pv
+            prev_b[idx_lo] <- pv
           }
         }
         diag(prev_b) <- NA_real_
@@ -1560,28 +1533,30 @@ bootstrap_profiles_convex <- function(
         antibiotic_class_col = class_col,
         n_cores              = 1L
       ),
-      error = function(e) NULL   # failed replicate returns NULL
+      error = function(e) NULL # failed replicate returns NULL
     )
   }
 
   if (n_cores > 1L) {
     all_reps <- parallel::mclapply(seq_len(B), .one_replicate,
-                                   mc.cores = n_cores, mc.preschedule = FALSE)
+      mc.cores = n_cores, mc.preschedule = FALSE
+    )
   } else {
     all_reps <- lapply(seq_len(B), .one_replicate)
   }
 
   # Remove NULL (failed) replicates
   valid_reps <- Filter(Negate(is.null), all_reps)
-  n_valid    <- length(valid_reps)
+  n_valid <- length(valid_reps)
 
   if (n_valid == 0L) stop("All bootstrap replicates failed.", call. = FALSE)
-  if (n_valid < B)   warning(sprintf("%d/%d bootstrap replicates failed and were dropped.", B - n_valid, B),
-                             call. = FALSE)
+  if (n_valid < B) {
+    warning(sprintf("%d/%d bootstrap replicates failed and were dropped.", B - n_valid, B),
+      call. = FALSE
+    )
+  }
 
-  # ------------------------------------------------------------------
   # Aggregate: collect p_hat vectors per pathogen x profile
-  # ------------------------------------------------------------------
   lo_q <- alpha / 2
   hi_q <- 1 - alpha / 2
 
@@ -1603,30 +1578,31 @@ bootstrap_profiles_convex <- function(
 
     # Each row of prob_matrix is one profile across B replicates
     # Detect uniform (failed) replicates: all probs equal
-    n_prof        <- nrow(point_prof)
-    uniform_p     <- 1 / n_prof
-    converged     <- apply(prob_matrix, 2, function(col) !all(abs(col - uniform_p) < 1e-10))
-    n_converged   <- sum(converged, na.rm = TRUE)
-    conv_matrix   <- prob_matrix[, converged, drop = FALSE]
+    n_prof <- nrow(point_prof)
+    uniform_p <- 1 / n_prof
+    converged <- apply(prob_matrix, 2, function(col) !all(abs(col - uniform_p) < 1e-10))
+    n_converged <- sum(converged, na.rm = TRUE)
+    conv_matrix <- prob_matrix[, converged, drop = FALSE]
 
     if (ncol(conv_matrix) == 0L) {
       warning(sprintf("'%s': no converged bootstrap replicates. Intervals will be NA.", path),
-              call. = FALSE)
+        call. = FALSE
+      )
       lower <- rep(NA_real_, n_prof)
       upper <- rep(NA_real_, n_prof)
       pmean <- rep(NA_real_, n_prof)
-      pmed  <- rep(NA_real_, n_prof)
+      pmed <- rep(NA_real_, n_prof)
     } else {
       lower <- apply(conv_matrix, 1, stats::quantile, probs = lo_q, na.rm = TRUE)
       upper <- apply(conv_matrix, 1, stats::quantile, probs = hi_q, na.rm = TRUE)
       pmean <- apply(conv_matrix, 1, mean, na.rm = TRUE)
-      pmed  <- apply(conv_matrix, 1, stats::median, na.rm = TRUE)
+      pmed <- apply(conv_matrix, 1, stats::median, na.rm = TRUE)
     }
 
     result_df <- tibble::tibble(
       profile                  = point_prof$profile,
       probability_mean         = round(pmean, 6L),
-      probability_median       = round(pmed,  6L),
+      probability_median       = round(pmed, 6L),
       lower                    = round(lower, 6L),
       upper                    = round(upper, 6L),
       n_replicates_converged   = n_converged,
@@ -1651,9 +1627,7 @@ bootstrap_profiles_convex <- function(
 }
 
 
-# ---------------------------------------------------------------------------
 # enumerate_binary_profiles()
-# ---------------------------------------------------------------------------
 
 #' Enumerate All Binary Resistance Profiles for a Set of Antibiotic Classes
 #'
@@ -1672,10 +1646,11 @@ bootstrap_profiles_convex <- function(
 #' @export
 enumerate_binary_profiles <- function(classes) {
   if (length(classes) == 0L) stop("`classes` must be a non-empty character vector.", call. = FALSE)
-  if (length(classes) > 20L)
+  if (length(classes) > 20L) {
     warning(sprintf("2^%d = %d profiles may be very slow. Consider top_n_classes.", length(classes), 2L^length(classes)), call. = FALSE)
+  }
 
-  n         <- length(classes)
+  n <- length(classes)
   n_profiles <- 2L^n
 
   profiles_mat <- matrix(
@@ -1689,22 +1664,24 @@ enumerate_binary_profiles <- function(classes) {
 
   # check.names = FALSE preserves class names that contain hyphens, spaces, or
   # other characters that base R would otherwise sanitise to dots.
-  label_df  <- as.data.frame(char_mat,    check.names = FALSE)
+  label_df <- as.data.frame(char_mat, check.names = FALSE)
   colnames(label_df) <- classes
   binary_df <- as.data.frame(profiles_mat, check.names = FALSE)
 
   tibble::as_tibble(
-    cbind(data.frame(profile_delta = do.call(paste0, label_df),
-                     stringsAsFactors = FALSE, check.names = FALSE),
-          binary_df),
+    cbind(
+      data.frame(
+        profile_delta = do.call(paste0, label_df),
+        stringsAsFactors = FALSE, check.names = FALSE
+      ),
+      binary_df
+    ),
     .name_repair = "minimal"
   )
 }
 
 
-# ---------------------------------------------------------------------------
 # build_constraint_matrix()
-# ---------------------------------------------------------------------------
 
 #' Build QP Constraint Matrix and Target Vector
 #'
@@ -1743,55 +1720,60 @@ enumerate_binary_profiles <- function(classes) {
 #'
 #' @export
 build_constraint_matrix <- function(profiles_enum, r_marg, co_mat = NULL) {
-  classes    <- names(r_marg)
-  n          <- length(classes)
+  classes <- names(r_marg)
+  n <- length(classes)
 
   # Binary indicator matrix (2^n x n)
   profiles_mat <- as.matrix(profiles_enum[, classes, drop = FALSE])
   storage.mode(profiles_mat) <- "double"
 
   # Marginal rows
-  M_marg <- t(profiles_mat)                       # n x 2^n
+  M_marg <- t(profiles_mat) # n x 2^n
   v_marg <- r_marg[classes]
   marg_names <- paste0("marg_", classes)
 
   # Pairwise rows
-  pairs_mat  <- utils::combn(n, 2L)
-  n_pair     <- ncol(pairs_mat)
-  d1_idx     <- pairs_mat[1L, ];  d2_idx <- pairs_mat[2L, ]
-  c1_names   <- classes[d1_idx];  c2_names <- classes[d2_idx]
+  pairs_mat <- utils::combn(n, 2L)
+  n_pair <- ncol(pairs_mat)
+  d1_idx <- pairs_mat[1L, ]
+  d2_idx <- pairs_mat[2L, ]
+  c1_names <- classes[d1_idx]
+  c2_names <- classes[d2_idx]
   pair_names <- paste0("pair_", c1_names, "_", c2_names)
 
   M_pair <- t(
     profiles_mat[, d1_idx, drop = FALSE] *
       profiles_mat[, d2_idx, drop = FALSE]
-  )                                                # n(n-1)/2 x 2^n
+  ) # n(n-1)/2 x 2^n
 
-  r1 <- r_marg[c1_names];  r2 <- r_marg[c2_names]
+  r1 <- r_marg[c1_names]
+  r2 <- r_marg[c2_names]
 
   # Look up observed pairwise values
   co_vals <- rep(NA_real_, n_pair)
   if (!is.null(co_mat) && !is.null(rownames(co_mat))) {
     in_r <- c1_names %in% rownames(co_mat)
     in_c <- c2_names %in% colnames(co_mat)
-    ok   <- in_r & in_c
+    ok <- in_r & in_c
     if (any(ok)) co_vals[ok] <- co_mat[cbind(c1_names[ok], c2_names[ok])]
   }
 
   # Cap pairwise to min(P(A), P(B))
-  cap_vals    <- pmin(r1, r2)
-  has_co      <- !is.na(co_vals)
-  capped_co   <- pmin(co_vals, cap_vals)
-  was_capped  <- has_co & !is.na(capped_co) & (capped_co < co_vals)
-  v_pair      <- ifelse(has_co, capped_co, r1 * r2)
+  cap_vals <- pmin(r1, r2)
+  has_co <- !is.na(co_vals)
+  capped_co <- pmin(co_vals, cap_vals)
+  was_capped <- has_co & !is.na(capped_co) & (capped_co < co_vals)
+  v_pair <- ifelse(has_co, capped_co, r1 * r2)
 
   fallback_pairs <- pair_names[!has_co]
-  capped_pairs   <- if (any(was_capped)) {
+  capped_pairs <- if (any(was_capped)) {
     stats::setNames(
       paste0(round(co_vals[was_capped], 4L), "->", round(capped_co[was_capped], 4L)),
       pair_names[was_capped]
     )
-  } else character(0L)
+  } else {
+    character(0L)
+  }
 
   M <- rbind(M_marg, M_pair)
   v <- c(v_marg, v_pair)
@@ -1807,9 +1789,7 @@ build_constraint_matrix <- function(profiles_enum, r_marg, co_mat = NULL) {
 }
 
 
-# ---------------------------------------------------------------------------
 # validate_aggregate_inputs()
-# ---------------------------------------------------------------------------
 
 #' Validate Pre-computed Aggregate Marginal Inputs
 #'
@@ -1841,97 +1821,124 @@ build_constraint_matrix <- function(profiles_enum, r_marg, co_mat = NULL) {
 #'
 #' @export
 validate_aggregate_inputs <- function(
-    marginals,
-    pairwise              = NULL,
-    pathogen_col          = "pathogen",
-    class_col             = "antibiotic_class",
-    rate_col              = "marginal_resistance",
-    n_tested_col          = "n_tested",
-    n_resistant_col       = "n_resistant",
-    class1_col            = "antibiotic_class_1",
-    class2_col            = "antibiotic_class_2",
-    pairwise_rate_col     = "pairwise_resistance_prevalence",
-    min_classes_per_pathogen = 2L
+  marginals,
+  pairwise = NULL,
+  pathogen_col = "pathogen",
+  class_col = "antibiotic_class",
+  rate_col = "marginal_resistance",
+  n_tested_col = "n_tested",
+  n_resistant_col = "n_resistant",
+  class1_col = "antibiotic_class_1",
+  class2_col = "antibiotic_class_2",
+  pairwise_rate_col = "pairwise_resistance_prevalence",
+  min_classes_per_pathogen = 2L
 ) {
   results <- list()
 
   # 1. Required columns
   required <- c(pathogen_col, class_col, rate_col)
-  missing  <- setdiff(required, names(marginals))
+  missing <- setdiff(required, names(marginals))
   if (length(missing) > 0L) {
-    results <- .add_check(results, "required_cols", "fail",
-      sprintf("Required column(s) missing from marginals: %s", paste(missing, collapse = ", ")))
+    results <- .add_check(
+      results, "required_cols", "fail",
+      sprintf("Required column(s) missing from marginals: %s", paste(missing, collapse = ", "))
+    )
   } else {
-    results <- .add_check(results, "required_cols", "pass",
-      sprintf("All required columns present (%s).", paste(required, collapse = ", ")))
+    results <- .add_check(
+      results, "required_cols", "pass",
+      sprintf("All required columns present (%s).", paste(required, collapse = ", "))
+    )
   }
 
   if ("fail" %in% sapply(results, `[[`, "status")) {
     stop(dplyr::bind_rows(results)$message[dplyr::bind_rows(results)$status == "fail"][[1]],
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   # 2. Prevalence bounds [0, 1]
-  rates    <- marginals[[rate_col]]
-  n_oob    <- sum(!is.na(rates) & (rates < 0 | rates > 1))
+  rates <- marginals[[rate_col]]
+  n_oob <- sum(!is.na(rates) & (rates < 0 | rates > 1))
   if (n_oob > 0L) {
-    results <- .add_check(results, "prevalence_bounds", "fail",
-      sprintf("%d row(s) have %s outside [0, 1].", n_oob, rate_col), n_oob)
+    results <- .add_check(
+      results, "prevalence_bounds", "fail",
+      sprintf("%d row(s) have %s outside [0, 1].", n_oob, rate_col), n_oob
+    )
   } else {
-    results <- .add_check(results, "prevalence_bounds", "pass",
-      sprintf("All %s values in [0, 1].", rate_col))
+    results <- .add_check(
+      results, "prevalence_bounds", "pass",
+      sprintf("All %s values in [0, 1].", rate_col)
+    )
   }
 
   # 3. n_tested > 0 (if column present)
   if (!is.null(n_tested_col) && n_tested_col %in% names(marginals)) {
     n_zero <- sum(!is.na(marginals[[n_tested_col]]) & marginals[[n_tested_col]] <= 0L)
     if (n_zero > 0L) {
-      results <- .add_check(results, "n_tested_positive", "fail",
-        sprintf("%d row(s) have %s <= 0.", n_zero, n_tested_col), n_zero)
+      results <- .add_check(
+        results, "n_tested_positive", "fail",
+        sprintf("%d row(s) have %s <= 0.", n_zero, n_tested_col), n_zero
+      )
     } else {
-      results <- .add_check(results, "n_tested_positive", "pass",
-        sprintf("All %s > 0.", n_tested_col))
+      results <- .add_check(
+        results, "n_tested_positive", "pass",
+        sprintf("All %s > 0.", n_tested_col)
+      )
     }
 
     # n_resistant <= n_tested
     if (!is.null(n_resistant_col) && n_resistant_col %in% names(marginals)) {
       n_bad <- sum(!is.na(marginals[[n_resistant_col]]) &
-                   !is.na(marginals[[n_tested_col]]) &
-                   marginals[[n_resistant_col]] > marginals[[n_tested_col]])
+        !is.na(marginals[[n_tested_col]]) &
+        marginals[[n_resistant_col]] > marginals[[n_tested_col]])
       if (n_bad > 0L) {
-        results <- .add_check(results, "resistant_le_tested", "fail",
-          sprintf("%d row(s) have %s > %s.", n_bad, n_resistant_col, n_tested_col), n_bad)
+        results <- .add_check(
+          results, "resistant_le_tested", "fail",
+          sprintf("%d row(s) have %s > %s.", n_bad, n_resistant_col, n_tested_col), n_bad
+        )
       } else {
-        results <- .add_check(results, "resistant_le_tested", "pass",
-          sprintf("%s <= %s for all rows.", n_resistant_col, n_tested_col))
+        results <- .add_check(
+          results, "resistant_le_tested", "pass",
+          sprintf("%s <= %s for all rows.", n_resistant_col, n_tested_col)
+        )
       }
     }
   }
 
   # 4. No duplicate pathogen x class rows
   dup_key <- paste(marginals[[pathogen_col]], marginals[[class_col]], sep = "||")
-  n_dup   <- sum(duplicated(dup_key))
+  n_dup <- sum(duplicated(dup_key))
   if (n_dup > 0L) {
-    results <- .add_check(results, "no_duplicates", "fail",
-      sprintf("%d duplicate pathogen x class row(s) found.", n_dup), n_dup)
+    results <- .add_check(
+      results, "no_duplicates", "fail",
+      sprintf("%d duplicate pathogen x class row(s) found.", n_dup), n_dup
+    )
   } else {
-    results <- .add_check(results, "no_duplicates", "pass",
-      "No duplicate pathogen x class rows.")
+    results <- .add_check(
+      results, "no_duplicates", "pass",
+      "No duplicate pathogen x class rows."
+    )
   }
 
   # 5. Minimum classes per pathogen
   class_counts <- tapply(marginals[[class_col]], marginals[[pathogen_col]], length)
-  n_too_few    <- sum(class_counts < min_classes_per_pathogen)
+  n_too_few <- sum(class_counts < min_classes_per_pathogen)
   if (n_too_few > 0L) {
     pathogens_few <- names(class_counts)[class_counts < min_classes_per_pathogen]
-    results <- .add_check(results, "min_classes", "warn",
-      sprintf("%d pathogen(s) have < %d classes (profiles trivial): %s",
-              n_too_few, min_classes_per_pathogen,
-              paste(head(pathogens_few, 5L), collapse = ", ")),
-      n_too_few)
+    results <- .add_check(
+      results, "min_classes", "warn",
+      sprintf(
+        "%d pathogen(s) have < %d classes (profiles trivial): %s",
+        n_too_few, min_classes_per_pathogen,
+        paste(head(pathogens_few, 5L), collapse = ", ")
+      ),
+      n_too_few
+    )
   } else {
-    results <- .add_check(results, "min_classes", "pass",
-      sprintf("All pathogens have >= %d classes.", min_classes_per_pathogen))
+    results <- .add_check(
+      results, "min_classes", "pass",
+      sprintf("All pathogens have >= %d classes.", min_classes_per_pathogen)
+    )
   }
 
   # 6. Pairwise checks (if supplied)
@@ -1939,35 +1946,45 @@ validate_aggregate_inputs <- function(
     pw_req <- c(pathogen_col, class1_col, class2_col, pairwise_rate_col)
     pw_miss <- setdiff(pw_req, names(pairwise))
     if (length(pw_miss) > 0L) {
-      results <- .add_check(results, "pairwise_cols", "fail",
-        sprintf("Pairwise table missing column(s): %s", paste(pw_miss, collapse = ", ")))
+      results <- .add_check(
+        results, "pairwise_cols", "fail",
+        sprintf("Pairwise table missing column(s): %s", paste(pw_miss, collapse = ", "))
+      )
     } else {
       # Pairwise rate in [0,1]
       pw_rates <- pairwise[[pairwise_rate_col]]
       n_pw_oob <- sum(!is.na(pw_rates) & (pw_rates < 0 | pw_rates > 1))
       if (n_pw_oob > 0L) {
-        results <- .add_check(results, "pairwise_bounds", "fail",
-          sprintf("%d pairwise row(s) have %s outside [0, 1].", n_pw_oob, pairwise_rate_col), n_pw_oob)
+        results <- .add_check(
+          results, "pairwise_bounds", "fail",
+          sprintf("%d pairwise row(s) have %s outside [0, 1].", n_pw_oob, pairwise_rate_col), n_pw_oob
+        )
       }
 
       # Pairwise <= min(marginal_A, marginal_B)
       pw_joined <- pairwise %>%
         dplyr::left_join(marginals[, c(pathogen_col, class_col, rate_col)],
-                         by = stats::setNames(c(pathogen_col, class_col), c(pathogen_col, class1_col))) %>%
+          by = stats::setNames(c(pathogen_col, class_col), c(pathogen_col, class1_col))
+        ) %>%
         dplyr::rename(rate_A = !!rate_col) %>%
         dplyr::left_join(marginals[, c(pathogen_col, class_col, rate_col)],
-                         by = stats::setNames(c(pathogen_col, class_col), c(pathogen_col, class2_col))) %>%
+          by = stats::setNames(c(pathogen_col, class_col), c(pathogen_col, class2_col))
+        ) %>%
         dplyr::rename(rate_B = !!rate_col)
 
       n_impossible <- sum(!is.na(pw_joined[[pairwise_rate_col]]) &
-                          !is.na(pw_joined$rate_A) & !is.na(pw_joined$rate_B) &
-                          pw_joined[[pairwise_rate_col]] > pmin(pw_joined$rate_A, pw_joined$rate_B))
+        !is.na(pw_joined$rate_A) & !is.na(pw_joined$rate_B) &
+        pw_joined[[pairwise_rate_col]] > pmin(pw_joined$rate_A, pw_joined$rate_B))
       if (n_impossible > 0L) {
-        results <- .add_check(results, "pairwise_le_marginals", "warn",
-          sprintf("%d pairwise value(s) exceed min(marginal_A, marginal_B) and will be capped.", n_impossible), n_impossible)
+        results <- .add_check(
+          results, "pairwise_le_marginals", "warn",
+          sprintf("%d pairwise value(s) exceed min(marginal_A, marginal_B) and will be capped.", n_impossible), n_impossible
+        )
       } else {
-        results <- .add_check(results, "pairwise_le_marginals", "pass",
-          "All pairwise values <= min(marginal_A, marginal_B).")
+        results <- .add_check(
+          results, "pairwise_le_marginals", "pass",
+          "All pairwise values <= min(marginal_A, marginal_B)."
+        )
       }
     }
   }
@@ -1977,24 +1994,26 @@ validate_aggregate_inputs <- function(
   n_warn <- sum(result_tbl$status == "warn")
   n_pass <- sum(result_tbl$status == "pass")
 
-  message(sprintf("[validate_aggregate_inputs] %d passed | %d warnings | %d failed",
-                  n_pass, n_warn, n_fail))
-  if (n_warn > 0L)
+  message(sprintf(
+    "[validate_aggregate_inputs] %d passed | %d warnings | %d failed",
+    n_pass, n_warn, n_fail
+  ))
+  if (n_warn > 0L) {
     for (msg in result_tbl$message[result_tbl$status == "warn"]) message("  [!] ", msg)
+  }
 
   if (n_fail > 0L) {
-    stop(sprintf("%d check(s) failed:\n%s", n_fail,
-                 paste(sprintf("  - %s", result_tbl$message[result_tbl$status == "fail"]),
-                       collapse = "\n")), call. = FALSE)
+    stop(sprintf(
+      "%d check(s) failed:\n%s", n_fail,
+      paste(sprintf("  - %s", result_tbl$message[result_tbl$status == "fail"]),
+        collapse = "\n"
+      )
+    ), call. = FALSE)
   }
 
   invisible(result_tbl)
 }
 
-
-# ---------------------------------------------------------------------------
-# compute_marginals_from_data()
-# ---------------------------------------------------------------------------
 
 #' Compute Marginal Resistance Rates from Preprocessed Wide Data
 #'
@@ -2038,29 +2057,30 @@ validate_aggregate_inputs <- function(
 #'
 #' @export
 compute_marginals_from_data <- function(
-    data_wide,
-    col_map,
-    panel_map,
-    stratify_by        = NULL,
-    outcome_col        = NULL,
-    min_n_tested       = 30L,
-    external_marginals = NULL,
-    ext_col_map        = list(
-      pathogen_col  = "pathogen",
-      class_col     = "antibiotic_class",
-      geography_col = "geography",
-      year_col      = "year",
-      rate_col      = "resistance_prevalence"
-    )
+  data_wide,
+  col_map,
+  panel_map,
+  stratify_by = NULL,
+  outcome_col = NULL,
+  min_n_tested = 30L,
+  external_marginals = NULL,
+  ext_col_map = list(
+    pathogen_col  = "pathogen",
+    class_col     = "antibiotic_class",
+    geography_col = "geography",
+    year_col      = "year",
+    rate_col      = "resistance_prevalence"
+  )
 ) {
-  cols         <- .resolve_class_cols(data_wide, col_map, panel_map, outcome_col)
-  pathogen_col  <- cols$pathogen_col
+  cols <- .resolve_class_cols(data_wide, col_map, panel_map, outcome_col)
+  pathogen_col <- cols$pathogen_col
   geography_col <- cols$geography_col
-  isolate_col   <- cols$isolate_col
-  class_cols    <- cols$class_cols
+  isolate_col <- cols$isolate_col
+  class_cols <- cols$class_cols
 
-  if (length(class_cols) == 0L)
+  if (length(class_cols) == 0L) {
     stop("No antibiotic-class columns found in data_wide matching panel_map. Check panel_map class names.", call. = FALSE)
+  }
 
   strat_cols <- .build_strat_cols(stratify_by, outcome_col, geography_col, data_wide)
 
@@ -2074,7 +2094,7 @@ compute_marginals_from_data <- function(
       names_to  = "antibiotic_class",
       values_to = "class_result"
     ) %>%
-    dplyr::filter(!is.na(class_result))   # only tested isolate-class pairs
+    dplyr::filter(!is.na(class_result)) # only tested isolate-class pairs
 
   marginals_tbl <- data_long %>%
     dplyr::group_by(dplyr::across(dplyr::all_of(c(group_vars, "antibiotic_class")))) %>%
@@ -2089,7 +2109,7 @@ compute_marginals_from_data <- function(
     )
 
   # Apply min_n_tested filter
-  n_before  <- nrow(marginals_tbl)
+  n_before <- nrow(marginals_tbl)
   excluded_min <- marginals_tbl[marginals_tbl$n_tested < min_n_tested, , drop = FALSE]
   marginals_tbl <- marginals_tbl[marginals_tbl$n_tested >= min_n_tested, , drop = FALSE]
 
@@ -2104,17 +2124,19 @@ compute_marginals_from_data <- function(
   if (!is.null(external_marginals)) {
     message("[compute_marginals_from_data] Merging external marginals override...")
 
-    ext_path_col <- .null_default(ext_col_map$pathogen_col,  "pathogen")
-    ext_cls_col  <- .null_default(ext_col_map$class_col,     "antibiotic_class")
-    ext_rate_col <- .null_default(ext_col_map$rate_col,      "resistance_prevalence")
-    ext_geo_col  <- .null_default(ext_col_map$geography_col, "geography")
-    ext_yr_col   <- .null_default(ext_col_map$year_col,      "year")
+    ext_path_col <- .null_default(ext_col_map$pathogen_col, "pathogen")
+    ext_cls_col <- .null_default(ext_col_map$class_col, "antibiotic_class")
+    ext_rate_col <- .null_default(ext_col_map$rate_col, "resistance_prevalence")
+    ext_geo_col <- .null_default(ext_col_map$geography_col, "geography")
+    ext_yr_col <- .null_default(ext_col_map$year_col, "year")
 
     join_keys <- c(pathogen_col = ext_path_col, antibiotic_class = ext_cls_col)
-    if ("geography" %in% stratify_by && ext_geo_col %in% names(external_marginals))
+    if ("geography" %in% stratify_by && ext_geo_col %in% names(external_marginals)) {
       join_keys <- c(join_keys, stats::setNames(ext_geo_col, geography_col))
-    if ("year" %in% stratify_by && ext_yr_col %in% names(external_marginals))
+    }
+    if ("year" %in% stratify_by && ext_yr_col %in% names(external_marginals)) {
       join_keys <- c(join_keys, stats::setNames(ext_yr_col, "year"))
+    }
 
     ext_slim <- external_marginals[, c(unname(join_keys), ext_rate_col), drop = FALSE]
     names(ext_slim)[names(ext_slim) == ext_rate_col] <- ".ext_rate"
@@ -2139,10 +2161,6 @@ compute_marginals_from_data <- function(
   tibble::as_tibble(marginals_tbl)
 }
 
-
-# ---------------------------------------------------------------------------
-# compute_pairwise_from_data()
-# ---------------------------------------------------------------------------
 
 #' Compute Pairwise Co-resistance Using Pearson Back-calculation
 #'
@@ -2181,19 +2199,19 @@ compute_marginals_from_data <- function(
 #'
 #' @export
 compute_pairwise_from_data <- function(
-    data_wide,
-    marginals,
-    col_map,
-    panel_map,
-    stratify_by  = NULL,
-    outcome_col  = NULL,
-    min_co_tested = 10L
+  data_wide,
+  marginals,
+  col_map,
+  panel_map,
+  stratify_by = NULL,
+  outcome_col = NULL,
+  min_co_tested = 10L
 ) {
-  cols          <- .resolve_class_cols(data_wide, col_map, panel_map, outcome_col)
-  pathogen_col  <- cols$pathogen_col
+  cols <- .resolve_class_cols(data_wide, col_map, panel_map, outcome_col)
+  pathogen_col <- cols$pathogen_col
   geography_col <- cols$geography_col
-  isolate_col   <- cols$isolate_col
-  class_cols    <- cols$class_cols
+  isolate_col <- cols$isolate_col
+  class_cols <- cols$class_cols
 
   strat_cols <- .build_strat_cols(stratify_by, outcome_col, geography_col, data_wide)
 
@@ -2207,8 +2225,8 @@ compute_pairwise_from_data <- function(
   all_pairs <- list()
 
   for (i in seq_len(nrow(strata_df))) {
-    row_key  <- strata_df[i, , drop = FALSE]
-    path     <- row_key[[pathogen_col]]
+    row_key <- strata_df[i, , drop = FALSE]
+    path <- row_key[[pathogen_col]]
     cls_panel <- panel_map[[path]]
     if (is.null(cls_panel)) next
     cls_avail <- intersect(cls_panel, class_cols)
@@ -2216,37 +2234,42 @@ compute_pairwise_from_data <- function(
 
     # Filter data_wide to this stratum
     stratum_filter <- rep(TRUE, nrow(data_wide))
-    for (sc in strat_cols)
+    for (sc in strat_cols) {
       stratum_filter <- stratum_filter & (data_wide[[sc]] == row_key[[sc]])
+    }
     stratum_filter <- stratum_filter & (data_wide[[pathogen_col]] == path)
 
     sub_wide <- data_wide[stratum_filter, cls_avail, drop = FALSE]
 
     # Get marginals for this stratum x pathogen
     marg_filter <- marginals[[pathogen_col]] == path
-    for (sc in strat_cols)
+    for (sc in strat_cols) {
       marg_filter <- marg_filter & (marginals[[sc]] == row_key[[sc]])
+    }
     marg_k <- marginals[marg_filter, , drop = FALSE]
     p_lookup <- stats::setNames(marg_k$marginal_resistance, marg_k$antibiotic_class)
 
     # Enumerate class pairs
     pairs_mat <- utils::combn(cls_avail, 2L)
     for (j in seq_len(ncol(pairs_mat))) {
-      c1 <- pairs_mat[1L, j];  c2 <- pairs_mat[2L, j]
+      c1 <- pairs_mat[1L, j]
+      c2 <- pairs_mat[2L, j]
       if (!c1 %in% names(p_lookup) || !c2 %in% names(p_lookup)) next
 
-      PA <- p_lookup[[c1]];  PB <- p_lookup[[c2]]
+      PA <- p_lookup[[c1]]
+      PB <- p_lookup[[c2]]
       if (is.na(PA) || is.na(PB)) next
 
       # Co-tested isolates: non-NA in both columns
-      v1   <- sub_wide[[c1]];  v2 <- sub_wide[[c2]]
+      v1 <- sub_wide[[c1]]
+      v2 <- sub_wide[[c2]]
       both <- !is.na(v1) & !is.na(v2)
       n_co <- sum(both)
 
       if (n_co < min_co_tested) {
         pairwise_val <- PA * PB
-        method       <- "independence_fallback"
-        rho          <- NA_real_
+        method <- "independence_fallback"
+        rho <- NA_real_
       } else {
         y1 <- as.integer(v1[both] == "R")
         y2 <- as.integer(v2[both] == "R")
@@ -2258,7 +2281,7 @@ compute_pairwise_from_data <- function(
 
         if (is.na(rho) || !is.finite(rho)) {
           pairwise_val <- PA * PB
-          method       <- "independence_fallback"
+          method <- "independence_fallback"
         } else {
           # GBD back-calculation formula
           var_A <- PA * (1 - PA)
@@ -2266,9 +2289,9 @@ compute_pairwise_from_data <- function(
           p_ab_raw <- PA * PB + rho * sqrt(var_A * var_B)
           # Cap to min(PA, PB) and floor to independence product
           p_ab_capped <- pmin(p_ab_raw, min(PA, PB))
-          pairwise_val <- max(p_ab_capped, PA * PB * 0)  # floor at 0, not independence
+          pairwise_val <- max(p_ab_capped, PA * PB * 0) # floor at 0, not independence
           pairwise_val <- max(pairwise_val, 0)
-          method       <- "pearson_back_calc"
+          method <- "pearson_back_calc"
         }
       }
 
@@ -2293,7 +2316,7 @@ compute_pairwise_from_data <- function(
   }
 
   result <- dplyr::bind_rows(all_pairs)
-  n_pearson  <- sum(result$method == "pearson_back_calc")
+  n_pearson <- sum(result$method == "pearson_back_calc")
   n_fallback <- sum(result$method == "independence_fallback")
   message(sprintf(
     "[compute_pairwise_from_data] %d pairs: %d Pearson back-calc | %d independence fallback.",
@@ -2302,10 +2325,6 @@ compute_pairwise_from_data <- function(
   result
 }
 
-
-# ---------------------------------------------------------------------------
-# estimate_profiles_convex()
-# ---------------------------------------------------------------------------
 
 #' Estimate Resistance Profile Probabilities via Convex Optimisation
 #'
@@ -2369,48 +2388,52 @@ compute_pairwise_from_data <- function(
 #'
 #' @examples
 #' \dontrun{
-#' marg   <- compute_marginals_from_data(result$data_wide, result$col_map_resolved, panel_map)
-#' pw     <- compute_pairwise_from_data(result$data_wide, marg, result$col_map_resolved, panel_map)
-#' out    <- estimate_profiles_convex(marg, pw, panel_map)
+#' marg <- compute_marginals_from_data(result$data_wide, result$col_map_resolved, panel_map)
+#' pw <- compute_pairwise_from_data(result$data_wide, marg, result$col_map_resolved, panel_map)
+#' out <- estimate_profiles_convex(marg, pw, panel_map)
 #' }
 estimate_profiles_convex <- function(
-    marginals,
-    pairwise          = NULL,
-    panel_map         = NULL,
-    exclude_near_zero = TRUE,
-    zero_threshold    = 0,
-    top_n_classes     = NULL,
-    lambda            = 1e-8,
-    sigma_sq          = 1,
-    solver            = c("osqp", "quadprog"),
-    n_cores           = 1L,
-    pathogen_col      = "pathogen",
-    class_col         = "antibiotic_class",
-    rate_col          = "marginal_resistance",
-    n_tested_col      = "n_tested"
+  marginals,
+  pairwise = NULL,
+  panel_map = NULL,
+  exclude_near_zero = TRUE,
+  zero_threshold = 0,
+  top_n_classes = NULL,
+  lambda = 1e-8,
+  sigma_sq = 1,
+  solver = c("osqp", "quadprog"),
+  n_cores = 1L,
+  pathogen_col = "pathogen",
+  class_col = "antibiotic_class",
+  rate_col = "marginal_resistance",
+  n_tested_col = "n_tested"
 ) {
-  solver  <- match.arg(solver)
+  solver <- match.arg(solver)
   n_cores <- as.integer(n_cores)
 
-  has_osqp     <- requireNamespace("osqp",     quietly = TRUE) &&
-                  requireNamespace("Matrix",   quietly = TRUE)
+  has_osqp <- requireNamespace("osqp", quietly = TRUE) &&
+    requireNamespace("Matrix", quietly = TRUE)
   has_quadprog <- requireNamespace("quadprog", quietly = TRUE)
-  if (!has_osqp && !has_quadprog)
+  if (!has_osqp && !has_quadprog) {
     stop("Install 'osqp' + 'Matrix' (recommended) or 'quadprog'.", call. = FALSE)
+  }
   use_osqp <- has_osqp && solver != "quadprog"
 
   req_cols <- c(pathogen_col, class_col, rate_col)
   miss <- setdiff(req_cols, names(marginals))
-  if (length(miss) > 0L)
+  if (length(miss) > 0L) {
     stop(sprintf("Column(s) not found in `marginals`: %s", paste(miss, collapse = ", ")), call. = FALSE)
+  }
 
   # Detect stratum columns automatically
-  known_non_strat <- c(pathogen_col, class_col, rate_col, n_tested_col,
-                       "n_resistant", "marginal_source", "org_group")
+  known_non_strat <- c(
+    pathogen_col, class_col, rate_col, n_tested_col,
+    "n_resistant", "marginal_source", "org_group"
+  )
   strat_cols <- setdiff(names(marginals), known_non_strat)
 
   # Build unique (stratum x pathogen) combinations
-  key_cols  <- c(strat_cols, pathogen_col)
+  key_cols <- c(strat_cols, pathogen_col)
   strata_df <- marginals %>%
     dplyr::select(dplyr::all_of(key_cols)) %>%
     dplyr::distinct()
@@ -2422,27 +2445,35 @@ estimate_profiles_convex <- function(
 
   # Build a look-up structure for pairwise prevalence
   .get_co_mat <- function(path, row_key) {
-    if (is.null(pairwise) || nrow(pairwise) == 0L) return(NULL)
+    if (is.null(pairwise) || nrow(pairwise) == 0L) {
+      return(NULL)
+    }
     pw_f <- pairwise[[pathogen_col]] == path
-    for (sc in strat_cols)
+    for (sc in strat_cols) {
       pw_f <- pw_f & (pairwise[[sc]] == row_key[[sc]])
+    }
     pw_k <- pairwise[pw_f, , drop = FALSE]
-    if (nrow(pw_k) == 0L) return(NULL)
+    if (nrow(pw_k) == 0L) {
+      return(NULL)
+    }
 
     all_cls <- unique(c(pw_k$antibiotic_class_1, pw_k$antibiotic_class_2))
-    mat     <- matrix(NA_real_, length(all_cls), length(all_cls),
-                      dimnames = list(all_cls, all_cls))
+    mat <- matrix(NA_real_, length(all_cls), length(all_cls),
+      dimnames = list(all_cls, all_cls)
+    )
     for (ri in seq_len(nrow(pw_k))) {
-      c1 <- pw_k$antibiotic_class_1[ri];  c2 <- pw_k$antibiotic_class_2[ri]
+      c1 <- pw_k$antibiotic_class_1[ri]
+      c2 <- pw_k$antibiotic_class_2[ri]
       pv <- pw_k$pairwise_prevalence[ri]
-      mat[c1, c2] <- pv;  mat[c2, c1] <- pv
+      mat[c1, c2] <- pv
+      mat[c2, c1] <- pv
     }
     mat
   }
 
   .solve_one <- function(idx) {
-    row_key  <- strata_df[idx, , drop = FALSE]
-    path     <- row_key[[pathogen_col]]
+    row_key <- strata_df[idx, , drop = FALSE]
+    path <- row_key[[pathogen_col]]
 
     # Filter marginals for this stratum x pathogen
     marg_f <- marginals[[pathogen_col]] == path
@@ -2458,15 +2489,15 @@ estimate_profiles_convex <- function(
 
     if (exclude_near_zero) {
       near_z <- marg_k[[class_col]][!is.na(marg_k[[rate_col]]) &
-                                      marg_k[[rate_col]] <= zero_threshold]
+        marg_k[[rate_col]] <= zero_threshold]
       cls <- setdiff(cls, near_z)
     }
 
     if (!is.null(top_n_classes) && length(cls) > top_n_classes &&
-        n_tested_col %in% names(marg_k)) {
+      n_tested_col %in% names(marg_k)) {
       n_ord <- marg_k[marg_k[[class_col]] %in% cls, ]
       n_ord <- n_ord[order(n_ord[[n_tested_col]], decreasing = TRUE), ]
-      cls   <- sort(n_ord[[class_col]][seq_len(top_n_classes)])
+      cls <- sort(n_ord[[class_col]][seq_len(top_n_classes)])
     }
 
     if (length(cls) < 2L) {
@@ -2474,62 +2505,70 @@ estimate_profiles_convex <- function(
       return(NULL)
     }
 
-    r_marg   <- stats::setNames(marg_k[[rate_col]][match(cls, marg_k[[class_col]])], cls)
+    r_marg <- stats::setNames(marg_k[[rate_col]][match(cls, marg_k[[class_col]])], cls)
     co_mat_k <- .get_co_mat(path, row_key)
 
     # Enumerate profiles and build constraint matrix
     profiles_enum <- enumerate_binary_profiles(cls)
-    cm            <- build_constraint_matrix(profiles_enum, r_marg, co_mat_k)
-    M <- cm$M;  v <- cm$v
+    cm <- build_constraint_matrix(profiles_enum, r_marg, co_mat_k)
+    M <- cm$M
+    v <- cm$v
     n_profiles <- nrow(profiles_enum)
 
     # Identifiability: rank(M) vs 2^n
-    rank_M            <- qr(M)$rank
-    identif_flag      <- rank_M < n_profiles
+    rank_M <- qr(M)$rank
+    identif_flag <- rank_M < n_profiles
 
     # QP
-    coef  <- 2.0 / sigma_sq
+    coef <- 2.0 / sigma_sq
     H_mat <- coef * crossprod(M)
     diag(H_mat) <- diag(H_mat) + lambda
-    d_qp  <- coef * drop(crossprod(M, v))
+    d_qp <- coef * drop(crossprod(M, v))
 
     converged <- TRUE
-    p_hat <- tryCatch({
-      if (use_osqp) {
-        A_sp <- rbind(
-          Matrix::Matrix(1.0, nrow = 1L, ncol = n_profiles, sparse = TRUE),
-          Matrix::Diagonal(n_profiles)
-        )
-        prob <- osqp::osqp(
-          P    = Matrix::forceSymmetric(Matrix::Matrix(H_mat)),
-          q    = -d_qp,
-          A    = A_sp,
-          l    = c(1.0, rep(0.0, n_profiles)),
-          u    = c(1.0, rep(Inf, n_profiles)),
-          pars = osqp::osqpSettings(verbose = FALSE, eps_abs = 1e-8,
-                                    eps_rel = 1e-8, max_iter = 10000L, polish = TRUE)
-        )
-        res <- prob$solve()
-        if (!(res$info$status %in% c("solved", "solved_inaccurate"))) stop(res$info$status)
-        pmax(res$x, 0.0)
-      } else {
-        Amat <- cbind(rep(1.0, n_profiles), diag(n_profiles))
-        bvec <- c(1.0, rep(0.0, n_profiles))
-        pmax(quadprog::solve.QP(H_mat, d_qp, Amat, bvec, meq = 1L)$solution, 0.0)
+    p_hat <- tryCatch(
+      {
+        if (use_osqp) {
+          A_sp <- rbind(
+            Matrix::Matrix(1.0, nrow = 1L, ncol = n_profiles, sparse = TRUE),
+            Matrix::Diagonal(n_profiles)
+          )
+          prob <- osqp::osqp(
+            P = Matrix::forceSymmetric(Matrix::Matrix(H_mat)),
+            q = -d_qp,
+            A = A_sp,
+            l = c(1.0, rep(0.0, n_profiles)),
+            u = c(1.0, rep(Inf, n_profiles)),
+            pars = osqp::osqpSettings(
+              verbose = FALSE, eps_abs = 1e-8,
+              eps_rel = 1e-8, max_iter = 10000L, polish = TRUE
+            )
+          )
+          res <- prob$solve()
+          if (!(res$info$status %in% c("solved", "solved_inaccurate"))) stop(res$info$status)
+          pmax(res$x, 0.0)
+        } else {
+          Amat <- cbind(rep(1.0, n_profiles), diag(n_profiles))
+          bvec <- c(1.0, rep(0.0, n_profiles))
+          pmax(quadprog::solve.QP(H_mat, d_qp, Amat, bvec, meq = 1L)$solution, 0.0)
+        }
+      },
+      error = function(e) {
+        converged <<- FALSE
+        rep(1.0 / n_profiles, n_profiles)
       }
-    }, error = function(e) {
-      converged <<- FALSE
-      rep(1.0 / n_profiles, n_profiles)
-    })
+    )
     p_hat <- p_hat / sum(p_hat)
 
-    residuals    <- drop(M %*% p_hat) - v
-    max_abs_res  <- max(abs(residuals))
-    notes_parts  <- character(0)
-    if (length(cm$capped_pairs) > 0L)
+    residuals <- drop(M %*% p_hat) - v
+    max_abs_res <- max(abs(residuals))
+    notes_parts <- character(0)
+    if (length(cm$capped_pairs) > 0L) {
       notes_parts <- c(notes_parts, paste0("capped: ", paste(names(cm$capped_pairs), collapse = ", ")))
-    if (length(cm$fallback_pairs) > 0L)
+    }
+    if (length(cm$fallback_pairs) > 0L) {
       notes_parts <- c(notes_parts, paste0("indep_fallback: ", paste(cm$fallback_pairs, collapse = ", ")))
+    }
     if (!converged) notes_parts <- c(notes_parts, "QP_failed_uniform_returned")
 
     message(sprintf(
@@ -2550,19 +2589,21 @@ estimate_profiles_convex <- function(
         notes                = if (length(notes_parts) > 0L) paste(notes_parts, collapse = "; ") else NA_character_
       ) %>%
       dplyr::mutate(
-        pathogen         = path,
+        pathogen = path,
         profile_set_type = "aggregate_convex",
         profile_class_set = paste(cls, collapse = "|"),
-        estimator        = "convex"
+        estimator = "convex"
       )
 
     # Attach stratum columns
     for (sc in strat_cols) out_df[[sc]] <- row_key[[sc]]
 
     # Reorder columns: strat | pathogen | profile meta | probability | flags
-    front_cols <- c(strat_cols, "pathogen", "profile_set_type", "profile_class_set",
-                    "profile_delta", "profile_probability", "estimator",
-                    "convergence_flag", "identifiability_flag", "max_abs_residual", "notes")
+    front_cols <- c(
+      strat_cols, "pathogen", "profile_set_type", "profile_class_set",
+      "profile_delta", "profile_probability", "estimator",
+      "convergence_flag", "identifiability_flag", "max_abs_residual", "notes"
+    )
     class_indicator_cols <- setdiff(names(out_df), front_cols)
     out_df <- out_df[, c(front_cols, class_indicator_cols), drop = FALSE]
     tibble::as_tibble(out_df)
@@ -2570,14 +2611,16 @@ estimate_profiles_convex <- function(
 
   if (n_cores > 1L) {
     results_list <- parallel::mclapply(seq_len(nrow(strata_df)), .solve_one,
-                                       mc.cores = n_cores, mc.preschedule = FALSE)
+      mc.cores = n_cores, mc.preschedule = FALSE
+    )
   } else {
     results_list <- lapply(seq_len(nrow(strata_df)), .solve_one)
   }
 
   results_list <- Filter(Negate(is.null), results_list)
-  if (length(results_list) == 0L)
+  if (length(results_list) == 0L) {
     stop("No profiles estimated. Check marginals, panel_map, and class filters.", call. = FALSE)
+  }
 
   final_tbl <- dplyr::bind_rows(results_list)
   message(sprintf(
@@ -3501,15 +3544,15 @@ compute_resistance_profiles <- function(
     }
 
     # -- Enumerate 2^n resistance profiles ---------------------------------
-    profiles_enum  <- enumerate_binary_profiles(classes)
-    n_profiles     <- nrow(profiles_enum)
+    profiles_enum <- enumerate_binary_profiles(classes)
+    n_profiles <- nrow(profiles_enum)
     profile_labels <- profiles_enum$profile_delta
-    profiles_mat   <- as.matrix(profiles_enum[, classes, drop = FALSE])
+    profiles_mat <- as.matrix(profiles_enum[, classes, drop = FALSE])
 
     # -- Constraint matrix M (m x 2^n) and target vector v -----------------
     cm <- build_constraint_matrix(profiles_enum, r_marg, co_mat)
-    M  <- cm$M
-    v  <- cm$v
+    M <- cm$M
+    v <- cm$v
 
     if (length(cm$capped_pairs) > 0L) {
       message(sprintf(
@@ -3664,11 +3707,9 @@ compute_resistance_profiles <- function(
 # Lowercases, trims whitespace, and removes punctuation for fuzzy joins.
 
 
-# ---------------------------------------------------------------------------
 # Resistance class selection (moved from prep_ast_and_syndrome.R)
 # These are analysis functions that inform DALY burden attribution - they
 # do not belong in the preprocessing layer.
-# ---------------------------------------------------------------------------
 
 #' Select Resistance Class for Burden Attribution
 #'
@@ -3695,28 +3736,32 @@ compute_resistance_profiles <- function(
 #' @return Data frame filtered to one resistance class per event.
 #' @export
 select_resistance_class <- function(data,
-                                    event_col          = "event_id",
-                                    class_col          = "antibiotic_class",
+                                    event_col = "event_id",
+                                    class_col = "antibiotic_class",
                                     susceptibility_col = "antibiotic_value",
-                                    rr_col             = "rr_value",
-                                    hierarchy          = NULL,
-                                    filter_resistant   = TRUE) {
+                                    rr_col = "rr_value",
+                                    hierarchy = NULL,
+                                    filter_resistant = TRUE) {
   required_cols <- c(event_col, class_col, susceptibility_col)
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
     stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
+  }
 
   if (is.null(hierarchy)) hierarchy <- get_beta_lactam_hierarchy()
 
   use_rr <- rr_col %in% names(data)
-  if (!use_rr)
+  if (!use_rr) {
     message(sprintf("RR column '%s' not found. Using hierarchy only for selection.", rr_col))
+  }
 
-  n_before        <- nrow(data)
+  n_before <- nrow(data)
   n_events_before <- dplyr::n_distinct(data[[event_col]])
 
-  message(sprintf("Selecting resistance classes using hierarchy%s...",
-                  ifelse(use_rr, " + RR", "")))
+  message(sprintf(
+    "Selecting resistance classes using hierarchy%s...",
+    ifelse(use_rr, " + RR", "")
+  ))
 
   if (filter_resistant) {
     data <- data %>% dplyr::filter(!!rlang::sym(susceptibility_col) == "R")
@@ -3764,29 +3809,31 @@ select_resistance_class <- function(data,
 prioritize_resistance <- function(data,
                                   event_col,
                                   class_col,
-                                  rr_col    = NULL,
+                                  rr_col = NULL,
                                   hierarchy) {
   # Accept either a named vector (name = class, value = rank) or an unnamed
   # character vector (position = rank) -- get_beta_lactam_hierarchy() returns
   # the latter.
   hier_classes <- if (!is.null(names(hierarchy))) names(hierarchy) else as.character(hierarchy)
   hierarchy_df <- data.frame(
-    class          = hier_classes,
+    class = hier_classes,
     hierarchy_rank = seq_along(hierarchy),
     stringsAsFactors = FALSE
   )
   names(hierarchy_df)[1] <- class_col
 
-  data     <- data %>% dplyr::left_join(hierarchy_df, by = class_col)
+  data <- data %>% dplyr::left_join(hierarchy_df, by = class_col)
   max_rank <- max(hierarchy_df$hierarchy_rank, na.rm = TRUE)
-  data     <- data %>%
+  data <- data %>%
     dplyr::mutate(hierarchy_rank = dplyr::coalesce(hierarchy_rank, max_rank + 1L))
 
   if (!is.null(rr_col) && rr_col %in% names(data)) {
     selected <- data %>%
       dplyr::group_by(!!rlang::sym(event_col)) %>%
-      dplyr::arrange(hierarchy_rank, dplyr::desc(!!rlang::sym(rr_col)),
-                     !!rlang::sym(class_col)) %>%
+      dplyr::arrange(
+        hierarchy_rank, dplyr::desc(!!rlang::sym(rr_col)),
+        !!rlang::sym(class_col)
+      ) %>%
       dplyr::slice(1) %>%
       dplyr::ungroup() %>%
       dplyr::mutate(selection_method = "hierarchy_rr", selection_confidence = "high")
@@ -3806,9 +3853,12 @@ prioritize_resistance <- function(data,
     dplyr::summarise(n_classes = dplyr::n(), .groups = "drop") %>%
     dplyr::filter(n_classes > 1)
 
-  if (nrow(multi_class_events) > 0)
-    message(sprintf("Applied selection to %d events with multiple resistant classes.",
-                    nrow(multi_class_events)))
+  if (nrow(multi_class_events) > 0) {
+    message(sprintf(
+      "Applied selection to %d events with multiple resistant classes.",
+      nrow(multi_class_events)
+    ))
+  }
 
   return(selected)
 }
@@ -3864,11 +3914,7 @@ prioritize_resistance <- function(data,
 # ===========================================================================
 
 
-
-
-# ---------------------------------------------------------------------------
 # Internal helpers
-# ---------------------------------------------------------------------------
 
 #' Check pairwise co-testing overlap per hospital x class-pair
 #'
@@ -3880,37 +3926,40 @@ prioritize_resistance <- function(data,
 #' four cells to have at least \code{min_pairwise_cell} observations.
 #' @keywords internal
 .check_pairwise_cotesting <- function(event_class_data, class_cols, upper_re_col,
-                                       min_pairwise_cotested = 30L,
-                                       min_pairwise_cell = 1L) {
+                                      min_pairwise_cotested = 30L,
+                                      min_pairwise_cell = 1L) {
   rows <- list()
   hospitals <- sort(unique(event_class_data[[upper_re_col]]))
   for (h in hospitals) {
     sub <- event_class_data[event_class_data[[upper_re_col]] == h, class_cols,
-                             drop = FALSE]
+      drop = FALSE
+    ]
     pairs <- utils::combn(class_cols, 2L, simplify = FALSE)
     for (pr in pairs) {
-      c1 <- pr[1L]; c2 <- pr[2L]
-      v1 <- sub[[c1]]; v2 <- sub[[c2]]
+      c1 <- pr[1L]
+      c2 <- pr[2L]
+      v1 <- sub[[c1]]
+      v2 <- sub[[c2]]
       both_tested <- !is.na(v1) & !is.na(v2)
-      n_cotested  <- sum(both_tested)
+      n_cotested <- sum(both_tested)
       n_RR <- sum(both_tested & v1 == 1L & v2 == 1L)
       n_RS <- sum(both_tested & v1 == 1L & v2 == 0L)
       n_SR <- sum(both_tested & v1 == 0L & v2 == 1L)
       n_SS <- sum(both_tested & v1 == 0L & v2 == 0L)
       has_full_cell_variation <-
         n_RR >= min_pairwise_cell && n_RS >= min_pairwise_cell &&
-        n_SR >= min_pairwise_cell && n_SS >= min_pairwise_cell
+          n_SR >= min_pairwise_cell && n_SS >= min_pairwise_cell
       rows[[length(rows) + 1L]] <- tibble::tibble(
-        !!upper_re_col   := h,
-        class_1           = c1,
-        class_2           = c2,
-        n_cotested        = n_cotested,
-        n_RR              = n_RR,
-        n_RS              = n_RS,
-        n_SR              = n_SR,
-        n_SS              = n_SS,
+        !!upper_re_col := h,
+        class_1 = c1,
+        class_2 = c2,
+        n_cotested = n_cotested,
+        n_RR = n_RR,
+        n_RS = n_RS,
+        n_SR = n_SR,
+        n_SS = n_SS,
         has_full_cell_variation = has_full_cell_variation,
-        sufficient        = (n_cotested >= min_pairwise_cotested) && has_full_cell_variation
+        sufficient = (n_cotested >= min_pairwise_cotested) && has_full_cell_variation
       )
     }
   }
@@ -3921,13 +3970,13 @@ prioritize_resistance <- function(data,
 #' Check panel eligibility thresholds per hospital x class cell
 #' @keywords internal
 .validate_panel_eligibility <- function(
-    event_class_data,
-    class_cols,
-    upper_re_col,
-    pathogen_col,
-    min_tested      = 30L,
-    min_resistant   = 5L,
-    min_susceptible = 5L
+  event_class_data,
+  class_cols,
+  upper_re_col,
+  pathogen_col,
+  min_tested = 30L,
+  min_resistant = 5L,
+  min_susceptible = 5L
 ) {
   rows <- list()
   pathogens <- sort(unique(event_class_data[[pathogen_col]]))
@@ -3937,25 +3986,26 @@ prioritize_resistance <- function(data,
     for (g in pathogens) {
       sub <- event_class_data[
         event_class_data[[upper_re_col]] == h &
-        event_class_data[[pathogen_col]]  == g, , drop = FALSE
+          event_class_data[[pathogen_col]] == g, ,
+        drop = FALSE
       ]
       if (nrow(sub) == 0L) next
       for (cc in class_cols) {
         vals <- sub[[cc]]
         n_tested <- sum(!is.na(vals))
-        n_res    <- sum(!is.na(vals) & vals == 1L)
-        n_sus    <- sum(!is.na(vals) & vals == 0L)
+        n_res <- sum(!is.na(vals) & vals == 1L)
+        n_sus <- sum(!is.na(vals) & vals == 0L)
         eligible <- (n_tested >= min_tested) &
-                    (n_res    >= min_resistant) &
-                    (n_sus    >= min_susceptible)
+          (n_res >= min_resistant) &
+          (n_sus >= min_susceptible)
         rows[[length(rows) + 1L]] <- tibble::tibble(
           !!upper_re_col := h,
-          !!pathogen_col  := g,
+          !!pathogen_col := g,
           antibiotic_class = cc,
-          n_tested         = n_tested,
-          n_resistant      = n_res,
-          n_susceptible    = n_sus,
-          eligible         = eligible
+          n_tested = n_tested,
+          n_resistant = n_res,
+          n_susceptible = n_sus,
+          eligible = eligible
         )
       }
     }
@@ -4003,13 +4053,13 @@ prioritize_resistance <- function(data,
 #'     pairwise co-testing).}
 #' @keywords internal
 .resolve_profile_class_panel <- function(
-    class_cols,
-    hospital,
-    pathogen,
-    eligibility_report,
-    upper_re_col,
-    pathogen_col,
-    residual_structure = "identity"
+  class_cols,
+  hospital,
+  pathogen,
+  eligibility_report,
+  upper_re_col,
+  pathogen_col,
+  residual_structure = "identity"
 ) {
   marginal <- eligibility_report$marginal
   pairwise <- eligibility_report$pairwise
@@ -4019,14 +4069,16 @@ prioritize_resistance <- function(data,
     # computes one; this only fires for fit objects built some other way).
     # Fall back to the full class set rather than silently treating untested
     # classes as eligible.
-    return(list(classes = class_cols, excluded = character(0L),
-                method = "no_eligibility_report_available", reason = NA_character_))
+    return(list(
+      classes = class_cols, excluded = character(0L),
+      method = "no_eligibility_report_available", reason = NA_character_
+    ))
   }
 
   sub <- marginal[marginal[[upper_re_col]] == hospital &
-                   marginal[[pathogen_col]]  == pathogen, , drop = FALSE]
+    marginal[[pathogen_col]] == pathogen, , drop = FALSE]
   elig_classes <- sub$antibiotic_class[sub$eligible]
-  elig_classes <- intersect(class_cols, elig_classes)   # preserve class_cols order
+  elig_classes <- intersect(class_cols, elig_classes) # preserve class_cols order
   marginal_excluded <- setdiff(class_cols, elig_classes)
 
   use_pairwise <- identical(residual_structure, "correlated") &&
@@ -4039,8 +4091,11 @@ prioritize_resistance <- function(data,
   }
 
   if (!use_pairwise) {
-    reason <- if (length(marginal_excluded) == 0L) NA_character_ else
+    reason <- if (length(marginal_excluded) == 0L) {
+      NA_character_
+    } else {
       sprintf("insufficient_marginal_support: %s", paste(marginal_excluded, collapse = ", "))
+    }
     return(list(classes = elig_classes, excluded = marginal_excluded, method = method, reason = reason))
   }
 
@@ -4051,7 +4106,7 @@ prioritize_resistance <- function(data,
   current <- elig_classes
   repeat {
     if (length(current) < 2L) break
-    pr  <- psub[psub$class_1 %in% current & psub$class_2 %in% current, , drop = FALSE]
+    pr <- psub[psub$class_1 %in% current & psub$class_2 %in% current, , drop = FALSE]
     bad <- pr[!pr$sufficient, , drop = FALSE]
     if (nrow(bad) == 0L) break
     offender_counts <- table(c(bad$class_1, bad$class_2))
@@ -4059,13 +4114,15 @@ prioritize_resistance <- function(data,
     current <- setdiff(current, worst)
   }
   pairwise_excluded <- setdiff(elig_classes, current)
-  all_excluded      <- union(marginal_excluded, pairwise_excluded)
+  all_excluded <- union(marginal_excluded, pairwise_excluded)
 
   reason_parts <- c(
-    if (length(marginal_excluded) > 0L)
-      sprintf("insufficient_marginal_support: %s", paste(marginal_excluded, collapse = ", ")),
-    if (length(pairwise_excluded) > 0L)
+    if (length(marginal_excluded) > 0L) {
+      sprintf("insufficient_marginal_support: %s", paste(marginal_excluded, collapse = ", "))
+    },
+    if (length(pairwise_excluded) > 0L) {
       sprintf("insufficient_pairwise_cotesting: %s", paste(pairwise_excluded, collapse = ", "))
+    }
   )
   reason <- if (length(reason_parts) == 0L) NA_character_ else paste(reason_parts, collapse = "; ")
 
@@ -4107,20 +4164,23 @@ prioritize_resistance <- function(data,
 #'   old hardcoded 1re/2re/3re Stan models).
 #' @export
 summarize_fit_correlation_matrix <- function(fit, matrix_var, class_cols, ci_level = 0.95,
-                                              block_index = NULL) {
+                                             block_index = NULL) {
   draws_arr <- fit$draws
-  if (is.null(draws_arr)) return(NULL)
+  if (is.null(draws_arr)) {
+    return(NULL)
+  }
   var_names <- posterior::variables(draws_arr)
   D <- length(class_cols)
   alpha <- (1 - ci_level) / 2
   rows <- list()
   for (i in seq_len(D)) {
     for (j in seq_len(D)) {
-      if (i >= j) next  # off-diagonal, upper triangle only (matrix is symmetric)
-      vname <- if (is.null(block_index))
+      if (i >= j) next # off-diagonal, upper triangle only (matrix is symmetric)
+      vname <- if (is.null(block_index)) {
         sprintf("%s[%d,%d]", matrix_var, i, j)
-      else
+      } else {
         sprintf("%s[%d,%d,%d]", matrix_var, block_index, i, j)
+      }
       if (!vname %in% var_names) next
       draws_ij <- as.numeric(posterior::extract_variable(draws_arr, vname))
       rows[[length(rows) + 1L]] <- tibble::tibble(
@@ -4133,545 +4193,18 @@ summarize_fit_correlation_matrix <- function(fit, matrix_var, class_cols, ci_lev
       )
     }
   }
-  if (length(rows) == 0L) return(NULL)
+  if (length(rows) == 0L) {
+    return(NULL)
+  }
   dplyr::bind_rows(rows)
 }
 
 
-# ---------------------------------------------------------------------------
-# Internal: Stan model code -- three variants by number of RE levels
-# ---------------------------------------------------------------------------
-# Priors are passed as data so the model compiles once and prior values
-# can be changed freely between runs without recompilation.
-#
-# KEY CHANGE vs prior skeleton:
-#   - eta[N_events, D] in parameters: per-event latent noise whose prior is
-#     N(0,I). Because z_{ed} = mu_{ed} + hospital_effect[d,h] + (L_Omega * eta_e)[d],
-#     L_Omega participates in the likelihood. Previously L_Omega only had a
-#     prior and was never updated by data.
-#   - Hospital (and lower-level) effects use diag_pre_multiply(tau, L_corr) * z_raw
-#     so they are correlated across antibiotic classes.
-
-.amr_probit_stan_1re <- function() {
-  r"(
-// Multivariate probit with data augmentation -- one grouping level (hospital)
-//
-// Correct implementation: z_aug[e] ~ MVN(mu_e, Omega).
-// Sign constraints on observed outcomes are imposed via an exp-transformation
-// of the unconstrained z_free parameters. The Jacobian correction accounts for
-// the change-of-variables from z_free to z_aug. There is NO additional
-// Bernoulli/probit residual -- the MVN supplies the entire residual covariance.
-data {
-  int<lower=1> N;                               // observed (event x class) pairs
-  int<lower=1> N_events;                        // unique events
-  int<lower=2> D;                               // antibiotic classes
-  int<lower=1> H;                               // hospitals
-  int<lower=1> K;                               // FE columns (including intercept)
-
-  matrix[N_events, K] X_event;                  // event-level FE design matrix
-  array[N_events] int<lower=1,upper=H> h_ev;    // hospital index per event
-
-  // Wide AST arrays for data augmentation
-  array[N_events, D] int<lower=0,upper=1> obs_mask; // 1 = tested, 0 = not tested
-  array[N_events, D] int<lower=0,upper=1> y_mat;    // outcome if tested, else 0
-
-  // Long-format indices (for Jacobian only)
-  array[N] int<lower=1,upper=N_events> ev_idx;
-  array[N] int<lower=1,upper=D> d_idx;
-
-  real<lower=0> prior_beta_sd;
-  real<lower=0> prior_tau_sd;
-  real<lower=1> lkj_eta;
-}
-parameters {
-  matrix[K, D] beta;
-  matrix[D, H] z_hospital;
-  vector<lower=0>[D] tau_hospital;
-  cholesky_factor_corr[D] L_corr_hospital;
-  cholesky_factor_corr[D] L_Omega;
-  matrix[N_events, D] z_free; // unconstrained; sign-constrained in TP block
-}
-transformed parameters {
-  matrix[D, H] hospital_effect =
-    diag_pre_multiply(tau_hospital, L_corr_hospital) * z_hospital;
-
-  // Sign-constrained latent utilities
-  matrix[N_events, D] z_aug;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      if (obs_mask[e, d] == 1) {
-        z_aug[e, d] = (y_mat[e, d] == 1) ? exp(z_free[e, d]) : -exp(z_free[e, d]);
-      } else {
-        z_aug[e, d] = z_free[e, d];
-      }
-    }
-  }
-
-  // Event-level linear predictor (N_events x D)
-  matrix[N_events, D] mu_mat = X_event * beta;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      mu_mat[e, d] += hospital_effect[d, h_ev[e]];
-    }
-  }
-}
-model {
-  to_vector(beta)         ~ normal(0, prior_beta_sd);
-  tau_hospital            ~ normal(0, prior_tau_sd);
-  to_vector(z_hospital)   ~ std_normal();
-  L_corr_hospital         ~ lkj_corr_cholesky(lkj_eta);
-  L_Omega                 ~ lkj_corr_cholesky(lkj_eta);
-
-  // Multivariate-probit data augmentation: z_aug[e] ~ MVN(mu_mat[e], Omega)
-  for (e in 1:N_events) {
-    target += multi_normal_cholesky_lpdf(z_aug[e]' | mu_mat[e]', L_Omega);
-  }
-
-  // Jacobian for sign-constrained observations: log|dz_aug/dz_free| = z_free
-  for (n in 1:N) {
-    target += z_free[ev_idx[n], d_idx[n]];
-  }
-}
-generated quantities {
-  corr_matrix[D] Omega      = multiply_lower_tri_self_transpose(L_Omega);
-  corr_matrix[D] R_hospital = multiply_lower_tri_self_transpose(L_corr_hospital);
-}
-)"
-}
-
-.amr_probit_stan_2re <- function() {
-  r"(
-// Multivariate probit with data augmentation -- two grouping levels
-// (hospital + patient or admission)
-data {
-  int<lower=1> N;
-  int<lower=1> N_events;
-  int<lower=2> D;
-  int<lower=1> H;
-  int<lower=1> Pt;
-  int<lower=1> K;
-
-  matrix[N_events, K] X_event;
-  array[N_events] int<lower=1,upper=H>  h_ev;
-  array[N_events] int<lower=1,upper=Pt> p_ev;
-
-  array[N_events, D] int<lower=0,upper=1> obs_mask;
-  array[N_events, D] int<lower=0,upper=1> y_mat;
-
-  array[N] int<lower=1,upper=N_events> ev_idx;
-  array[N] int<lower=1,upper=D> d_idx;
-
-  real<lower=0> prior_beta_sd;
-  real<lower=0> prior_tau_sd;
-  real<lower=1> lkj_eta;
-}
-parameters {
-  matrix[K, D] beta;
-  matrix[D, H] z_hospital;
-  vector<lower=0>[D] tau_hospital;
-  cholesky_factor_corr[D] L_corr_hospital;
-  matrix[D, Pt] z_patient;
-  vector<lower=0>[D] tau_patient;
-  cholesky_factor_corr[D] L_corr_patient;
-  cholesky_factor_corr[D] L_Omega;
-  matrix[N_events, D] z_free;
-}
-transformed parameters {
-  matrix[D, H]  hospital_effect =
-    diag_pre_multiply(tau_hospital, L_corr_hospital) * z_hospital;
-  matrix[D, Pt] patient_effect  =
-    diag_pre_multiply(tau_patient,  L_corr_patient)  * z_patient;
-
-  matrix[N_events, D] z_aug;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      if (obs_mask[e, d] == 1) {
-        z_aug[e, d] = (y_mat[e, d] == 1) ? exp(z_free[e, d]) : -exp(z_free[e, d]);
-      } else {
-        z_aug[e, d] = z_free[e, d];
-      }
-    }
-  }
-
-  matrix[N_events, D] mu_mat = X_event * beta;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      mu_mat[e, d] += hospital_effect[d, h_ev[e]] + patient_effect[d, p_ev[e]];
-    }
-  }
-}
-model {
-  to_vector(beta)        ~ normal(0, prior_beta_sd);
-  tau_hospital           ~ normal(0, prior_tau_sd);
-  tau_patient            ~ normal(0, prior_tau_sd);
-  to_vector(z_hospital)  ~ std_normal();
-  to_vector(z_patient)   ~ std_normal();
-  L_corr_hospital        ~ lkj_corr_cholesky(lkj_eta);
-  L_corr_patient         ~ lkj_corr_cholesky(lkj_eta);
-  L_Omega                ~ lkj_corr_cholesky(lkj_eta);
-
-  for (e in 1:N_events) {
-    target += multi_normal_cholesky_lpdf(z_aug[e]' | mu_mat[e]', L_Omega);
-  }
-  for (n in 1:N) {
-    target += z_free[ev_idx[n], d_idx[n]];
-  }
-}
-generated quantities {
-  corr_matrix[D] Omega      = multiply_lower_tri_self_transpose(L_Omega);
-  corr_matrix[D] R_hospital = multiply_lower_tri_self_transpose(L_corr_hospital);
-  corr_matrix[D] R_patient  = multiply_lower_tri_self_transpose(L_corr_patient);
-}
-)"
-}
-
-.amr_probit_stan_3re <- function() {
-  r"(
-// Multivariate probit with data augmentation -- three grouping levels
-// (hospital + patient + admission)
-data {
-  int<lower=1> N;
-  int<lower=1> N_events;
-  int<lower=2> D;
-  int<lower=1> H;
-  int<lower=1> Pt;
-  int<lower=1> Adm;
-  int<lower=1> K;
-
-  matrix[N_events, K] X_event;
-  array[N_events] int<lower=1,upper=H>   h_ev;
-  array[N_events] int<lower=1,upper=Pt>  p_ev;
-  array[N_events] int<lower=1,upper=Adm> a_ev;
-
-  array[N_events, D] int<lower=0,upper=1> obs_mask;
-  array[N_events, D] int<lower=0,upper=1> y_mat;
-
-  array[N] int<lower=1,upper=N_events> ev_idx;
-  array[N] int<lower=1,upper=D> d_idx;
-
-  real<lower=0> prior_beta_sd;
-  real<lower=0> prior_tau_sd;
-  real<lower=1> lkj_eta;
-}
-parameters {
-  matrix[K, D] beta;
-  matrix[D, H]   z_hospital;
-  vector<lower=0>[D] tau_hospital;
-  cholesky_factor_corr[D] L_corr_hospital;
-  matrix[D, Pt]  z_patient;
-  vector<lower=0>[D] tau_patient;
-  cholesky_factor_corr[D] L_corr_patient;
-  matrix[D, Adm] z_admission;
-  vector<lower=0>[D] tau_admission;
-  cholesky_factor_corr[D] L_corr_admission;
-  cholesky_factor_corr[D] L_Omega;
-  matrix[N_events, D] z_free;
-}
-transformed parameters {
-  matrix[D, H]   hospital_effect  =
-    diag_pre_multiply(tau_hospital,  L_corr_hospital)  * z_hospital;
-  matrix[D, Pt]  patient_effect   =
-    diag_pre_multiply(tau_patient,   L_corr_patient)   * z_patient;
-  matrix[D, Adm] admission_effect =
-    diag_pre_multiply(tau_admission, L_corr_admission) * z_admission;
-
-  matrix[N_events, D] z_aug;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      if (obs_mask[e, d] == 1) {
-        z_aug[e, d] = (y_mat[e, d] == 1) ? exp(z_free[e, d]) : -exp(z_free[e, d]);
-      } else {
-        z_aug[e, d] = z_free[e, d];
-      }
-    }
-  }
-
-  matrix[N_events, D] mu_mat = X_event * beta;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      mu_mat[e, d] += hospital_effect[d, h_ev[e]]
-                    + patient_effect[d, p_ev[e]]
-                    + admission_effect[d, a_ev[e]];
-    }
-  }
-}
-model {
-  to_vector(beta)          ~ normal(0, prior_beta_sd);
-  tau_hospital             ~ normal(0, prior_tau_sd);
-  tau_patient              ~ normal(0, prior_tau_sd);
-  tau_admission            ~ normal(0, prior_tau_sd);
-  to_vector(z_hospital)    ~ std_normal();
-  to_vector(z_patient)     ~ std_normal();
-  to_vector(z_admission)   ~ std_normal();
-  L_corr_hospital          ~ lkj_corr_cholesky(lkj_eta);
-  L_corr_patient           ~ lkj_corr_cholesky(lkj_eta);
-  L_corr_admission         ~ lkj_corr_cholesky(lkj_eta);
-  L_Omega                  ~ lkj_corr_cholesky(lkj_eta);
-
-  for (e in 1:N_events) {
-    target += multi_normal_cholesky_lpdf(z_aug[e]' | mu_mat[e]', L_Omega);
-  }
-  for (n in 1:N) {
-    target += z_free[ev_idx[n], d_idx[n]];
-  }
-}
-generated quantities {
-  corr_matrix[D] Omega        = multiply_lower_tri_self_transpose(L_Omega);
-  corr_matrix[D] R_hospital   = multiply_lower_tri_self_transpose(L_corr_hospital);
-  corr_matrix[D] R_patient    = multiply_lower_tri_self_transpose(L_corr_patient);
-  corr_matrix[D] R_admission  = multiply_lower_tri_self_transpose(L_corr_admission);
-}
-)"
-}
-
-
-# ---------------------------------------------------------------------------
-# Stan model variants -- identity residual structure
-# Classes are conditionally independent given fixed and random effects.
-# L_Omega is NOT estimated; residual covariance = I_D.
-# ---------------------------------------------------------------------------
-
-.amr_probit_stan_1re_identity <- function() {
-  r"(
-// Multivariate probit -- one grouping level -- identity residual structure
-// Classes are conditionally independent; L_Omega is not estimated.
-data {
-  int<lower=1> N;
-  int<lower=1> N_events;
-  int<lower=2> D;
-  int<lower=1> H;
-  int<lower=1> K;
-  matrix[N_events, K] X_event;
-  array[N_events] int<lower=1,upper=H> h_ev;
-  array[N_events, D] int<lower=0,upper=1> obs_mask;
-  array[N_events, D] int<lower=0,upper=1> y_mat;
-  array[N] int<lower=1,upper=N_events> ev_idx;
-  array[N] int<lower=1,upper=D> d_idx;
-  real<lower=0> prior_beta_sd;
-  real<lower=0> prior_tau_sd;
-  real<lower=1> lkj_eta;
-}
-parameters {
-  matrix[K, D] beta;
-  matrix[D, H] z_hospital;
-  vector<lower=0>[D] tau_hospital;
-  cholesky_factor_corr[D] L_corr_hospital;
-  matrix[N_events, D] z_free;
-}
-transformed parameters {
-  matrix[D, H] hospital_effect =
-    diag_pre_multiply(tau_hospital, L_corr_hospital) * z_hospital;
-
-  matrix[N_events, D] z_aug;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      if (obs_mask[e, d] == 1) {
-        z_aug[e, d] = (y_mat[e, d] == 1) ? exp(z_free[e, d]) : -exp(z_free[e, d]);
-      } else {
-        z_aug[e, d] = z_free[e, d];
-      }
-    }
-  }
-
-  matrix[N_events, D] mu_mat = X_event * beta;
-  for (e in 1:N_events)
-    for (d in 1:D)
-      mu_mat[e, d] += hospital_effect[d, h_ev[e]];
-}
-model {
-  to_vector(beta)         ~ normal(0, prior_beta_sd);
-  tau_hospital            ~ normal(0, prior_tau_sd);
-  to_vector(z_hospital)   ~ std_normal();
-  L_corr_hospital         ~ lkj_corr_cholesky(lkj_eta);
-
-  for (e in 1:N_events)
-    for (d in 1:D)
-      target += normal_lpdf(z_aug[e, d] | mu_mat[e, d], 1.0);
-
-  for (n in 1:N)
-    target += z_free[ev_idx[n], d_idx[n]];
-}
-generated quantities {
-  corr_matrix[D] R_hospital = multiply_lower_tri_self_transpose(L_corr_hospital);
-}
-)"
-}
-
-.amr_probit_stan_2re_identity <- function() {
-  r"(
-// Multivariate probit -- two grouping levels -- identity residual structure
-data {
-  int<lower=1> N;
-  int<lower=1> N_events;
-  int<lower=2> D;
-  int<lower=1> H;
-  int<lower=1> Pt;
-  int<lower=1> K;
-  matrix[N_events, K] X_event;
-  array[N_events] int<lower=1,upper=H>  h_ev;
-  array[N_events] int<lower=1,upper=Pt> p_ev;
-  array[N_events, D] int<lower=0,upper=1> obs_mask;
-  array[N_events, D] int<lower=0,upper=1> y_mat;
-  array[N] int<lower=1,upper=N_events> ev_idx;
-  array[N] int<lower=1,upper=D> d_idx;
-  real<lower=0> prior_beta_sd;
-  real<lower=0> prior_tau_sd;
-  real<lower=1> lkj_eta;
-}
-parameters {
-  matrix[K, D] beta;
-  matrix[D, H] z_hospital;
-  vector<lower=0>[D] tau_hospital;
-  cholesky_factor_corr[D] L_corr_hospital;
-  matrix[D, Pt] z_patient;
-  vector<lower=0>[D] tau_patient;
-  cholesky_factor_corr[D] L_corr_patient;
-  matrix[N_events, D] z_free;
-}
-transformed parameters {
-  matrix[D, H]  hospital_effect =
-    diag_pre_multiply(tau_hospital, L_corr_hospital) * z_hospital;
-  matrix[D, Pt] patient_effect  =
-    diag_pre_multiply(tau_patient,  L_corr_patient)  * z_patient;
-
-  matrix[N_events, D] z_aug;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      if (obs_mask[e, d] == 1) {
-        z_aug[e, d] = (y_mat[e, d] == 1) ? exp(z_free[e, d]) : -exp(z_free[e, d]);
-      } else {
-        z_aug[e, d] = z_free[e, d];
-      }
-    }
-  }
-
-  matrix[N_events, D] mu_mat = X_event * beta;
-  for (e in 1:N_events)
-    for (d in 1:D)
-      mu_mat[e, d] += hospital_effect[d, h_ev[e]] + patient_effect[d, p_ev[e]];
-}
-model {
-  to_vector(beta)        ~ normal(0, prior_beta_sd);
-  tau_hospital           ~ normal(0, prior_tau_sd);
-  tau_patient            ~ normal(0, prior_tau_sd);
-  to_vector(z_hospital)  ~ std_normal();
-  to_vector(z_patient)   ~ std_normal();
-  L_corr_hospital        ~ lkj_corr_cholesky(lkj_eta);
-  L_corr_patient         ~ lkj_corr_cholesky(lkj_eta);
-
-  for (e in 1:N_events)
-    for (d in 1:D)
-      target += normal_lpdf(z_aug[e, d] | mu_mat[e, d], 1.0);
-
-  for (n in 1:N)
-    target += z_free[ev_idx[n], d_idx[n]];
-}
-generated quantities {
-  corr_matrix[D] R_hospital = multiply_lower_tri_self_transpose(L_corr_hospital);
-  corr_matrix[D] R_patient  = multiply_lower_tri_self_transpose(L_corr_patient);
-}
-)"
-}
-
-.amr_probit_stan_3re_identity <- function() {
-  r"(
-// Multivariate probit -- three grouping levels -- identity residual structure
-data {
-  int<lower=1> N;
-  int<lower=1> N_events;
-  int<lower=2> D;
-  int<lower=1> H;
-  int<lower=1> Pt;
-  int<lower=1> Adm;
-  int<lower=1> K;
-  matrix[N_events, K] X_event;
-  array[N_events] int<lower=1,upper=H>   h_ev;
-  array[N_events] int<lower=1,upper=Pt>  p_ev;
-  array[N_events] int<lower=1,upper=Adm> a_ev;
-  array[N_events, D] int<lower=0,upper=1> obs_mask;
-  array[N_events, D] int<lower=0,upper=1> y_mat;
-  array[N] int<lower=1,upper=N_events> ev_idx;
-  array[N] int<lower=1,upper=D> d_idx;
-  real<lower=0> prior_beta_sd;
-  real<lower=0> prior_tau_sd;
-  real<lower=1> lkj_eta;
-}
-parameters {
-  matrix[K, D] beta;
-  matrix[D, H]   z_hospital;
-  vector<lower=0>[D] tau_hospital;
-  cholesky_factor_corr[D] L_corr_hospital;
-  matrix[D, Pt]  z_patient;
-  vector<lower=0>[D] tau_patient;
-  cholesky_factor_corr[D] L_corr_patient;
-  matrix[D, Adm] z_admission;
-  vector<lower=0>[D] tau_admission;
-  cholesky_factor_corr[D] L_corr_admission;
-  matrix[N_events, D] z_free;
-}
-transformed parameters {
-  matrix[D, H]   hospital_effect  =
-    diag_pre_multiply(tau_hospital,  L_corr_hospital)  * z_hospital;
-  matrix[D, Pt]  patient_effect   =
-    diag_pre_multiply(tau_patient,   L_corr_patient)   * z_patient;
-  matrix[D, Adm] admission_effect =
-    diag_pre_multiply(tau_admission, L_corr_admission) * z_admission;
-
-  matrix[N_events, D] z_aug;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      if (obs_mask[e, d] == 1) {
-        z_aug[e, d] = (y_mat[e, d] == 1) ? exp(z_free[e, d]) : -exp(z_free[e, d]);
-      } else {
-        z_aug[e, d] = z_free[e, d];
-      }
-    }
-  }
-
-  matrix[N_events, D] mu_mat = X_event * beta;
-  for (e in 1:N_events)
-    for (d in 1:D)
-      mu_mat[e, d] += hospital_effect[d, h_ev[e]]
-                    + patient_effect[d, p_ev[e]]
-                    + admission_effect[d, a_ev[e]];
-}
-model {
-  to_vector(beta)          ~ normal(0, prior_beta_sd);
-  tau_hospital             ~ normal(0, prior_tau_sd);
-  tau_patient              ~ normal(0, prior_tau_sd);
-  tau_admission            ~ normal(0, prior_tau_sd);
-  to_vector(z_hospital)    ~ std_normal();
-  to_vector(z_patient)     ~ std_normal();
-  to_vector(z_admission)   ~ std_normal();
-  L_corr_hospital          ~ lkj_corr_cholesky(lkj_eta);
-  L_corr_patient           ~ lkj_corr_cholesky(lkj_eta);
-  L_corr_admission         ~ lkj_corr_cholesky(lkj_eta);
-
-  for (e in 1:N_events)
-    for (d in 1:D)
-      target += normal_lpdf(z_aug[e, d] | mu_mat[e, d], 1.0);
-
-  for (n in 1:N)
-    target += z_free[ev_idx[n], d_idx[n]];
-}
-generated quantities {
-  corr_matrix[D] R_hospital   = multiply_lower_tri_self_transpose(L_corr_hospital);
-  corr_matrix[D] R_patient    = multiply_lower_tri_self_transpose(L_corr_patient);
-  corr_matrix[D] R_admission  = multiply_lower_tri_self_transpose(L_corr_admission);
-}
-)"
-}
-
-
-# ---------------------------------------------------------------------------
-# Generic Stan models -- arbitrary number (R) of random-intercept blocks
-# (Stage 1 of the generic random-effect refactor). Replaces the six
-# hardcoded 1re/2re/3re x identity/correlated variants above with two
-# variants (identity/correlated residual only), looping over blocks via the
-# flattened total_re_levels/n_levels/level_start/re_idx representation built
-# by prepare_random_effects(). The legacy six-variant functions above are
-# kept temporarily (not deleted) so old and new code paths can be run
-# side-by-side for equivalence testing before the old path is retired.
+# Generic Stan models -- arbitrary number (R) of random-intercept blocks.
+# Replaces the six hardcoded 1re/2re/3re x identity/correlated variants with
+# two variants (identity/correlated residual only), looping over blocks via
+# the flattened total_re_levels/n_levels/level_start/re_idx representation
+# built by prepare_random_effects().
 #
 # Random-effect parameterisation per block r, exactly matching the legacy
 # per-level diag_pre_multiply(tau, L_corr) * z convention:
@@ -4683,7 +4216,6 @@ generated quantities {
 # re_idx[e, r] is already the FLATTENED (global) level index for block r,
 # so R-side code only needs one generic column lookup per block, not a
 # separate hardcoded h_ev/p_ev/a_ev array per level.
-# ---------------------------------------------------------------------------
 
 .amr_probit_stan_generic_correlated <- function() {
   r"(
@@ -4858,9 +4390,7 @@ generated quantities {
 }
 
 
-# ---------------------------------------------------------------------------
 # fit_bayesian_multivariate_probit()
-# ---------------------------------------------------------------------------
 
 #' Fit Bayesian Hierarchical Multivariate Probit Model for Resistance Profiles
 #'
@@ -5005,56 +4535,72 @@ generated quantities {
 #'   independently from \code{fit$fit$sampler_diagnostics()}.
 #' @export
 fit_bayesian_multivariate_probit <- function(
-    event_class_data,
-    class_cols,
-    fixed_effects,
-    random_effects,
-    pathogen            = NULL,
-    pathogen_col        = "pathogen",
-    event_id_col        = "event_id",
-    eligible_pairs      = NULL,
-    outcome_col         = NULL,
-    reserve_drug_cols   = NULL,
-    panel_eligibility   = list(),
-    residual_structure  = c("identity", "correlated"),
-    estimand            = "observed_stewardship_event_mix",
-    prior_config        = list(),
-    sampler_config      = list(),
-    show_messages       = TRUE,
-    save_full_latent_diagnostics = FALSE,
-    ...
+  event_class_data,
+  class_cols,
+  fixed_effects,
+  random_effects,
+  pathogen = NULL,
+  pathogen_col = "pathogen",
+  event_id_col = "event_id",
+  eligible_pairs = NULL,
+  outcome_col = NULL,
+  reserve_drug_cols = NULL,
+  panel_eligibility = list(),
+  residual_structure = c("identity", "correlated"),
+  estimand = "observed_stewardship_event_mix",
+  prior_config = list(),
+  sampler_config = list(),
+  show_messages = TRUE,
+  save_full_latent_diagnostics = FALSE,
+  ...
 ) {
   residual_structure <- match.arg(residual_structure)
 
   # -- Package checks ---------------------------------------------------------
-  if (!requireNamespace("cmdstanr", quietly = TRUE))
-    stop(paste0("Package 'cmdstanr' is required for Pathway 2.\n",
-                "  install.packages('cmdstanr', ",
-                "repos = c('https://mc-stan.org/r-packages/', getOption('repos')))"),
-         call. = FALSE)
-  if (!requireNamespace("posterior", quietly = TRUE))
+  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
+    stop(
+      paste0(
+        "Package 'cmdstanr' is required for Pathway 2.\n",
+        "  install.packages('cmdstanr', ",
+        "repos = c('https://mc-stan.org/r-packages/', getOption('repos')))"
+      ),
+      call. = FALSE
+    )
+  }
+  if (!requireNamespace("posterior", quietly = TRUE)) {
     stop("Package 'posterior' is required (installed automatically with cmdstanr).",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # -- Data checks ------------------------------------------------------------
-  if (!is.data.frame(event_class_data) || nrow(event_class_data) == 0L)
+  if (!is.data.frame(event_class_data) || nrow(event_class_data) == 0L) {
     stop("`event_class_data` must be a non-empty data frame.", call. = FALSE)
+  }
 
   # -- Validate class_cols ----------------------------------------------------
-  if (missing(class_cols) || length(class_cols) == 0L)
+  if (missing(class_cols) || length(class_cols) == 0L) {
     stop("`class_cols` is required.", call. = FALSE)
+  }
   miss_cls <- setdiff(class_cols, names(event_class_data))
-  if (length(miss_cls) > 0L)
-    stop(sprintf("class_cols not found in event_class_data: %s",
-                 paste(miss_cls, collapse = ", ")), call. = FALSE)
+  if (length(miss_cls) > 0L) {
+    stop(sprintf(
+      "class_cols not found in event_class_data: %s",
+      paste(miss_cls, collapse = ", ")
+    ), call. = FALSE)
+  }
 
   # -- Validate fixed_effects -------------------------------------------------
-  if (missing(fixed_effects) || is.null(fixed_effects) || length(fixed_effects) == 0L)
+  if (missing(fixed_effects) || is.null(fixed_effects) || length(fixed_effects) == 0L) {
     stop("`fixed_effects` is required (no default).", call. = FALSE)
+  }
   miss_fe <- setdiff(fixed_effects, names(event_class_data))
-  if (length(miss_fe) > 0L)
-    stop(sprintf("fixed_effects column(s) not found: %s",
-                 paste(miss_fe, collapse = ", ")), call. = FALSE)
+  if (length(miss_fe) > 0L) {
+    stop(sprintf(
+      "fixed_effects column(s) not found: %s",
+      paste(miss_fe, collapse = ", ")
+    ), call. = FALSE)
+  }
 
   # -- Validate random_effects --------------------------------------------------
   # Accepts EITHER the legacy character vector (c("center_name", "readmission_id"))
@@ -5067,85 +4613,114 @@ fit_bayesian_multivariate_probit <- function(
   # prepare_random_effects() below detects nested-vs-crossed from the actual data
   # rather than assuming it, so an accidentally-non-unique group_col shows up as
   # "crossed_with_previous" rather than silently merging distinct groups.
-  if (missing(random_effects) || is.null(random_effects) || length(random_effects) == 0L)
+  if (missing(random_effects) || is.null(random_effects) || length(random_effects) == 0L) {
     stop("`random_effects` is required (no default). Supply a character vector of grouping columns, or a list of blocks (name/group_col/terms).",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   .re_blocks_early <- .normalize_random_effects_spec(random_effects)
   .re_group_cols_early <- vapply(.re_blocks_early, function(b) b$group_col, character(1L))
   miss_re <- setdiff(.re_group_cols_early, names(event_class_data))
-  if (length(miss_re) > 0L)
-    stop(sprintf("random_effects group_col(s) not found: %s",
-                 paste(miss_re, collapse = ", ")), call. = FALSE)
+  if (length(miss_re) > 0L) {
+    stop(sprintf(
+      "random_effects group_col(s) not found: %s",
+      paste(miss_re, collapse = ", ")
+    ), call. = FALSE)
+  }
 
   upper_re_col <- .re_group_cols_early[1L]
 
   # -- Validate pathogen_col and optionally filter to one pathogen -----------
-  if (!pathogen_col %in% names(event_class_data))
+  if (!pathogen_col %in% names(event_class_data)) {
     stop(sprintf("pathogen_col '%s' not found in event_class_data.", pathogen_col),
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   event_data <- event_class_data
   pathogen_fitted <- NULL
   if (!is.null(pathogen)) {
-    if (!pathogen %in% event_data[[pathogen_col]])
+    if (!pathogen %in% event_data[[pathogen_col]]) {
       stop(sprintf("pathogen '%s' not found in column '%s'.", pathogen, pathogen_col),
-           call. = FALSE)
+        call. = FALSE
+      )
+    }
     event_data <- event_data[event_data[[pathogen_col]] == pathogen, , drop = FALSE]
     pathogen_fitted <- pathogen
-    message(sprintf("[fit_bayesian_multivariate_probit] Filtered to pathogen '%s': %d events.",
-                    pathogen, nrow(event_data)))
+    message(sprintf(
+      "[fit_bayesian_multivariate_probit] Filtered to pathogen '%s': %d events.",
+      pathogen, nrow(event_data)
+    ))
   }
 
   # -- Enforce single-pathogen fit (mandatory) --------------------------------
   n_pathogens <- dplyr::n_distinct(event_data[[pathogen_col]])
-  if (n_pathogens != 1L)
+  if (n_pathogens != 1L) {
     stop(sprintf(
-      paste0("Bayesian multivariate-probit fitting requires exactly one pathogen ",
-             "(found %d). Supply `pathogen = '<name>'` or pre-filter event_class_data."),
-      n_pathogens), call. = FALSE)
+      paste0(
+        "Bayesian multivariate-probit fitting requires exactly one pathogen ",
+        "(found %d). Supply `pathogen = '<name>'` or pre-filter event_class_data."
+      ),
+      n_pathogens
+    ), call. = FALSE)
+  }
 
   # -- Resolve prior_config ---------------------------------------------------
   pc <- list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0)
   for (nm in names(prior_config)) pc[[nm]] <- prior_config[[nm]]
-  if (!is.numeric(pc$beta_sd) || pc$beta_sd <= 0)
+  if (!is.numeric(pc$beta_sd) || pc$beta_sd <= 0) {
     stop("`prior_config$beta_sd` must be a positive number.", call. = FALSE)
-  if (!is.numeric(pc$tau_sd) || pc$tau_sd <= 0)
+  }
+  if (!is.numeric(pc$tau_sd) || pc$tau_sd <= 0) {
     stop("`prior_config$tau_sd` must be a positive number.", call. = FALSE)
-  if (!is.numeric(pc$lkj_eta) || pc$lkj_eta < 1)
+  }
+  if (!is.numeric(pc$lkj_eta) || pc$lkj_eta < 1) {
     stop("`prior_config$lkj_eta` must be >= 1.", call. = FALSE)
+  }
 
   # -- Resolve sampler_config -------------------------------------------------
-  sc_defaults <- list(chains = 4L, iter_warmup = 1000L, iter_sampling = 1000L,
-                      seed = 123L, adapt_delta = NULL, max_treedepth = NULL,
-                      parallel_chains = NULL, max_param_count = NULL)
+  sc_defaults <- list(
+    chains = 4L, iter_warmup = 1000L, iter_sampling = 1000L,
+    seed = 123L, adapt_delta = NULL, max_treedepth = NULL,
+    parallel_chains = NULL, max_param_count = NULL
+  )
   for (nm in names(sampler_config)) sc_defaults[[nm]] <- sampler_config[[nm]]
   sc <- sc_defaults
 
   message(sprintf(
     "[fit_bayesian_multivariate_probit] Priors: beta~N(0,%.2g) | tau~HN(0,%.2g) | LKJ(%.2g)",
-    pc$beta_sd, pc$tau_sd, pc$lkj_eta))
+    pc$beta_sd, pc$tau_sd, pc$lkj_eta
+  ))
 
   # -- Remove reserve drug columns --------------------------------------------
   if (!is.null(reserve_drug_cols)) {
     class_cols <- setdiff(class_cols, reserve_drug_cols)
-    message(sprintf("[fit_bayesian_multivariate_probit] %d reserve drug column(s) excluded.",
-                    length(reserve_drug_cols)))
+    message(sprintf(
+      "[fit_bayesian_multivariate_probit] %d reserve drug column(s) excluded.",
+      length(reserve_drug_cols)
+    ))
   }
-  if (length(class_cols) < 2L)
+  if (length(class_cols) < 2L) {
     stop("At least 2 class columns are required for the multivariate probit.", call. = FALSE)
+  }
 
   # -- Filter to eligible hospital-pathogen pairs -----------------------------
   if (!is.null(eligible_pairs)) {
     ep_req <- c(upper_re_col, pathogen_col)
     miss_ep <- setdiff(ep_req, names(eligible_pairs))
-    if (length(miss_ep) > 0L)
+    if (length(miss_ep) > 0L) {
       stop(sprintf("`eligible_pairs` must have columns: %s", paste(ep_req, collapse = ", ")),
-           call. = FALSE)
+        call. = FALSE
+      )
+    }
     event_data <- dplyr::semi_join(event_data, eligible_pairs, by = ep_req)
-    if (nrow(event_data) == 0L)
+    if (nrow(event_data) == 0L) {
       stop("No events remain after filtering to eligible_pairs.", call. = FALSE)
-    message(sprintf("[fit_bayesian_multivariate_probit] %d events after eligible_pairs filter.",
-                    nrow(event_data)))
+    }
+    message(sprintf(
+      "[fit_bayesian_multivariate_probit] %d events after eligible_pairs filter.",
+      nrow(event_data)
+    ))
   }
 
   # -- Drop all-NA event rows (events with no observed AST in any class_col) --
@@ -5153,20 +4728,28 @@ fit_bayesian_multivariate_probit <- function(
   n_all_na <- sum(!has_any_obs)
   if (n_all_na > 0L) {
     warning(sprintf(
-      paste0("%d event(s) have no observed AST values across all selected class ",
-             "columns and will be removed before model construction. Ensure this ",
-             "is expected (e.g. events with only reserve-drug results)."),
-      n_all_na), call. = FALSE)
+      paste0(
+        "%d event(s) have no observed AST values across all selected class ",
+        "columns and will be removed before model construction. Ensure this ",
+        "is expected (e.g. events with only reserve-drug results)."
+      ),
+      n_all_na
+    ), call. = FALSE)
     event_data <- event_data[has_any_obs, , drop = FALSE]
-    if (nrow(event_data) == 0L)
+    if (nrow(event_data) == 0L) {
       stop("No events remain after removing all-NA event rows.", call. = FALSE)
-    message(sprintf("[fit_bayesian_multivariate_probit] %d events remain after all-NA filter.",
-                    nrow(event_data)))
+    }
+    message(sprintf(
+      "[fit_bayesian_multivariate_probit] %d events remain after all-NA filter.",
+      nrow(event_data)
+    ))
   }
 
   # -- Panel eligibility report (warn, do not filter) -------------------------
-  pe <- list(min_tested = 30L, min_resistant = 5L, min_susceptible = 5L,
-             min_pairwise_cotested = 30L, min_pairwise_cell = 1L)
+  pe <- list(
+    min_tested = 30L, min_resistant = 5L, min_susceptible = 5L,
+    min_pairwise_cotested = 30L, min_pairwise_cell = 1L
+  )
   for (nm in names(panel_eligibility)) pe[[nm]] <- panel_eligibility[[nm]]
 
   eligibility_report <- .validate_panel_eligibility(
@@ -5190,29 +4773,41 @@ fit_bayesian_multivariate_probit <- function(
   if (n_low_cotested > 0L) {
     if (identical(residual_structure, "correlated")) {
       msg <- sprintf(
-        paste0("%d hospital x class-pair combination(s) have fewer than %d co-tested events. ",
-               "Omega_{jk} for these pairs may be informed mainly by the LKJ prior. ",
-               "See $eligibility_report$pairwise. Consider identity residuals or dropping classes with low overlap."),
-        n_low_cotested, pe$min_pairwise_cotested)
+        paste0(
+          "%d hospital x class-pair combination(s) have fewer than %d co-tested events. ",
+          "Omega_{jk} for these pairs may be informed mainly by the LKJ prior. ",
+          "See $eligibility_report$pairwise. Consider identity residuals or dropping classes with low overlap."
+        ),
+        n_low_cotested, pe$min_pairwise_cotested
+      )
     } else {
       msg <- sprintf(
-        paste0("%d hospital x class-pair combination(s) have fewer than %d co-tested events. ",
-               "Residual Omega is not estimated because residual_structure='identity'. ",
-               "Joint profile estimates for weakly co-tested class pairs may be less data-supported. ",
-               "See $eligibility_report$pairwise."),
-        n_low_cotested, pe$min_pairwise_cotested)
+        paste0(
+          "%d hospital x class-pair combination(s) have fewer than %d co-tested events. ",
+          "Residual Omega is not estimated because residual_structure='identity'. ",
+          "Joint profile estimates for weakly co-tested class pairs may be less data-supported. ",
+          "See $eligibility_report$pairwise."
+        ),
+        n_low_cotested, pe$min_pairwise_cotested
+      )
     }
     if (elig_action == "stop") stop(msg, call. = FALSE) else warning(msg, call. = FALSE)
   }
 
   n_ineligible <- sum(!eligibility_report$eligible)
-  if (n_ineligible > 0L)
-    warning(sprintf(
-      paste0("%d hospital x class cell(s) below marginal eligibility thresholds ",
-             "(min_tested=%d, min_resistant=%d, min_susceptible=%d). ",
-             "Results for these cells may be prior-dominated. See $eligibility_report."),
-      n_ineligible, pe$min_tested, pe$min_resistant, pe$min_susceptible),
-      call. = FALSE)
+  if (n_ineligible > 0L) {
+    warning(
+      sprintf(
+        paste0(
+          "%d hospital x class cell(s) below marginal eligibility thresholds ",
+          "(min_tested=%d, min_resistant=%d, min_susceptible=%d). ",
+          "Results for these cells may be prior-dominated. See $eligibility_report."
+        ),
+        n_ineligible, pe$min_tested, pe$min_resistant, pe$min_susceptible
+      ),
+      call. = FALSE
+    )
+  }
 
   # -- Prepare the generic random-effect representation -----------------------
   # Builds flattened level indices for an arbitrary number of blocks (Stage 1:
@@ -5222,33 +4817,44 @@ fit_bayesian_multivariate_probit <- function(
   # anumaan-analysis does) -- prepare_random_effects() detects the resulting
   # nested/crossed relationship from the data rather than assuming it.
   re_prep <- prepare_random_effects(event_data, random_effects)
-  n_re_levels <- re_prep$R   # kept as a field name for backward-compat call sites
+  n_re_levels <- re_prep$R # kept as a field name for backward-compat call sites
 
   # -- Validate event identifier (real uniqueness check, not seq_len trick) ---
   if (!event_id_col %in% names(event_data)) {
     # No external event ID: assign a warning-level fallback.
     warning(sprintf(
-      paste0("event_id_col '%s' not found. Using row position as event key. ",
-             "Ensure event_class_data has one row per organism-event -- no duplicates."),
-      event_id_col), call. = FALSE)
+      paste0(
+        "event_id_col '%s' not found. Using row position as event key. ",
+        "Ensure event_class_data has one row per organism-event -- no duplicates."
+      ),
+      event_id_col
+    ), call. = FALSE)
     event_data[[event_id_col]] <- seq_len(nrow(event_data))
   } else {
-    if (anyDuplicated(event_data[[event_id_col]]))
+    if (anyDuplicated(event_data[[event_id_col]])) {
       stop(sprintf(
-        paste0("event_id_col '%s' contains duplicate values. ",
-               "Each row must correspond to exactly one organism-event."),
-        event_id_col), call. = FALSE)
+        paste0(
+          "event_id_col '%s' contains duplicate values. ",
+          "Each row must correspond to exactly one organism-event."
+        ),
+        event_id_col
+      ), call. = FALSE)
+    }
   }
 
   # -- Canonical event index (assigned BEFORE pivoting to long) ---------------
   event_data$.event_idx <- seq_len(nrow(event_data))
   N_events <- nrow(event_data)
 
-  if (N_events > 1000L)
+  if (N_events > 1000L) {
     warning(sprintf(
-      paste0("N_events = %d with D = %d classes adds %d latent parameters (z_free). ",
-             "Sampling may be slow. Use parallel_chains in sampler_config."),
-      N_events, length(class_cols), N_events * length(class_cols)), call. = FALSE)
+      paste0(
+        "N_events = %d with D = %d classes adds %d latent parameters (z_free). ",
+        "Sampling may be slow. Use parallel_chains in sampler_config."
+      ),
+      N_events, length(class_cols), N_events * length(class_cols)
+    ), call. = FALSE)
+  }
 
   # -- Columns to carry into long format ---------------------------------------
   meta_carry <- unique(c(
@@ -5269,24 +4875,30 @@ fit_bayesian_multivariate_probit <- function(
     dplyr::filter(!is.na(.data$resistance_binary)) %>%
     dplyr::mutate(resistance_binary = as.integer(.data$resistance_binary))
 
-  if (nrow(data_long) == 0L)
+  if (nrow(data_long) == 0L) {
     stop("No observed (event x class) pairs after removing NAs.", call. = FALSE)
+  }
 
   # -- Fail on fixed-effect missingness (do NOT impute; stop with clear msg) --
   fe_df_check <- data_long[, fixed_effects, drop = FALSE]
   na_cols <- vapply(fixed_effects, function(cc) sum(is.na(fe_df_check[[cc]])), integer(1L))
   if (any(na_cols > 0L)) {
     bad <- paste(sprintf("'%s' (%d NA)", names(na_cols)[na_cols > 0L], na_cols[na_cols > 0L]),
-                 collapse = ", ")
+      collapse = ", "
+    )
     stop(sprintf(
-      paste0("Fixed-effect column(s) contain NA values: %s. ",
-             "Resolve missingness before calling fit_bayesian_multivariate_probit(). ",
-             "Options: complete-case filter, median + indicator, explicit 'Unknown' level, ",
-             "or multiple imputation -- but the decision belongs in the analysis config."),
-      bad), call. = FALSE)
+      paste0(
+        "Fixed-effect column(s) contain NA values: %s. ",
+        "Resolve missingness before calling fit_bayesian_multivariate_probit(). ",
+        "Options: complete-case filter, median + indicator, explicit 'Unknown' level, ",
+        "or multiple imputation -- but the decision belongs in the analysis config."
+      ),
+      bad
+    ), call. = FALSE)
   }
-  for (cc in fixed_effects)
+  for (cc in fixed_effects) {
     if (is.character(fe_df_check[[cc]])) fe_df_check[[cc]] <- factor(fe_df_check[[cc]])
+  }
 
   # -- Build integer index maps -----------------------------------------------
   # Per-block level indices were already computed once, generically, by
@@ -5297,11 +4909,15 @@ fit_bayesian_multivariate_probit <- function(
 
   for (r in seq_len(re_prep$R)) {
     n_params_block <- re_prep$n_levels[r] * length(class_levels)
-    if (n_params_block > 10000L)
-      warning(sprintf(
-        "Large random-effect block '%s': %d levels x %d classes = %d parameters.",
-        re_prep$block_names[r], re_prep$n_levels[r], length(class_levels), n_params_block),
-        call. = FALSE)
+    if (n_params_block > 10000L) {
+      warning(
+        sprintf(
+          "Large random-effect block '%s': %d levels x %d classes = %d parameters.",
+          re_prep$block_names[r], re_prep$n_levels[r], length(class_levels), n_params_block
+        ),
+        call. = FALSE
+      )
+    }
   }
 
   data_long <- data_long %>%
@@ -5315,7 +4931,7 @@ fit_bayesian_multivariate_probit <- function(
   stopifnot(!anyDuplicated(event_data$.event_idx))
 
   # -- Fixed-effects design matrix (event-level, not observation-level) -------
-  X_long <- stats::model.matrix(~ ., data = fe_df_check)
+  X_long <- stats::model.matrix(~., data = fe_df_check)
 
   D <- length(class_levels)
   K <- ncol(X_long)
@@ -5324,26 +4940,27 @@ fit_bayesian_multivariate_probit <- function(
   # ev_idx in data_long is 1-based; one unique row per event.
   first_obs_per_event <- match(seq_len(N_events), data_long$ev_idx)
   stopifnot(!anyNA(first_obs_per_event))
-  X_event_mat <- X_long[first_obs_per_event, , drop = FALSE]   # N_events x K
-  re_idx_mat  <- re_prep$flat_group_index                      # N_events x R, already event-ordered
+  X_event_mat <- X_long[first_obs_per_event, , drop = FALSE] # N_events x K
+  re_idx_mat <- re_prep$flat_group_index # N_events x R, already event-ordered
 
   # Build wide AST arrays for multivariate-probit data augmentation
   obs_mask_mat <- matrix(0L, nrow = N_events, ncol = D)
-  y_mat_mat    <- matrix(0L, nrow = N_events, ncol = D)
+  y_mat_mat <- matrix(0L, nrow = N_events, ncol = D)
   for (i in seq_len(nrow(data_long))) {
     e <- data_long$ev_idx[i]
     d <- data_long$d_idx[i]
     obs_mask_mat[e, d] <- 1L
-    y_mat_mat[e, d]    <- as.integer(data_long$resistance_binary[i])
+    y_mat_mat[e, d] <- as.integer(data_long$resistance_binary[i])
   }
 
   message(sprintf(
     "[fit_bayesian_multivariate_probit] %d obs | %d events | D=%d | RE blocks=%s",
-    nrow(data_long), N_events, D, paste(sprintf("%s(%d)", re_prep$block_names, re_prep$n_levels), collapse = "+")))
+    nrow(data_long), N_events, D, paste(sprintf("%s(%d)", re_prep$block_names, re_prep$n_levels), collapse = "+")
+  ))
 
   # -- Build Stan data list -----------------------------------------------------
   stan_data <- list(
-    N               = nrow(data_long),       # observation pairs (for Jacobian)
+    N               = nrow(data_long), # observation pairs (for Jacobian)
     N_events        = N_events,
     D               = D,
     K               = K,
@@ -5351,10 +4968,10 @@ fit_bayesian_multivariate_probit <- function(
     total_re_levels = re_prep$total_re_levels,
     n_levels        = as.array(as.integer(re_prep$n_levels)),
     level_start     = as.array(as.integer(re_prep$level_start)),
-    re_idx          = matrix(as.integer(re_idx_mat), nrow = N_events),  # N_events x R
-    X_event         = unname(X_event_mat),   # N_events x K
-    obs_mask        = obs_mask_mat,          # N_events x D
-    y_mat           = y_mat_mat,             # N_events x D
+    re_idx          = matrix(as.integer(re_idx_mat), nrow = N_events), # N_events x R
+    X_event         = unname(X_event_mat), # N_events x K
+    obs_mask        = obs_mask_mat, # N_events x D
+    y_mat           = y_mat_mat, # N_events x D
     ev_idx          = as.integer(data_long$ev_idx),
     d_idx           = as.integer(data_long$d_idx),
     prior_beta_sd   = as.numeric(pc$beta_sd),
@@ -5363,32 +4980,40 @@ fit_bayesian_multivariate_probit <- function(
   )
 
   # -- Parameter-count preflight -----------------------------------------------
-  n_z_free    <- N_events * D
-  n_re_raw    <- re_prep$total_re_levels * D
-  n_beta      <- K * D
-  n_tau       <- D * re_prep$R
-  n_L_corr    <- (D * (D - 1L) %/% 2L) * re_prep$R
-  n_L_omega   <- if (residual_structure == "correlated") D * (D - 1L) %/% 2L else 0L
+  n_z_free <- N_events * D
+  n_re_raw <- re_prep$total_re_levels * D
+  n_beta <- K * D
+  n_tau <- D * re_prep$R
+  n_L_corr <- (D * (D - 1L) %/% 2L) * re_prep$R
+  n_L_omega <- if (residual_structure == "correlated") D * (D - 1L) %/% 2L else 0L
   n_param_approx <- n_z_free + n_re_raw + n_beta + n_tau + n_L_corr + n_L_omega
-  message(sprintf(paste0(
-    "[fit_bayesian_multivariate_probit] Approximate parameter count:\n",
-    "  N_events=%d x D=%d z_free                    = %d\n",
-    "  %s\n",
-    "  total_re_levels=%d x D=%d random-effect raw   = %d\n",
-    "  beta(%dx%d) + tau(%d) + L_corr(%d) + L_Omega(%d)\n",
-    "  Total approx: %d"),
+  message(sprintf(
+    paste0(
+      "[fit_bayesian_multivariate_probit] Approximate parameter count:\n",
+      "  N_events=%d x D=%d z_free                    = %d\n",
+      "  %s\n",
+      "  total_re_levels=%d x D=%d random-effect raw   = %d\n",
+      "  beta(%dx%d) + tau(%d) + L_corr(%d) + L_Omega(%d)\n",
+      "  Total approx: %d"
+    ),
     N_events, D, n_z_free,
-    paste(sprintf("  block '%s': %d levels x %d classes = %d params",
-                  re_prep$block_names, re_prep$n_levels, D, re_prep$n_levels * D), collapse = "\n"),
+    paste(sprintf(
+      "  block '%s': %d levels x %d classes = %d params",
+      re_prep$block_names, re_prep$n_levels, D, re_prep$n_levels * D
+    ), collapse = "\n"),
     re_prep$total_re_levels, D, n_re_raw,
     K, D, n_tau, n_L_corr, n_L_omega,
     n_param_approx
   ))
-  if (!is.null(sc$max_param_count) && n_param_approx > as.integer(sc$max_param_count))
+  if (!is.null(sc$max_param_count) && n_param_approx > as.integer(sc$max_param_count)) {
     stop(sprintf(
-      paste0("Approximate parameter count (%d) exceeds sampler_config$max_param_count (%d). ",
-             "Reduce N_events, D, or number of RE groups, or increase the threshold."),
-      n_param_approx, as.integer(sc$max_param_count)), call. = FALSE)
+      paste0(
+        "Approximate parameter count (%d) exceeds sampler_config$max_param_count (%d). ",
+        "Reduce N_events, D, or number of RE groups, or increase the threshold."
+      ),
+      n_param_approx, as.integer(sc$max_param_count)
+    ), call. = FALSE)
+  }
 
   # -- Select and compile Stan model --------------------------------------------
   # Stage 1 of the generic random-effect architecture: TWO variants
@@ -5396,11 +5021,16 @@ fit_bayesian_multivariate_probit <- function(
   # declared -- replaces the old six hardcoded 1re/2re/3re x identity/correlated
   # variants (still defined above, unused by this function, kept only for
   # equivalence testing against this generic path).
-  stan_code <- if (identical(residual_structure, "correlated"))
-    .amr_probit_stan_generic_correlated() else .amr_probit_stan_generic_identity()
+  stan_code <- if (identical(residual_structure, "correlated")) {
+    .amr_probit_stan_generic_correlated()
+  } else {
+    .amr_probit_stan_generic_identity()
+  }
   stan_file <- cmdstanr::write_stan_file(stan_code)
-  message(sprintf("[fit_bayesian_multivariate_probit] Compiling generic %d-block Stan model...",
-                  re_prep$R))
+  message(sprintf(
+    "[fit_bayesian_multivariate_probit] Compiling generic %d-block Stan model...",
+    re_prep$R
+  ))
   mod <- cmdstanr::cmdstan_model(stan_file, compile = TRUE)
 
   # -- Build sample() call args -----------------------------------------------
@@ -5412,7 +5042,7 @@ fit_bayesian_multivariate_probit <- function(
     iter_sampling = as.integer(sc$iter_sampling),
     refresh       = if (show_messages) 200L else 0L
   )
-  if (!is.null(sc$adapt_delta))   sample_args$adapt_delta   <- sc$adapt_delta
+  if (!is.null(sc$adapt_delta)) sample_args$adapt_delta <- sc$adapt_delta
   if (!is.null(sc$max_treedepth)) sample_args$max_treedepth <- sc$max_treedepth
   if (!is.null(sc$parallel_chains)) sample_args$parallel_chains <- as.integer(sc$parallel_chains)
   extra_args <- list(...)
@@ -5421,13 +5051,16 @@ fit_bayesian_multivariate_probit <- function(
   # -- Sample -----------------------------------------------------------------
   message(sprintf(
     "[fit_bayesian_multivariate_probit] Sampling: %d chains x (%d warmup + %d sampling)...",
-    sc$chains, sc$iter_warmup, sc$iter_sampling))
+    sc$chains, sc$iter_warmup, sc$iter_sampling
+  ))
   fit <- do.call(mod$sample, sample_args)
 
   # -- Extract draws (exclude z_free; it is large and not needed downstream) --
-  keep_vars <- c("beta", "re_effect", "tau_re", "R_block",
-                 if (residual_structure == "correlated") c("L_Omega", "Omega"),
-                 "lp__")
+  keep_vars <- c(
+    "beta", "re_effect", "tau_re", "R_block",
+    if (residual_structure == "correlated") c("L_Omega", "Omega"),
+    "lp__"
+  )
   keep_vars <- unique(keep_vars[!is.null(keep_vars)])
   draws_arr <- tryCatch(
     fit$draws(variables = keep_vars, format = "draws_array"),
@@ -5449,14 +5082,18 @@ fit_bayesian_multivariate_probit <- function(
     re_effect_hits <- grep("^re_effect\\[", parameter)
     if (length(re_effect_hits) > 0L) {
       level_num <- suppressWarnings(as.integer(
-        sub("^re_effect\\[\\d+,(\\d+)\\]$", "\\1", parameter[re_effect_hits])))
+        sub("^re_effect\\[\\d+,(\\d+)\\]$", "\\1", parameter[re_effect_hits])
+      ))
       block_of_level <- vapply(level_num, function(lv) {
-        if (is.na(lv)) return(NA_integer_)
+        if (is.na(lv)) {
+          return(NA_integer_)
+        }
         hit <- which(lv >= re_prep$level_start & lv <= re_prep$level_end)
         if (length(hit) == 0L) NA_integer_ else hit[1L]
       }, integer(1L))
       out[re_effect_hits] <- ifelse(is.na(block_of_level), "re_effect",
-                                     re_prep$block_names[block_of_level])
+        re_prep$block_names[block_of_level]
+      )
     }
 
     for (r in seq_len(re_prep$R)) {
@@ -5468,18 +5105,23 @@ fit_bayesian_multivariate_probit <- function(
   .combine_diag_tables <- function(rhat_tbl, ess_tbl) {
     out <- merge(rhat_tbl, ess_tbl, by = "variable", all = TRUE)
     out$parameter_group <- .probit_parameter_group(out$variable)
-    out[, c("variable", "parameter_group",
-            setdiff(names(out), c("variable", "parameter_group"))),
-        drop = FALSE]
+    out[, c(
+      "variable", "parameter_group",
+      setdiff(names(out), c("variable", "parameter_group"))
+    ),
+    drop = FALSE
+    ]
   }
   .diag_extreme <- function(tbl, value_col, direction = c("max", "min")) {
     direction <- match.arg(direction)
-    if (is.null(tbl) || !value_col %in% names(tbl))
+    if (is.null(tbl) || !value_col %in% names(tbl)) {
       return(list(value = NA_real_, parameter = NA_character_, group = NA_character_))
+    }
     vals <- suppressWarnings(as.numeric(tbl[[value_col]]))
     ok <- !is.na(vals)
-    if (!any(ok))
+    if (!any(ok)) {
       return(list(value = NA_real_, parameter = NA_character_, group = NA_character_))
+    }
     idx <- base::which(ok)[if (identical(direction, "max")) which.max(vals[ok]) else which.min(vals[ok])]
     list(
       value = vals[[idx]],
@@ -5492,19 +5134,22 @@ fit_bayesian_multivariate_probit <- function(
   # Primary diagnostics use the same monitored parameter set saved in draws_arr.
   # Full diagnostics include z_free and are reported separately for visibility.
   rhat_tbl_monitored <- fit$summary(variables = keep_vars, "rhat")
-  ess_tbl_monitored  <- fit$summary(variables = keep_vars, "ess_bulk", "ess_tail")
-  rhat_tbl_all       <- fit$summary(variables = NULL, "rhat")
-  ess_tbl_all        <- fit$summary(variables = NULL, "ess_bulk", "ess_tail")
+  ess_tbl_monitored <- fit$summary(variables = keep_vars, "ess_bulk", "ess_tail")
+  rhat_tbl_all <- fit$summary(variables = NULL, "rhat")
+  ess_tbl_all <- fit$summary(variables = NULL, "ess_bulk", "ess_tail")
   monitored_diag_tbl <- .combine_diag_tables(rhat_tbl_monitored, ess_tbl_monitored)
-  all_diag_tbl       <- .combine_diag_tables(rhat_tbl_all, ess_tbl_all)
+  all_diag_tbl <- .combine_diag_tables(rhat_tbl_all, ess_tbl_all)
   samp_diag <- fit$sampler_diagnostics(format = "matrix")
 
-  n_divergent         <- sum(samp_diag[, "divergent__"], na.rm = TRUE)
-  effective_max_td    <- as.integer(.null_default(sc$max_treedepth, 10L))
-  n_treedepth         <- if ("treedepth__" %in% colnames(samp_diag))
-                           sum(samp_diag[, "treedepth__"] >= effective_max_td,
-                               na.rm = TRUE)
-                         else NA_integer_
+  n_divergent <- sum(samp_diag[, "divergent__"], na.rm = TRUE)
+  effective_max_td <- as.integer(.null_default(sc$max_treedepth, 10L))
+  n_treedepth <- if ("treedepth__" %in% colnames(samp_diag)) {
+    sum(samp_diag[, "treedepth__"] >= effective_max_td,
+      na.rm = TRUE
+    )
+  } else {
+    NA_integer_
+  }
   max_rhat_monitored <- .diag_extreme(monitored_diag_tbl, "rhat", "max")
   min_bulk_monitored <- .diag_extreme(monitored_diag_tbl, "ess_bulk", "min")
   min_tail_monitored <- .diag_extreme(monitored_diag_tbl, "ess_tail", "min")
@@ -5512,11 +5157,11 @@ fit_bayesian_multivariate_probit <- function(
   min_bulk_all <- .diag_extreme(all_diag_tbl, "ess_bulk", "min")
   min_tail_all <- .diag_extreme(all_diag_tbl, "ess_tail", "min")
 
-  max_rhat_structural     <- max_rhat_monitored$value
+  max_rhat_structural <- max_rhat_monitored$value
   min_ess_bulk_structural <- min_bulk_monitored$value
   min_ess_tail_structural <- min_tail_monitored$value
 
-  max_rhat_full     <- max_rhat_all$value
+  max_rhat_full <- max_rhat_all$value
   min_ess_bulk_full <- min_bulk_all$value
   min_ess_tail_full <- min_tail_all$value
 
@@ -5536,22 +5181,30 @@ fit_bayesian_multivariate_probit <- function(
   chain_ids <- sort(unique(chain_id))
 
   .safe_col <- function(name) if (name %in% colnames(samp_diag)) samp_diag[, name] else rep(NA_real_, nrow(samp_diag))
-  energy_col     <- .safe_col("energy__")
-  divergent_col  <- .safe_col("divergent__")
-  treedepth_col  <- .safe_col("treedepth__")
-  accept_col     <- .safe_col("accept_stat__")
-  stepsize_col   <- .safe_col("stepsize__")
+  energy_col <- .safe_col("energy__")
+  divergent_col <- .safe_col("divergent__")
+  treedepth_col <- .safe_col("treedepth__")
+  accept_col <- .safe_col("accept_stat__")
+  stepsize_col <- .safe_col("stepsize__")
 
   chain_diag_tbl <- dplyr::bind_rows(lapply(chain_ids, function(ch) {
-    idx   <- chain_id == ch
-    e_ch  <- suppressWarnings(as.numeric(energy_col[idx]))
-    ebfmi_ch <- tryCatch({
-      if (sum(!is.na(e_ch)) < 2L) NA_real_ else {
-        var_e <- stats::var(e_ch, na.rm = TRUE)
-        if (is.na(var_e) || var_e < .Machine$double.eps) NA_real_
-        else mean(diff(e_ch)^2, na.rm = TRUE) / var_e
-      }
-    }, error = function(e) NA_real_)
+    idx <- chain_id == ch
+    e_ch <- suppressWarnings(as.numeric(energy_col[idx]))
+    ebfmi_ch <- tryCatch(
+      {
+        if (sum(!is.na(e_ch)) < 2L) {
+          NA_real_
+        } else {
+          var_e <- stats::var(e_ch, na.rm = TRUE)
+          if (is.na(var_e) || var_e < .Machine$double.eps) {
+            NA_real_
+          } else {
+            mean(diff(e_ch)^2, na.rm = TRUE) / var_e
+          }
+        }
+      },
+      error = function(e) NA_real_
+    )
     tibble::tibble(
       chain               = ch,
       n_sampling          = sum(idx),
@@ -5584,11 +5237,11 @@ fit_bayesian_multivariate_probit <- function(
 
   converged_structural <-
     isTRUE(max_rhat_structural < 1.01) &&
-    isTRUE(min_ess_bulk_structural >= 100) &&
-    isTRUE(is.na(min_ess_tail_structural) || min_ess_tail_structural >= 100) &&
-    isTRUE(n_divergent == 0L) &&
-    treedepth_ok &&
-    isTRUE(is.na(ebfmi_min) || ebfmi_min >= 0.3)
+      isTRUE(min_ess_bulk_structural >= 100) &&
+      isTRUE(is.na(min_ess_tail_structural) || min_ess_tail_structural >= 100) &&
+      isTRUE(n_divergent == 0L) &&
+      treedepth_ok &&
+      isTRUE(is.na(ebfmi_min) || ebfmi_min >= 0.3)
   # Full-scope analogue of converged_structural (includes z_free). Reported
   # for visibility -- with tens of thousands of z_free parameters this will
   # often be FALSE even when converged_structural is TRUE, which is expected,
@@ -5596,11 +5249,11 @@ fit_bayesian_multivariate_probit <- function(
   # flag for the resistance-profile model.
   converged_full <-
     isTRUE(max_rhat_full < 1.01) &&
-    isTRUE(min_ess_bulk_full >= 100) &&
-    isTRUE(is.na(min_ess_tail_full) || min_ess_tail_full >= 100) &&
-    isTRUE(n_divergent == 0L) &&
-    treedepth_ok &&
-    isTRUE(is.na(ebfmi_min) || ebfmi_min >= 0.3)
+      isTRUE(min_ess_bulk_full >= 100) &&
+      isTRUE(is.na(min_ess_tail_full) || min_ess_tail_full >= 100) &&
+      isTRUE(n_divergent == 0L) &&
+      treedepth_ok &&
+      isTRUE(is.na(ebfmi_min) || ebfmi_min >= 0.3)
   # Narrower, more diagnostic signal than "converged_full is FALSE": TRUE only
   # when the structural parameters have converged cleanly AND the full scope
   # (i.e. the z_free latent block specifically) has not -- isolating "the
@@ -5609,7 +5262,7 @@ fit_bayesian_multivariate_probit <- function(
   # = FALSE and needs no separate flag).
   latent_diagnostic_warning <-
     isTRUE(converged_structural) &&
-    (isTRUE(max_rhat_full > 1.01) || isTRUE(min_ess_bulk_full < 100))
+      (isTRUE(max_rhat_full > 1.01) || isTRUE(min_ess_bulk_full < 100))
 
   # Canonical multi-level status (supersedes the separate, duplicated
   # `.probit_diagnostic_status()` previously computed in anumaan-analysis from
@@ -5631,74 +5284,93 @@ fit_bayesian_multivariate_probit <- function(
 
   # -- Warnings are based on the STRUCTURAL scope; z_free stragglers are ------
   # -- reported separately below so they don't masquerade as model failure. --
-  if (max_rhat_structural > 1.01)
-    warning(sprintf("Convergence concern: structural max Rhat = %.3f (> 1.01). %s",
-                    max_rhat_structural,
-                    "Increase iter_warmup or adapt_delta."), call. = FALSE)
-  if (min_ess_bulk_structural < 100L)
-    warning(sprintf("Low structural bulk ESS: %.0f (< 100). Profile probabilities may be unreliable.",
-                    min_ess_bulk_structural), call. = FALSE)
-  if (!is.na(min_ess_tail_structural) && min_ess_tail_structural < 100L)
+  if (max_rhat_structural > 1.01) {
+    warning(sprintf(
+      "Convergence concern: structural max Rhat = %.3f (> 1.01). %s",
+      max_rhat_structural,
+      "Increase iter_warmup or adapt_delta."
+    ), call. = FALSE)
+  }
+  if (min_ess_bulk_structural < 100L) {
+    warning(sprintf(
+      "Low structural bulk ESS: %.0f (< 100). Profile probabilities may be unreliable.",
+      min_ess_bulk_structural
+    ), call. = FALSE)
+  }
+  if (!is.na(min_ess_tail_structural) && min_ess_tail_structural < 100L) {
     warning(sprintf("Low structural tail ESS: %.0f (< 100).", min_ess_tail_structural), call. = FALSE)
-  if (!is.na(n_treedepth) && n_treedepth > 0L)
-    warning(sprintf("%d iteration(s) saturated max treedepth. Increase max_treedepth.",
-                    n_treedepth), call. = FALSE)
-  if (!is.na(ebfmi_min) && ebfmi_min < 0.3)
-    warning(sprintf("Low minimum chain E-BFMI = %.3f (< 0.3). Possible poor geometry.",
-                    ebfmi_min), call. = FALSE)
-  if (n_divergent > 0L)
+  }
+  if (!is.na(n_treedepth) && n_treedepth > 0L) {
+    warning(sprintf(
+      "%d iteration(s) saturated max treedepth. Increase max_treedepth.",
+      n_treedepth
+    ), call. = FALSE)
+  }
+  if (!is.na(ebfmi_min) && ebfmi_min < 0.3) {
+    warning(sprintf(
+      "Low minimum chain E-BFMI = %.3f (< 0.3). Possible poor geometry.",
+      ebfmi_min
+    ), call. = FALSE)
+  }
+  if (n_divergent > 0L) {
     warning(sprintf("%d divergent transition(s). Increase adapt_delta.", n_divergent),
-            call. = FALSE)
-  if (latent_diagnostic_warning)
+      call. = FALSE
+    )
+  }
+  if (latent_diagnostic_warning) {
     message(sprintf(
-      paste0("[fit_bayesian_multivariate_probit] NOTE: latent z_free block (%d parameters) has ",
-             "diagnostic stragglers (full-scope max Rhat = %.3f, min ESS bulk = %.0f) even though ",
-             "structural parameters converged cleanly. This is informational only and does NOT ",
-             "affect converged_structural -- see $diagnostics$latent_diagnostic_warning."),
-      n_z_free, max_rhat_full, min_ess_bulk_full))
+      paste0(
+        "[fit_bayesian_multivariate_probit] NOTE: latent z_free block (%d parameters) has ",
+        "diagnostic stragglers (full-scope max Rhat = %.3f, min ESS bulk = %.0f) even though ",
+        "structural parameters converged cleanly. This is informational only and does NOT ",
+        "affect converged_structural -- see $diagnostics$latent_diagnostic_warning."
+      ),
+      n_z_free, max_rhat_full, min_ess_bulk_full
+    ))
+  }
 
   diag_tbl <- tibble::tibble(
-    n_chains           = as.integer(sc$chains),
-    iter_warmup        = as.integer(sc$iter_warmup),
-    iter_sampling      = as.integer(sc$iter_sampling),
-    n_re_levels        = as.integer(re_prep$R),
-    n_observed_pairs   = nrow(data_long),
-    n_events           = N_events,
-    n_classes          = D,
+    n_chains = as.integer(sc$chains),
+    iter_warmup = as.integer(sc$iter_warmup),
+    iter_sampling = as.integer(sc$iter_sampling),
+    n_re_levels = as.integer(re_prep$R),
+    n_observed_pairs = nrow(data_long),
+    n_events = N_events,
+    n_classes = D,
     # n_upper_groups: backward-compatible alias for "the first declared RE
     # block's level count" (by convention the hospital-equivalent level).
-    n_upper_groups     = as.integer(re_prep$n_levels[1L]),
-    re_block_levels    = paste(sprintf("%s=%d", re_prep$block_names, re_prep$n_levels), collapse = "; "),
-    n_divergent        = as.integer(n_divergent),
-    n_treedepth_sat    = as.integer(n_treedepth),
-    ebfmi_min          = round(ebfmi_min,  4L),
-    ebfmi_mean         = round(ebfmi_mean, 4L),
-    ebfmi_by_chain     = ebfmi_by_chain,
-    max_rhat_structural     = round(max_rhat_structural,     4L),
+    n_upper_groups = as.integer(re_prep$n_levels[1L]),
+    re_block_levels = paste(sprintf("%s=%d", re_prep$block_names, re_prep$n_levels), collapse = "; "),
+    n_divergent = as.integer(n_divergent),
+    n_treedepth_sat = as.integer(n_treedepth),
+    ebfmi_min = round(ebfmi_min, 4L),
+    ebfmi_mean = round(ebfmi_mean, 4L),
+    ebfmi_by_chain = ebfmi_by_chain,
+    max_rhat_structural = round(max_rhat_structural, 4L),
     min_ess_bulk_structural = round(min_ess_bulk_structural, 1L),
     min_ess_tail_structural = round(min_ess_tail_structural, 1L),
-    max_rhat_full           = round(max_rhat_full,     4L),
-    min_ess_bulk_full       = round(min_ess_bulk_full, 1L),
-    min_ess_tail_full       = round(min_ess_tail_full, 1L),
+    max_rhat_full = round(max_rhat_full, 4L),
+    min_ess_bulk_full = round(min_ess_bulk_full, 1L),
+    min_ess_tail_full = round(min_ess_tail_full, 1L),
     # Full scope (incl. z_free) is summarised by these scalars regardless of
     # save_full_latent_diagnostics; the per-parameter table itself (tens of
     # thousands of rows for realistic N_events x D) is only ever returned in
     # diagnostics_detail$all_parameters when that flag is TRUE.
-    n_params_full                 = nrow(all_diag_tbl),
-    pct_rhat_full_above_1_01      = round(100 * mean(suppressWarnings(as.numeric(all_diag_tbl$rhat)) > 1.01, na.rm = TRUE), 2L),
-    pct_ess_bulk_full_below_100   = round(100 * mean(suppressWarnings(as.numeric(all_diag_tbl$ess_bulk)) < 100, na.rm = TRUE), 2L),
-    parameter_with_max_rhat           = max_rhat_monitored$parameter,
-    parameter_group_with_max_rhat     = max_rhat_monitored$group,
-    parameter_with_min_ess_bulk       = min_bulk_monitored$parameter,
+    n_params_full = nrow(all_diag_tbl),
+    pct_rhat_full_above_1_01 = round(100 * mean(suppressWarnings(as.numeric(all_diag_tbl$rhat)) > 1.01, na.rm = TRUE), 2L),
+    pct_ess_bulk_full_below_100 = round(100 * mean(suppressWarnings(as.numeric(all_diag_tbl$ess_bulk)) < 100, na.rm = TRUE), 2L),
+    parameter_with_max_rhat = max_rhat_monitored$parameter,
+    parameter_group_with_max_rhat = max_rhat_monitored$group,
+    parameter_with_min_ess_bulk = min_bulk_monitored$parameter,
     parameter_group_with_min_ess_bulk = min_bulk_monitored$group,
-    parameter_with_min_ess_tail       = min_tail_monitored$parameter,
+    parameter_with_min_ess_tail = min_tail_monitored$parameter,
     parameter_group_with_min_ess_tail = min_tail_monitored$group,
-    converged_structural      = converged_structural,
-    converged_full            = converged_full,
+    converged_structural = converged_structural,
+    converged_full = converged_full,
     latent_diagnostic_warning = latent_diagnostic_warning,
-    diagnostic_status         = diagnostic_status,
+    diagnostic_status = diagnostic_status,
     # backward-compatible aliases (structural diagnostics)
-    max_rhat     = round(max_rhat_structural,     4L),
+    max_rhat = round(max_rhat_structural, 4L),
     min_ess_bulk = round(min_ess_bulk_structural, 1L),
     min_ess_tail = round(min_ess_tail_structural, 1L)
   )
@@ -5712,35 +5384,40 @@ fit_bayesian_multivariate_probit <- function(
     tibble::tibble()
   } else {
     monitored_diag_tbl %>%
-      dplyr::mutate(rhat = suppressWarnings(as.numeric(.data$rhat)),
-                    ess_bulk = suppressWarnings(as.numeric(.data$ess_bulk)),
-                    ess_tail = suppressWarnings(as.numeric(.data$ess_tail))) %>%
+      dplyr::mutate(
+        rhat = suppressWarnings(as.numeric(.data$rhat)),
+        ess_bulk = suppressWarnings(as.numeric(.data$ess_bulk)),
+        ess_tail = suppressWarnings(as.numeric(.data$ess_tail))
+      ) %>%
       dplyr::group_by(.data$parameter_group) %>%
       dplyr::summarise(
-        n_parameters      = dplyr::n(),
-        median_rhat       = round(stats::median(.data$rhat, na.rm = TRUE), 4L),
-        p95_rhat          = round(stats::quantile(.data$rhat, 0.95, na.rm = TRUE), 4L),
-        max_rhat          = round(max(.data$rhat, na.rm = TRUE), 4L),
+        n_parameters = dplyr::n(),
+        median_rhat = round(stats::median(.data$rhat, na.rm = TRUE), 4L),
+        p95_rhat = round(stats::quantile(.data$rhat, 0.95, na.rm = TRUE), 4L),
+        max_rhat = round(max(.data$rhat, na.rm = TRUE), 4L),
         pct_rhat_above_1_01 = round(100 * mean(.data$rhat > 1.01, na.rm = TRUE), 1L),
-        median_ess_bulk   = round(stats::median(.data$ess_bulk, na.rm = TRUE), 1L),
-        p5_ess_bulk       = round(stats::quantile(.data$ess_bulk, 0.05, na.rm = TRUE), 1L),
-        min_ess_bulk      = round(min(.data$ess_bulk, na.rm = TRUE), 1L),
+        median_ess_bulk = round(stats::median(.data$ess_bulk, na.rm = TRUE), 1L),
+        p5_ess_bulk = round(stats::quantile(.data$ess_bulk, 0.05, na.rm = TRUE), 1L),
+        min_ess_bulk = round(min(.data$ess_bulk, na.rm = TRUE), 1L),
         pct_ess_bulk_below_100 = round(100 * mean(.data$ess_bulk < 100, na.rm = TRUE), 1L),
-        min_ess_tail      = round(min(.data$ess_tail, na.rm = TRUE), 1L),
-        .groups           = "drop"
+        min_ess_tail = round(min(.data$ess_tail, na.rm = TRUE), 1L),
+        .groups = "drop"
       )
   }
 
   message(sprintf(
-    paste0("[fit_bayesian_multivariate_probit] Done. structural max_Rhat=%.3f (full incl. z_free=%.3f) | ",
-           "structural min_ESS_bulk=%.0f (full=%.0f) | divergent=%d | converged_structural=%s"),
+    paste0(
+      "[fit_bayesian_multivariate_probit] Done. structural max_Rhat=%.3f (full incl. z_free=%.3f) | ",
+      "structural min_ESS_bulk=%.0f (full=%.0f) | divergent=%d | converged_structural=%s"
+    ),
     max_rhat_structural, max_rhat_full,
     min_ess_bulk_structural, min_ess_bulk_full,
-    n_divergent, converged_structural))
+    n_divergent, converged_structural
+  ))
 
   list(
-    draws              = draws_arr,
-    diagnostics        = diag_tbl,
+    draws = draws_arr,
+    diagnostics = diag_tbl,
     diagnostics_detail = list(
       monitored_parameters = tibble::as_tibble(monitored_diag_tbl),
       # Full per-parameter table (includes z_free) is large -- tens of
@@ -5748,21 +5425,23 @@ fit_bayesian_multivariate_probit <- function(
       # when explicitly requested. diag_tbl$max_rhat_full/min_ess_bulk_full/
       # min_ess_tail_full/n_params_full/pct_rhat_full_above_1_01/
       # pct_ess_bulk_full_below_100 are always populated regardless.
-      all_parameters       = if (isTRUE(save_full_latent_diagnostics))
-                                tibble::as_tibble(all_diag_tbl)
-                              else tibble::as_tibble(all_diag_tbl)[0L, ],
-      grouped              = grouped_diag_tbl,
-      chains               = chain_diag_tbl
+      all_parameters = if (isTRUE(save_full_latent_diagnostics)) {
+        tibble::as_tibble(all_diag_tbl)
+      } else {
+        tibble::as_tibble(all_diag_tbl)[0L, ]
+      },
+      grouped = grouped_diag_tbl,
+      chains = chain_diag_tbl
     ),
-    fit                = fit,
-    data_long          = tibble::as_tibble(data_long),
-    index_maps         = list(
+    fit = fit,
+    data_long = tibble::as_tibble(data_long),
+    index_maps = list(
       class_levels      = class_levels,
       # backward-compatible alias: first declared block's level set
       upper_levels      = re_prep$level_maps[[1L]]
     ),
-    X_design           = X_long,   # kept for back-compat; same as X_event aligned to obs
-    X_event            = X_event_mat,   # N_events x K (use this in simulation)
+    X_design = X_long, # kept for back-compat; same as X_event aligned to obs
+    X_event = X_event_mat, # N_events x K (use this in simulation)
     # Generic random-effect representation (Stage 1): the self-contained
     # object from prepare_random_effects(), including flat_group_index
     # (N_events x R, one flattened level index per event per declared
@@ -5771,28 +5450,24 @@ fit_bayesian_multivariate_probit <- function(
     # mu-reconstruction site should sum over blocks via re_contribution()
     # against this object rather than hand-summing named arrays.
     random_effects_prep = re_prep,
-    event_re_idx       = re_prep$flat_group_index,  # N_events x R (generic; see random_effects_prep)
-    class_cols         = class_cols,
-    event_metadata     = tibble::as_tibble(event_data),
-    n_re_levels        = re_prep$R,
-    upper_re_col       = upper_re_col,
-    pathogen_col        = pathogen_col,
-    pathogen_fitted     = pathogen_fitted,
-    residual_structure  = residual_structure,
-    estimand            = estimand,
-    prior_config_used   = pc,
+    event_re_idx = re_prep$flat_group_index, # N_events x R (generic; see random_effects_prep)
+    class_cols = class_cols,
+    event_metadata = tibble::as_tibble(event_data),
+    n_re_levels = re_prep$R,
+    upper_re_col = upper_re_col,
+    pathogen_col = pathogen_col,
+    pathogen_fitted = pathogen_fitted,
+    residual_structure = residual_structure,
+    estimand = estimand,
+    prior_config_used = pc,
     sampler_config_used = sc,
-    eligibility_report  = list(
+    eligibility_report = list(
       marginal  = eligibility_report,
       pairwise  = co_test_report
     )
   )
 }
 
-
-# ---------------------------------------------------------------------------
-# .gibbs_conditional_profile_probs() -- Commit 6
-# ---------------------------------------------------------------------------
 
 #' Conditional profile probabilities under a correlated residual, via Gibbs
 #'
@@ -5840,7 +5515,8 @@ fit_bayesian_multivariate_probit <- function(
 #' @keywords internal
 .gibbs_conditional_profile_probs <- function(mu_hp, Omega_hp, obs_panel, profile_bin,
                                              n_burnin = 10L, n_kept = 20L) {
-  n_hp <- nrow(mu_hp); Dp <- ncol(mu_hp)
+  n_hp <- nrow(mu_hp)
+  Dp <- ncol(mu_hp)
   n_profiles <- nrow(profile_bin)
   pow2 <- 2L^(seq_len(Dp) - 1L)
 
@@ -5850,7 +5526,7 @@ fit_bayesian_multivariate_probit <- function(
     # unset), row 2 = code 1 = "R" (bit set) -- see enumerate_binary_profiles().
     p <- stats::pnorm(mu_hp[, 1])
     p_eff <- obs_panel[, 1]
-    miss  <- is.na(p_eff)
+    miss <- is.na(p_eff)
     p_eff[miss] <- p[miss]
     prob_mat <- matrix(0, n_hp, n_profiles)
     prob_mat[, 1] <- 1 - p_eff
@@ -5866,9 +5542,9 @@ fit_bayesian_multivariate_probit <- function(
   # dimensions) is handled with escalating controlled jitter; if that still
   # doesn't produce a valid (finite, positive) conditional variance, this
   # stops with an explicit, diagnosable reason rather than silently
-  # returning NaN/negative-variance draws (Commit 6, item 7).
+  # returning NaN/negative-variance draws.
   beta_list <- vector("list", Dp)
-  cond_sd   <- numeric(Dp)
+  cond_sd <- numeric(Dp)
   for (d in seq_len(Dp)) {
     other <- setdiff(seq_len(Dp), d)
     Omega_oo <- Omega_hp[other, other, drop = FALSE]
@@ -5877,18 +5553,25 @@ fit_bayesian_multivariate_probit <- function(
     for (jitter in c(1e-8, 1e-6, 1e-4, 1e-2)) {
       Omega_oo_inv <- tryCatch(solve(Omega_oo + diag(jitter, Dp - 1L)), error = function(e) NULL)
       if (is.null(Omega_oo_inv)) next
-      beta_d   <- as.vector(Omega_hp[d, other] %*% Omega_oo_inv)
+      beta_d <- as.vector(Omega_hp[d, other] %*% Omega_oo_inv)
       cond_var <- Omega_hp[d, d] - sum(Omega_hp[d, other] * beta_d)
-      if (is.finite(cond_var) && cond_var > 1e-9) { solved <- TRUE; break }
+      if (is.finite(cond_var) && cond_var > 1e-9) {
+        solved <- TRUE
+        break
+      }
     }
-    if (!solved)
+    if (!solved) {
       stop(sprintf(
-        paste0("[.gibbs_conditional_profile_probs] Omega is too near-singular to condition on ",
-               "dimension %d even after jitter up to 1e-2 (conditioning set size %d). This usually ",
-               "means the fitted residual correlation matrix has classes that are (near-)perfectly ",
-               "correlated -- inspect fit$diagnostics_detail for this draw/hospital-pathogen pair, ",
-               "or drop one of the collinear classes from the panel."),
-        d, Dp - 1L), call. = FALSE)
+        paste0(
+          "[.gibbs_conditional_profile_probs] Omega is too near-singular to condition on ",
+          "dimension %d even after jitter up to 1e-2 (conditioning set size %d). This usually ",
+          "means the fitted residual correlation matrix has classes that are (near-)perfectly ",
+          "correlated -- inspect fit$diagnostics_detail for this draw/hospital-pathogen pair, ",
+          "or drop one of the collinear classes from the panel."
+        ),
+        d, Dp - 1L
+      ), call. = FALSE)
+    }
 
     beta_list[[d]] <- beta_d
     cond_sd[d] <- sqrt(cond_var)
@@ -5915,7 +5598,7 @@ fit_bayesian_multivariate_probit <- function(
   for (g in seq_len(n_total_iter)) {
     for (d in seq_len(Dp)) {
       other <- setdiff(seq_len(Dp), d)
-      resid   <- Z[, other, drop = FALSE] - mu_hp[, other, drop = FALSE]
+      resid <- Z[, other, drop = FALSE] - mu_hp[, other, drop = FALSE]
       mu_cond <- mu_hp[, d] + as.vector(resid %*% beta_list[[d]])
       sd_cond <- cond_sd[d]
 
@@ -5924,16 +5607,16 @@ fit_bayesian_multivariate_probit <- function(
       if (any(!k)) z_new[!k] <- stats::rnorm(sum(!k), mu_cond[!k], sd_cond)
       if (any(k)) {
         want_pos <- obs_panel[k, d] == 1
-        p0 <- stats::pnorm(0, mu_cond[k], sd_cond)   # P(Z < 0 | ...)
-        u  <- ifelse(want_pos, stats::runif(sum(k), p0, 1), stats::runif(sum(k), 0, p0))
-        u  <- pmin(pmax(u, 1e-10), 1 - 1e-10)         # guard qnorm(0)/qnorm(1) = +-Inf
+        p0 <- stats::pnorm(0, mu_cond[k], sd_cond) # P(Z < 0 | ...)
+        u <- ifelse(want_pos, stats::runif(sum(k), p0, 1), stats::runif(sum(k), 0, p0))
+        u <- pmin(pmax(u, 1e-10), 1 - 1e-10) # guard qnorm(0)/qnorm(1) = +-Inf
         z_new[k] <- stats::qnorm(u, mu_cond[k], sd_cond)
       }
       Z[, d] <- z_new
     }
     if (g > n_burnin) {
       signs <- (Z > 0) * 1L
-      idx   <- as.vector(signs %*% pow2) + 1L
+      idx <- as.vector(signs %*% pow2) + 1L
       prob_mat[cbind(seq_len(n_hp), idx)] <- prob_mat[cbind(seq_len(n_hp), idx)] + 1
     }
   }
@@ -5942,9 +5625,7 @@ fit_bayesian_multivariate_probit <- function(
 }
 
 
-# ---------------------------------------------------------------------------
 # compute_event_profile_probabilities()
-# ---------------------------------------------------------------------------
 
 #' Compute Observed-Plus-Imputed Resistance Profile Probabilities
 #'
@@ -5963,7 +5644,7 @@ fit_bayesian_multivariate_probit <- function(
 #' simulation is used, so there is no added latent-profile-simulation noise.
 #' Rows carry \code{profile_generation_method = "conditional_analytic_identity"}.
 #'
-#' \strong{Correlated residual structure} (Commit 6): the missing latent
+#' \strong{Correlated residual structure}: the missing latent
 #' dimensions are sampled conditional on the observed resistance SIGNS of the
 #' tested classes via a Gibbs sampler on the truncated multivariate normal --
 #' see \code{.gibbs_conditional_profile_probs()}. This replaces the earlier
@@ -6025,75 +5706,85 @@ fit_bayesian_multivariate_probit <- function(
 #'   \code{panel_reason} columns.
 #' @export
 compute_event_profile_probabilities <- function(
-    fitted_model,
-    n_posterior_draws_for_profiles = 2000L,
-    outcome_col                    = NULL,
-    nonfatal_values                = c("Discharged", "Survived", "Alive",
-                                       "discharged", "survived", "alive"),
-    seed                           = 123L,
-    n_gibbs_burnin                 = 10L,
-    n_gibbs_kept                   = 20L
+  fitted_model,
+  n_posterior_draws_for_profiles = 2000L,
+  outcome_col = NULL,
+  nonfatal_values = c(
+    "Discharged", "Survived", "Alive",
+    "discharged", "survived", "alive"
+  ),
+  seed = 123L,
+  n_gibbs_burnin = 10L,
+  n_gibbs_kept = 20L
 ) {
-  if (!requireNamespace("posterior", quietly = TRUE))
+  if (!requireNamespace("posterior", quietly = TRUE)) {
     stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
+  }
 
   set.seed(as.integer(seed))
 
-  draws               <- fitted_model$draws
-  class_cols          <- fitted_model$class_cols
-  idx_maps            <- fitted_model$index_maps
-  event_meta          <- fitted_model$event_metadata
-  n_re_levels         <- fitted_model$n_re_levels
-  upper_re_col        <- fitted_model$upper_re_col
-  pathogen_col        <- fitted_model$pathogen_col
-  residual_structure  <- .null_default(fitted_model$residual_structure, "identity")
-  eligibility_report  <- fitted_model$eligibility_report
+  draws <- fitted_model$draws
+  class_cols <- fitted_model$class_cols
+  idx_maps <- fitted_model$index_maps
+  event_meta <- fitted_model$event_metadata
+  n_re_levels <- fitted_model$n_re_levels
+  upper_re_col <- fitted_model$upper_re_col
+  pathogen_col <- fitted_model$pathogen_col
+  residual_structure <- .null_default(fitted_model$residual_structure, "identity")
+  eligibility_report <- fitted_model$eligibility_report
 
   D <- length(idx_maps$class_levels)
   re_prep <- fitted_model$random_effects_prep
 
   # Prefer event-level arrays stored by fit function; fall back to deriving them
-  X_event_sim  <- if (!is.null(fitted_model$X_event))
-                    fitted_model$X_event
-                  else fitted_model$X_design  # legacy fallback
-  event_re_idx <- fitted_model$event_re_idx   # N_events x R flattened level index
+  X_event_sim <- if (!is.null(fitted_model$X_event)) {
+    fitted_model$X_event
+  } else {
+    fitted_model$X_design
+  } # legacy fallback
+  event_re_idx <- fitted_model$event_re_idx # N_events x R flattened level index
 
   K <- ncol(X_event_sim)
 
   # -- Thin draws to n_posterior_draws_for_profiles ---------------------------
   draws_mat <- posterior::as_draws_matrix(draws)
-  n_total   <- nrow(draws_mat)
-  S         <- min(as.integer(n_posterior_draws_for_profiles), n_total)
-  draw_idx  <- if (S < n_total) sort(sample.int(n_total, S)) else seq_len(n_total)
+  n_total <- nrow(draws_mat)
+  S <- min(as.integer(n_posterior_draws_for_profiles), n_total)
+  draw_idx <- if (S < n_total) sort(sample.int(n_total, S)) else seq_len(n_total)
   draws_mat <- draws_mat[draw_idx, , drop = FALSE]
 
   # -- Helper: extract [S, d1, d2] array from draws ---------------------------
   .arr <- function(prefix, d1, d2) {
-    cols <- as.vector(outer(seq_len(d1), seq_len(d2),
-                            function(a, b) sprintf("%s[%d,%d]", prefix, a, b)))
+    cols <- as.vector(outer(
+      seq_len(d1), seq_len(d2),
+      function(a, b) sprintf("%s[%d,%d]", prefix, a, b)
+    ))
     array(draws_mat[, cols, drop = FALSE], dim = c(S, d1, d2))
   }
 
-  beta_arr     <- .arr("beta", K, D)                              # S x K x D
-  re_eff_arr   <- .arr("re_effect", D, re_prep$total_re_levels)    # S x D x total_re_levels
-  L_omega_arr  <- if (residual_structure == "correlated")
-                    .arr("L_Omega", D, D)             # S x D x D (lower triangular)
-                  else NULL
+  beta_arr <- .arr("beta", K, D) # S x K x D
+  re_eff_arr <- .arr("re_effect", D, re_prep$total_re_levels) # S x D x total_re_levels
+  L_omega_arr <- if (residual_structure == "correlated") {
+    .arr("L_Omega", D, D)
+  } # S x D x D (lower triangular)
+  else {
+    NULL
+  }
 
   # -- Canonical event table --------------------------------------------------
   stopifnot(".event_idx" %in% names(event_meta))
   stopifnot(!anyDuplicated(event_meta$.event_idx))
 
   # Use event_meta to identify which events appear in data_long (have observations)
-  has_obs        <- event_meta$.event_idx %in% fitted_model$data_long$ev_idx
+  has_obs <- event_meta$.event_idx %in% fitted_model$data_long$ev_idx
   event_meta_obs <- event_meta[has_obs, , drop = FALSE]
-  N_ev           <- nrow(event_meta_obs)
+  N_ev <- nrow(event_meta_obs)
 
   # Event-level design matrix and RE indices (from stored event_re_idx, the
   # generic N_events x R flattened level-index matrix -- see random_effects_prep).
-  ev_row_idx <- event_meta_obs$.event_idx           # 1-based canonical event indices
-  X_event    <- X_event_sim[ev_row_idx, , drop = FALSE]    # N_ev x K
-  flat_re_idx_obs <- event_re_idx[ev_row_idx, , drop = FALSE]   # N_ev x R
+  ev_row_idx <- event_meta_obs$.event_idx # 1-based canonical event indices
+  X_event <- X_event_sim[ev_row_idx, , drop = FALSE] # N_ev x K
+  flat_re_idx_obs <- event_re_idx[ev_row_idx, , drop = FALSE] # N_ev x R
 
   # Observed AST matrix for these events, aligned to class_cols (0/1/NA). This
   # is the ground truth that must be preserved: profile generation below only
@@ -6102,24 +5793,26 @@ compute_event_profile_probabilities <- function(
   storage.mode(obs_ast_mat) <- "double"
 
   # -- Outcome flags per event ------------------------------------------------
-  oc_col_use <- if (!is.null(outcome_col) && outcome_col %in% names(event_meta_obs))
-                  outcome_col
-                else NULL
+  oc_col_use <- if (!is.null(outcome_col) && outcome_col %in% names(event_meta_obs)) {
+    outcome_col
+  } else {
+    NULL
+  }
 
   if (!is.null(oc_col_use)) {
-    ov               <- event_meta_obs[[oc_col_use]]
+    ov <- event_meta_obs[[oc_col_use]]
     is_known_outcome <- !is.na(ov)
-    is_nonfatal      <- !is.na(ov) & (ov %in% nonfatal_values)
+    is_nonfatal <- !is.na(ov) & (ov %in% nonfatal_values)
   } else {
     is_known_outcome <- rep(TRUE, N_ev)
-    is_nonfatal      <- rep(TRUE, N_ev)
+    is_nonfatal <- rep(TRUE, N_ev)
   }
 
   # -- Hospital-pathogen profile class panels ---------------------------------
   # Panels come from the approved eligibility rules (fitted_model$eligibility_
   # report), not from "tested at least once" -- see .resolve_profile_class_panel().
   hp_pairs <- unique(event_meta_obs[, c(upper_re_col, pathogen_col), drop = FALSE])
-  hp_keys  <- paste(hp_pairs[[upper_re_col]], hp_pairs[[pathogen_col]], sep = "||")
+  hp_keys <- paste(hp_pairs[[upper_re_col]], hp_pairs[[pathogen_col]], sep = "||")
 
   hp_panel <- stats::setNames(lapply(seq_len(nrow(hp_pairs)), function(r) {
     .resolve_profile_class_panel(
@@ -6137,7 +5830,7 @@ compute_event_profile_probabilities <- function(
   hp_ev_idx <- stats::setNames(lapply(hp_keys, function(key) {
     parts <- strsplit(key, "||", fixed = TRUE)[[1L]]
     which(event_meta_obs[[upper_re_col]] == parts[1L] &
-          event_meta_obs[[pathogen_col]]  == parts[2L])
+      event_meta_obs[[pathogen_col]] == parts[2L])
   }), hp_keys)
 
   imputation_method <- if (identical(residual_structure, "correlated")) {
@@ -6148,38 +5841,39 @@ compute_event_profile_probabilities <- function(
 
   # -- Per-hp-key static info: panel, observed matrix, cohort masks ------------
   key_info <- stats::setNames(lapply(hp_keys, function(key) {
-    d_hp   <- match(hp_panel[[key]]$classes, class_cols)
+    d_hp <- match(hp_panel[[key]]$classes, class_cols)
     ev_idx <- hp_ev_idx[[key]]
-    n_hp   <- length(ev_idx)
-    if (n_hp == 0L || length(d_hp) < 1L)
+    n_hp <- length(ev_idx)
+    if (n_hp == 0L || length(d_hp) < 1L) {
       return(list(n_hp = n_hp, Dp = length(d_hp)))
+    }
 
     panel_classes <- class_cols[d_hp]
-    enum_df       <- enumerate_binary_profiles(panel_classes)
-    profile_bin   <- as.matrix(enum_df[, panel_classes, drop = FALSE])  # n_profiles x Dp, 0/1
-    obs_panel     <- obs_ast_mat[ev_idx, d_hp, drop = FALSE]            # n_hp x Dp, 0/1/NA
+    enum_df <- enumerate_binary_profiles(panel_classes)
+    profile_bin <- as.matrix(enum_df[, panel_classes, drop = FALSE]) # n_profiles x Dp, 0/1
+    obs_panel <- obs_ast_mat[ev_idx, d_hp, drop = FALSE] # n_hp x Dp, 0/1/NA
 
     list(
-      d_hp                 = d_hp,
-      ev_idx               = ev_idx,
-      n_hp                 = n_hp,
-      Dp                   = length(d_hp),
-      class_set            = paste(panel_classes, collapse = "|"),
-      all_lbls             = enum_df$profile_delta,
-      n_profiles           = length(enum_df$profile_delta),
-      profile_bin          = profile_bin,
-      obs_panel            = obs_panel,
-      n_missing_per_event  = rowSums(is.na(obs_panel)),
+      d_hp = d_hp,
+      ev_idx = ev_idx,
+      n_hp = n_hp,
+      Dp = length(d_hp),
+      class_set = paste(panel_classes, collapse = "|"),
+      all_lbls = enum_df$profile_delta,
+      n_profiles = length(enum_df$profile_delta),
+      profile_bin = profile_bin,
+      obs_panel = obs_panel,
+      n_missing_per_event = rowSums(is.na(obs_panel)),
       n_observed_per_event = length(d_hp) - rowSums(is.na(obs_panel)),
-      known_out            = is_known_outcome[ev_idx],
-      nonfatal             = is_nonfatal[ev_idx],
-      n_events_all         = n_hp,
-      n_events_known       = sum(is_known_outcome[ev_idx]),
-      n_events_nf          = sum(is_nonfatal[ev_idx]),
-      n_profile_classes       = length(d_hp),
+      known_out = is_known_outcome[ev_idx],
+      nonfatal = is_nonfatal[ev_idx],
+      n_events_all = n_hp,
+      n_events_known = sum(is_known_outcome[ev_idx]),
+      n_events_nf = sum(is_nonfatal[ev_idx]),
+      n_profile_classes = length(d_hp),
       panel_eligibility_method = hp_panel[[key]]$method,
-      classes_excluded         = paste(hp_panel[[key]]$excluded, collapse = "|"),
-      classes_excluded_reason  = hp_panel[[key]]$reason
+      classes_excluded = paste(hp_panel[[key]]$excluded, collapse = "|"),
+      classes_excluded_reason = hp_panel[[key]]$reason
     )
   }), hp_keys)
 
@@ -6191,46 +5885,51 @@ compute_event_profile_probabilities <- function(
   # sum-to-1 check apply uniformly to both.
   event_prob_sum <- stats::setNames(lapply(hp_keys, function(key) {
     ki <- key_info[[key]]
-    if (ki$n_hp == 0L || ki$Dp < 1L) return(NULL)
+    if (ki$n_hp == 0L || ki$Dp < 1L) {
+      return(NULL)
+    }
     matrix(0, ki$n_hp, ki$n_profiles)
   }), hp_keys)
 
   message(sprintf(
     "[compute_event_profile_probabilities] %d draws | %d events | %d hp-pairs | %d RE level(s) | method=%s",
-    S, N_ev, length(hp_keys), n_re_levels, imputation_method))
+    S, N_ev, length(hp_keys), n_re_levels, imputation_method
+  ))
 
-  event_profile_rows  <- list()
-  aggregate_draw_rows <- list()
+  # hp-keys contributing rows, precomputed once to preallocate both result lists.
+  valid_keys <- hp_keys[vapply(hp_keys, function(key) {
+    ki <- key_info[[key]]
+    ki$n_hp > 0L && ki$Dp >= 1L
+  }, logical(1))]
+
+  event_profile_rows <- vector("list", sum(vapply(valid_keys, function(key) key_info[[key]]$n_hp, integer(1))))
+  aggregate_draw_rows <- vector("list", S * length(valid_keys))
+  .event_i <- 0L
+  .agg_i <- 0L
 
   # -- Main draw loop: mu_all computed once per draw, shared across hp-keys ---
   for (s in seq_len(S)) {
-    beta_s   <- matrix(beta_arr[s, , ],   nrow = K, ncol = D)
+    beta_s <- matrix(beta_arr[s, , ], nrow = K, ncol = D)
     re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
 
     # Generic random-effect contribution: sums over an arbitrary number of
     # declared blocks via one shared helper (re_contribution()), rather than
     # hand-summing hospital_effect/patient_effect/admission_effect.
-    mu_all <- (X_event %*% beta_s) + re_contribution(re_eff_s, flat_re_idx_obs)   # N_ev x D
+    mu_all <- (X_event %*% beta_s) + re_contribution(re_eff_s, flat_re_idx_obs) # N_ev x D
 
     Omega_s_full <- if (identical(residual_structure, "correlated")) {
       tcrossprod(matrix(L_omega_arr[s, , ], nrow = D, ncol = D))
-    } else NULL
+    } else {
+      NULL
+    }
 
-    for (key in hp_keys) {
+    for (key in valid_keys) {
       ki <- key_info[[key]]
-      if (ki$n_hp == 0L || ki$Dp < 1L) next
-      mu_hp <- mu_all[ki$ev_idx, ki$d_hp, drop = FALSE]   # n_hp x Dp
+      mu_hp <- mu_all[ki$ev_idx, ki$d_hp, drop = FALSE] # n_hp x Dp
 
       if (identical(residual_structure, "correlated")) {
-        # Conditional Gibbs imputation (Commit 6): samples the missing latent
-        # dimensions conditional on the observed resistance SIGNS (not the
-        # exact latent values -- we only ever observe sign(Z), i.e. R/S), via
-        # a vectorized-across-events Gibbs sampler on the truncated
-        # multivariate normal. Known dimensions are truncated to the
-        # observed sign at every iteration, so every kept iteration's
-        # pattern is automatically consistent with observed cells -- see
-        # .gibbs_conditional_profile_probs(). Replaces the deferred
-        # unconditional-simulation path.
+        # Gibbs-samples missing latent dims conditional on observed R/S signs
+        # (not exact latent values), truncated to those signs every iteration.
         Omega_hp <- Omega_s_full[ki$d_hp, ki$d_hp, drop = FALSE]
         Omega_hp <- (Omega_hp + t(Omega_hp)) / 2 + diag(1e-9, ki$Dp)
         prob_mat <- .gibbs_conditional_profile_probs(
@@ -6241,7 +5940,7 @@ compute_event_profile_probabilities <- function(
         # -- Identity residual: exact analytic imputation over missing cells only.
         # Classes are conditionally independent given mu, so no latent-variable
         # simulation is needed at all.
-        p_miss <- stats::pnorm(mu_hp)          # marginal P(R) per class, in (0,1)
+        p_miss <- stats::pnorm(mu_hp) # marginal P(R) per class, in (0,1)
         # Effective per-class probability: the observed 0/1 value where tested,
         # Phi(mu) where untested. For a profile consistent with the observed
         # cells every "known" factor below evaluates to exactly 1; for an
@@ -6257,7 +5956,7 @@ compute_event_profile_probabilities <- function(
         for (d in seq_len(ki$Dp)) {
           col_is1 <- ki$profile_bin[, d] == 1L
           f_d <- matrix(NA_real_, ki$n_hp, ki$n_profiles)
-          if (any(col_is1))  f_d[, col_is1]  <- p_eff[, d]
+          if (any(col_is1)) f_d[, col_is1] <- p_eff[, d]
           if (any(!col_is1)) f_d[, !col_is1] <- 1 - p_eff[, d]
           prob_mat <- prob_mat * f_d
         }
@@ -6273,70 +5972,79 @@ compute_event_profile_probabilities <- function(
       bad_rows <- which(abs(row_sums - 1) > 1e-6)
       if (length(bad_rows) > 0L) {
         stop(sprintf(
-          paste0("[compute_event_profile_probabilities] Profile probabilities do not sum to 1 ",
-                 "for %d event(s) in hospital-pathogen pair '%s' at posterior draw %d ",
-                 "(max abs deviation = %.3e). This indicates a bug in the panel/observed-cell ",
-                 "logic and must be fixed before results are trusted."),
-          length(bad_rows), key, s, max(abs(row_sums[bad_rows] - 1))), call. = FALSE)
+          paste0(
+            "[compute_event_profile_probabilities] Profile probabilities do not sum to 1 ",
+            "for %d event(s) in hospital-pathogen pair '%s' at posterior draw %d ",
+            "(max abs deviation = %.3e). This indicates a bug in the panel/observed-cell ",
+            "logic and must be fixed before results are trusted."
+          ),
+          length(bad_rows), key, s, max(abs(row_sums[bad_rows] - 1))
+        ), call. = FALSE)
       }
 
       event_prob_sum[[key]] <- event_prob_sum[[key]] + prob_mat
 
-      aggregate_draw_rows[[length(aggregate_draw_rows) + 1L]] <- tibble::tibble(
-        !!upper_re_col   := hp_pairs[[upper_re_col]][match(key, hp_keys)],
-        !!pathogen_col   := hp_pairs[[pathogen_col]][match(key, hp_keys)],
+      .agg_i <- .agg_i + 1L
+      aggregate_draw_rows[[.agg_i]] <- tibble::tibble(
+        !!upper_re_col := hp_pairs[[upper_re_col]][match(key, hp_keys)],
+        !!pathogen_col := hp_pairs[[pathogen_col]][match(key, hp_keys)],
         profile_class_set = ki$class_set,
-        profile_delta     = ki$all_lbls,
-        draw_s            = s,
-        R_ALL_s           = colMeans(prob_mat),
-        R_KNOWN_OUTCOME_s = if (any(ki$known_out))
-                              colMeans(prob_mat[ki$known_out, , drop = FALSE])
-                            else rep(NA_real_, ki$n_profiles),
-        R_NF_s            = if (any(ki$nonfatal))
-                              colMeans(prob_mat[ki$nonfatal, , drop = FALSE])
-                            else rep(NA_real_, ki$n_profiles),
+        profile_delta = ki$all_lbls,
+        draw_s = s,
+        R_ALL_s = colMeans(prob_mat),
+        R_KNOWN_OUTCOME_s = if (any(ki$known_out)) {
+          colMeans(prob_mat[ki$known_out, , drop = FALSE])
+        } else {
+          rep(NA_real_, ki$n_profiles)
+        },
+        R_NF_s = if (any(ki$nonfatal)) {
+          colMeans(prob_mat[ki$nonfatal, , drop = FALSE])
+        } else {
+          rep(NA_real_, ki$n_profiles)
+        },
         profile_generation_method = imputation_method,
-        n_profile_classes        = ki$n_profile_classes,
-        panel_eligibility_method  = ki$panel_eligibility_method,
-        classes_excluded          = ki$classes_excluded,
-        classes_excluded_reason   = ki$classes_excluded_reason,
-        n_events_all           = ki$n_events_all,
-        n_events_known_outcome  = ki$n_events_known,
-        n_events_nonfatal       = ki$n_events_nf
+        n_profile_classes = ki$n_profile_classes,
+        panel_eligibility_method = ki$panel_eligibility_method,
+        classes_excluded = ki$classes_excluded,
+        classes_excluded_reason = ki$classes_excluded_reason,
+        n_events_all = ki$n_events_all,
+        n_events_known_outcome = ki$n_events_known,
+        n_events_nonfatal = ki$n_events_nf
       )
     }
   }
 
   # -- Finalize identity-residual event-level posterior means ------------------
-  for (key in hp_keys) {
+  for (key in valid_keys) {
     ki <- key_info[[key]]
-    if (ki$n_hp == 0L || ki$Dp < 1L || is.null(event_prob_sum[[key]])) next
     h_nm <- hp_pairs[[upper_re_col]][match(key, hp_keys)]
     k_nm <- hp_pairs[[pathogen_col]][match(key, hp_keys)]
     event_prob_mean <- event_prob_sum[[key]] / S
     for (ev_i in seq_len(ki$n_hp)) {
-      event_profile_rows[[length(event_profile_rows) + 1L]] <- tibble::tibble(
-        !!upper_re_col       := h_nm,
-        !!pathogen_col       := k_nm,
-        event_idx             = event_meta_obs$.event_idx[ki$ev_idx[ev_i]],
-        profile_class_set     = ki$class_set,
-        profile_delta         = ki$all_lbls,
-        profile_probability   = event_prob_mean[ev_i, ],
+      .event_i <- .event_i + 1L
+      event_profile_rows[[.event_i]] <- tibble::tibble(
+        !!upper_re_col := h_nm,
+        !!pathogen_col := k_nm,
+        event_idx = event_meta_obs$.event_idx[ki$ev_idx[ev_i]],
+        profile_class_set = ki$class_set,
+        profile_delta = ki$all_lbls,
+        profile_probability = event_prob_mean[ev_i, ],
         profile_generation_method = imputation_method,
-        n_profile_classes        = ki$n_profile_classes,
-        panel_eligibility_method  = ki$panel_eligibility_method,
-        classes_excluded          = ki$classes_excluded,
-        classes_excluded_reason   = ki$classes_excluded_reason,
-        n_classes_observed      = ki$n_observed_per_event[ev_i],
-        n_classes_missing       = ki$n_missing_per_event[ev_i],
-        fully_model_imputed     = ki$n_observed_per_event[ev_i] == 0L
+        n_profile_classes = ki$n_profile_classes,
+        panel_eligibility_method = ki$panel_eligibility_method,
+        classes_excluded = ki$classes_excluded,
+        classes_excluded_reason = ki$classes_excluded_reason,
+        n_classes_observed = ki$n_observed_per_event[ev_i],
+        n_classes_missing = ki$n_missing_per_event[ev_i],
+        fully_model_imputed = ki$n_observed_per_event[ev_i] == 0L
       )
     }
   }
 
   message(sprintf(
     "[compute_event_profile_probabilities] Done. %d event-profile rows | %d draw-aggregate rows.",
-    length(event_profile_rows), length(aggregate_draw_rows)))
+    length(event_profile_rows), length(aggregate_draw_rows)
+  ))
 
   list(
     event_profiles  = dplyr::bind_rows(event_profile_rows),
@@ -6366,12 +6074,12 @@ compute_event_profile_probabilities <- function(
 #' \strong{Eligibility:} \code{eligible_for_profile_inference} is a hard
 #' boolean, \code{TRUE} only for rows generated by a conditional
 #' (observed-plus-imputed) method -- \code{"conditional_analytic_identity"}
-#' or \code{"conditional_gibbs_correlated"} (Commit 6); see
+#' or \code{"conditional_gibbs_correlated"}; see
 #' \code{compute_event_profile_probabilities()}. \code{FALSE} for any other
-#' \code{profile_generation_method} value, including a legacy
-#' \code{"unconditional_simulation_correlated_not_daly_eligible"} tag from a
-#' \code{profile_output} computed before Commit 6 -- callers must not rely on
-#' the descriptive \code{profile_generation_method} string alone.
+#' \code{profile_generation_method} value, including the legacy
+#' \code{"unconditional_simulation_correlated_not_daly_eligible"} tag from an
+#' older \code{profile_output} -- callers must not rely on the descriptive
+#' \code{profile_generation_method} string alone.
 #' \code{eligible_for_YLL}/\code{eligible_for_YLD} additionally require:
 #' \code{sampler_acceptable} (passed in by the caller, e.g. from
 #' \code{fitted_model$diagnostics$converged_structural}); the relevant event
@@ -6410,22 +6118,24 @@ compute_event_profile_probabilities <- function(
 #'   counts, and profile/YLL/YLD eligibility flags with reasons.
 #' @export
 aggregate_profiles_for_daly <- function(
-    profile_output,
-    hospital_col = "hospital",
-    pathogen_col = "pathogen",
-    estimand     = "observed_stewardship_event_mix",
-    ci_level     = 0.95,
-    min_n_events = 10L,
-    min_n_draws  = 100L,
-    sampler_acceptable = TRUE
+  profile_output,
+  hospital_col = "hospital",
+  pathogen_col = "pathogen",
+  estimand = "observed_stewardship_event_mix",
+  ci_level = 0.95,
+  min_n_events = 10L,
+  min_n_draws = 100L,
+  sampler_acceptable = TRUE
 ) {
   lo_q <- (1 - ci_level) / 2
   hi_q <- 1 - lo_q
 
   if (!is.list(profile_output) ||
-      !all(c("aggregate_draws", "event_profiles") %in% names(profile_output)))
+    !all(c("aggregate_draws", "event_profiles") %in% names(profile_output))) {
     stop("`profile_output` must be the list returned by compute_event_profile_probabilities().",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   agg_draws <- profile_output$aggregate_draws
   if (nrow(agg_draws) == 0L) {
@@ -6435,20 +6145,25 @@ aggregate_profiles_for_daly <- function(
 
   # Detect the actual hospital column name from the draws tibble
   if (!hospital_col %in% names(agg_draws)) {
-    non_hospital_cols <- c(pathogen_col, "profile_class_set", "profile_delta", "draw_s",
-                           "R_ALL_s", "R_KNOWN_OUTCOME_s", "R_NF_s",
-                           "profile_generation_method",
-                           "n_profile_classes", "panel_eligibility_method",
-                           "classes_excluded", "classes_excluded_reason",
-                           "n_events_all", "n_events_known_outcome", "n_events_nonfatal")
+    non_hospital_cols <- c(
+      pathogen_col, "profile_class_set", "profile_delta", "draw_s",
+      "R_ALL_s", "R_KNOWN_OUTCOME_s", "R_NF_s",
+      "profile_generation_method",
+      "n_profile_classes", "panel_eligibility_method",
+      "classes_excluded", "classes_excluded_reason",
+      "n_events_all", "n_events_known_outcome", "n_events_nonfatal"
+    )
     candidate <- setdiff(names(agg_draws), non_hospital_cols)
     if (length(candidate) == 1L) {
       hospital_col <- candidate[1L]
-      message(sprintf("[aggregate_profiles_for_daly] Using '%s' as hospital column.",
-                      hospital_col))
+      message(sprintf(
+        "[aggregate_profiles_for_daly] Using '%s' as hospital column.",
+        hospital_col
+      ))
     } else {
       stop(sprintf("hospital_col '%s' not found in aggregate_draws.", hospital_col),
-           call. = FALSE)
+        call. = FALSE
+      )
     }
   }
 
@@ -6460,83 +6175,82 @@ aggregate_profiles_for_daly <- function(
       .data$profile_delta
     ) %>%
     dplyr::summarise(
-      R_ALL_mean            = mean(.data$R_ALL_s, na.rm = TRUE),
-      R_ALL_lower           = stats::quantile(.data$R_ALL_s, lo_q, na.rm = TRUE),
-      R_ALL_upper           = stats::quantile(.data$R_ALL_s, hi_q, na.rm = TRUE),
-      R_KNOWN_OUTCOME_mean  = mean(.data$R_KNOWN_OUTCOME_s, na.rm = TRUE),
+      R_ALL_mean = mean(.data$R_ALL_s, na.rm = TRUE),
+      R_ALL_lower = stats::quantile(.data$R_ALL_s, lo_q, na.rm = TRUE),
+      R_ALL_upper = stats::quantile(.data$R_ALL_s, hi_q, na.rm = TRUE),
+      R_KNOWN_OUTCOME_mean = mean(.data$R_KNOWN_OUTCOME_s, na.rm = TRUE),
       R_KNOWN_OUTCOME_lower = stats::quantile(.data$R_KNOWN_OUTCOME_s, lo_q, na.rm = TRUE),
       R_KNOWN_OUTCOME_upper = stats::quantile(.data$R_KNOWN_OUTCOME_s, hi_q, na.rm = TRUE),
-      R_NF_mean             = mean(.data$R_NF_s, na.rm = TRUE),
-      R_NF_lower            = stats::quantile(.data$R_NF_s, lo_q, na.rm = TRUE),
-      R_NF_upper            = stats::quantile(.data$R_NF_s, hi_q, na.rm = TRUE),
+      R_NF_mean = mean(.data$R_NF_s, na.rm = TRUE),
+      R_NF_lower = stats::quantile(.data$R_NF_s, lo_q, na.rm = TRUE),
+      R_NF_upper = stats::quantile(.data$R_NF_s, hi_q, na.rm = TRUE),
       # n_draws_* count valid POSTERIOR DRAWS contributing to this profile's
       # summary, not event-profile rows -- each retained fitted state
       # contributes exactly one row per (hospital, pathogen, profile_class_set,
       # profile_delta) group here, so this is a draw count by construction.
       # Event-level detail lives only in profile_output$event_profiles.
-      n_draws_all            = sum(!is.na(.data$R_ALL_s)),
-      n_draws_known_outcome  = sum(!is.na(.data$R_KNOWN_OUTCOME_s)),
-      n_draws_nf             = sum(!is.na(.data$R_NF_s)),
-      n_events_all           = dplyr::first(.data$n_events_all),
+      n_draws_all = sum(!is.na(.data$R_ALL_s)),
+      n_draws_known_outcome = sum(!is.na(.data$R_KNOWN_OUTCOME_s)),
+      n_draws_nf = sum(!is.na(.data$R_NF_s)),
+      n_events_all = dplyr::first(.data$n_events_all),
       n_events_known_outcome = dplyr::first(.data$n_events_known_outcome),
-      n_events_nonfatal      = dplyr::first(.data$n_events_nonfatal),
+      n_events_nonfatal = dplyr::first(.data$n_events_nonfatal),
       profile_generation_method = dplyr::first(.data$profile_generation_method),
-      n_profile_classes        = dplyr::first(.data$n_profile_classes),
-      panel_eligibility_method  = dplyr::first(.data$panel_eligibility_method),
-      classes_excluded          = dplyr::first(.data$classes_excluded),
-      classes_excluded_reason   = dplyr::first(.data$classes_excluded_reason),
-      .groups                = "drop"
+      n_profile_classes = dplyr::first(.data$n_profile_classes),
+      panel_eligibility_method = dplyr::first(.data$panel_eligibility_method),
+      classes_excluded = dplyr::first(.data$classes_excluded),
+      classes_excluded_reason = dplyr::first(.data$classes_excluded_reason),
+      .groups = "drop"
     ) %>%
     dplyr::mutate(
       # mean(all-NA, na.rm = TRUE) returns NaN (not NA); normalise so "no data"
       # is represented consistently across mean/lower/upper.
-      dplyr::across(c(.data$R_ALL_mean, .data$R_KNOWN_OUTCOME_mean, .data$R_NF_mean),
-                    ~ dplyr::if_else(is.nan(.x), NA_real_, .x)),
-      profile_label     = .data$profile_delta,
-      profile_set_type  = "facility_bayesian_probit",
-      estimand          = estimand,
-      estimator         = "bayesian_multivariate_probit",
+      dplyr::across(
+        c(.data$R_ALL_mean, .data$R_KNOWN_OUTCOME_mean, .data$R_NF_mean),
+        ~ dplyr::if_else(is.nan(.x), NA_real_, .x)
+      ),
+      profile_label = .data$profile_delta,
+      profile_set_type = "facility_bayesian_probit",
+      estimand = estimand,
+      estimator = "bayesian_multivariate_probit",
       sampler_acceptable = sampler_acceptable,
-      # Both conditional (observed-plus-imputed) generation methods are
-      # DALY-eligible -- Commit 6 replaced the unconditional-simulation
-      # correlated path with conditional Gibbs imputation. Any OTHER method
-      # string (e.g. a future estimator, or a legacy
-      # "unconditional_simulation_correlated_not_daly_eligible" tag from a
-      # profile_output computed before Commit 6) is explicitly NOT eligible.
+      # Only the two conditional (observed-plus-imputed) generation methods
+      # are DALY-eligible; any other value, including the legacy
+      # "unconditional_simulation_correlated_not_daly_eligible" tag, is not.
       eligible_for_profile_inference =
         .data$profile_generation_method %in%
           c("conditional_analytic_identity", "conditional_gibbs_correlated"),
-      low_draws_all_flag           = .data$n_draws_all           < min_n_draws,
+      low_draws_all_flag = .data$n_draws_all < min_n_draws,
       low_draws_known_outcome_flag = .data$n_draws_known_outcome < min_n_draws,
-      low_draws_nf_flag            = .data$n_draws_nf            < min_n_draws,
-      low_events_flag              = .data$n_events_all          < min_n_events,
+      low_draws_nf_flag = .data$n_draws_nf < min_n_draws,
+      low_events_flag = .data$n_events_all < min_n_events,
       eligible_for_YLL =
         .data$eligible_for_profile_inference &
-        .data$sampler_acceptable &
-        .data$n_events_known_outcome >= min_n_events &
-        !.data$low_draws_known_outcome_flag,
+          .data$sampler_acceptable &
+          .data$n_events_known_outcome >= min_n_events &
+          !.data$low_draws_known_outcome_flag,
       eligible_for_YLD =
         .data$eligible_for_profile_inference &
-        .data$sampler_acceptable &
-        .data$n_events_nonfatal >= min_n_events &
-        !.data$low_draws_nf_flag,
+          .data$sampler_acceptable &
+          .data$n_events_nonfatal >= min_n_events &
+          !.data$low_draws_nf_flag,
       exclusion_reason_YLL = dplyr::case_when(
-        .data$eligible_for_YLL                       ~ NA_character_,
-        !.data$eligible_for_profile_inference         ~ .data$profile_generation_method,
-        !.data$sampler_acceptable                     ~ "sampler_not_acceptable",
-        .data$n_events_known_outcome == 0L            ~ "no_known_outcome_events",
-        .data$n_events_known_outcome < min_n_events   ~ "too_few_known_outcome_events",
-        .data$low_draws_known_outcome_flag            ~ "too_few_valid_draws",
-        TRUE                                          ~ "not_eligible"
+        .data$eligible_for_YLL ~ NA_character_,
+        !.data$eligible_for_profile_inference ~ .data$profile_generation_method,
+        !.data$sampler_acceptable ~ "sampler_not_acceptable",
+        .data$n_events_known_outcome == 0L ~ "no_known_outcome_events",
+        .data$n_events_known_outcome < min_n_events ~ "too_few_known_outcome_events",
+        .data$low_draws_known_outcome_flag ~ "too_few_valid_draws",
+        TRUE ~ "not_eligible"
       ),
       exclusion_reason_YLD = dplyr::case_when(
-        .data$eligible_for_YLD                       ~ NA_character_,
-        !.data$eligible_for_profile_inference         ~ .data$profile_generation_method,
-        !.data$sampler_acceptable                     ~ "sampler_not_acceptable",
-        .data$n_events_nonfatal == 0L                 ~ "no_nonfatal_events",
-        .data$n_events_nonfatal < min_n_events        ~ "too_few_nonfatal_events",
-        .data$low_draws_nf_flag                       ~ "too_few_valid_draws",
-        TRUE                                          ~ "not_eligible"
+        .data$eligible_for_YLD ~ NA_character_,
+        !.data$eligible_for_profile_inference ~ .data$profile_generation_method,
+        !.data$sampler_acceptable ~ "sampler_not_acceptable",
+        .data$n_events_nonfatal == 0L ~ "no_nonfatal_events",
+        .data$n_events_nonfatal < min_n_events ~ "too_few_nonfatal_events",
+        .data$low_draws_nf_flag ~ "too_few_valid_draws",
+        TRUE ~ "not_eligible"
       ),
       # eligible_for_YLL/YLD (above) only ever required MARGINAL support --
       # profile generation succeeding, the sampler being acceptable, and
@@ -6551,8 +6265,8 @@ aggregate_profiles_for_daly <- function(
       # is subsequently AND-ed down by generate_bayesian_probit_validation()
       # once pairwise/complete-profile calibration results are available --
       # mirroring how eligible_for_YLL/YLD is itself narrowed post-validation.
-      eligible_for_marginal_YLL      = .data$eligible_for_YLL,
-      eligible_for_marginal_YLD      = .data$eligible_for_YLD,
+      eligible_for_marginal_YLL = .data$eligible_for_YLL,
+      eligible_for_marginal_YLD = .data$eligible_for_YLD,
       eligible_for_joint_profile_YLL = .data$eligible_for_YLL,
       eligible_for_joint_profile_YLD = .data$eligible_for_YLD,
       exclusion_reason_joint_profile_YLL = .data$exclusion_reason_YLL,
@@ -6581,15 +6295,14 @@ aggregate_profiles_for_daly <- function(
 
   message(sprintf(
     "[aggregate_profiles_for_daly] %d hospital-pathogen-profile rows (%d eligible for YLL, %d eligible for YLD).",
-    nrow(result), sum(result$eligible_for_YLL), sum(result$eligible_for_YLD)))
+    nrow(result), sum(result$eligible_for_YLL), sum(result$eligible_for_YLD)
+  ))
 
   result
 }
 
 
-# ---------------------------------------------------------------------------
 # estimate_resistance_profiles()  -- top-level dispatcher for both pathways
-# ---------------------------------------------------------------------------
 
 #' Estimate Resistance Profiles: Pathway 1 (Convex) or Pathway 2 (Bayesian)
 #'
@@ -6636,29 +6349,31 @@ aggregate_profiles_for_daly <- function(
 #'   \code{fitted_models}, \code{config_used}.
 #' @export
 estimate_resistance_profiles <- function(
-    data,
-    method                         = c("convex", "bayesian"),
-    # Pathway 1
-    pairwise                       = NULL,
-    panel_map                      = NULL,
-    # Pathway 2 -- required with no defaults
-    class_cols                     = NULL,
-    fixed_effects                  = NULL,
-    random_effects                 = NULL,
-    pathogen                       = NULL,
-    pathogen_col                   = "pathogen",
-    eligible_pairs                 = NULL,
-    outcome_col                    = NULL,
-    nonfatal_values                = c("Discharged", "Survived", "Alive",
-                                       "discharged", "survived", "alive"),
-    panel_eligibility              = list(),
-    residual_structure             = c("identity", "correlated"),
-    estimand                       = "observed_stewardship_event_mix",
-    prior_config                   = list(),
-    sampler_config                 = list(),
-    n_posterior_draws_for_profiles = 2000L
+  data,
+  method = c("convex", "bayesian"),
+  # Pathway 1
+  pairwise = NULL,
+  panel_map = NULL,
+  # Pathway 2 -- required with no defaults
+  class_cols = NULL,
+  fixed_effects = NULL,
+  random_effects = NULL,
+  pathogen = NULL,
+  pathogen_col = "pathogen",
+  eligible_pairs = NULL,
+  outcome_col = NULL,
+  nonfatal_values = c(
+    "Discharged", "Survived", "Alive",
+    "discharged", "survived", "alive"
+  ),
+  panel_eligibility = list(),
+  residual_structure = c("identity", "correlated"),
+  estimand = "observed_stewardship_event_mix",
+  prior_config = list(),
+  sampler_config = list(),
+  n_posterior_draws_for_profiles = 2000L
 ) {
-  method             <- match.arg(method)
+  method <- match.arg(method)
   residual_structure <- match.arg(residual_structure)
 
   config_used <- list(
@@ -6687,8 +6402,8 @@ estimate_resistance_profiles <- function(
       dplyr::group_by(.data[[pathogen_col]]) %>%
       dplyr::summarise(
         n_profiles          = dplyr::n(),
-        pct_converged       = mean(.data$convergence_flag,    na.rm = TRUE),
-        max_abs_residual    = max(.data$max_abs_residual,     na.rm = TRUE),
+        pct_converged       = mean(.data$convergence_flag, na.rm = TRUE),
+        max_abs_residual    = max(.data$max_abs_residual, na.rm = TRUE),
         any_underdetermined = any(.data$identifiability_flag, na.rm = TRUE),
         .groups             = "drop"
       )
@@ -6705,15 +6420,19 @@ estimate_resistance_profiles <- function(
   # ---- Pathway 2 -----------------------------------------------------------
   message("[estimate_resistance_profiles] Running Pathway 2 (Bayesian multivariate probit)...")
   message(sprintf("  Estimand: %s", estimand))
-  if (!is.null(pathogen))
+  if (!is.null(pathogen)) {
     message(sprintf("  Pathogen: %s", pathogen))
+  }
 
-  if (is.null(class_cols))
+  if (is.null(class_cols)) {
     stop("`class_cols` is required for method = 'bayesian'.", call. = FALSE)
-  if (is.null(fixed_effects))
+  }
+  if (is.null(fixed_effects)) {
     stop("`fixed_effects` is required for method = 'bayesian'.", call. = FALSE)
-  if (is.null(random_effects))
+  }
+  if (is.null(random_effects)) {
     stop("`random_effects` is required for method = 'bayesian'.", call. = FALSE)
+  }
 
   fitted_mod <- fit_bayesian_multivariate_probit(
     event_class_data   = data,
@@ -6741,9 +6460,9 @@ estimate_resistance_profiles <- function(
 
   profiles_tbl <- aggregate_profiles_for_daly(
     profile_output = profile_probs,
-    hospital_col   = fitted_mod$upper_re_col,
-    pathogen_col   = pathogen_col,
-    estimand       = estimand,
+    hospital_col = fitted_mod$upper_re_col,
+    pathogen_col = pathogen_col,
+    estimand = estimand,
     sampler_acceptable = isTRUE(fitted_mod$diagnostics$converged_structural)
   )
 
@@ -6756,7 +6475,9 @@ estimate_resistance_profiles <- function(
           dplyr::summarise(n_profiles_estimated = dplyr::n(), .groups = "drop"),
         by = fitted_mod$upper_re_col
       )
-  } else NULL
+  } else {
+    NULL
+  }
 
   message("[estimate_resistance_profiles] Pathway 2 complete.")
 

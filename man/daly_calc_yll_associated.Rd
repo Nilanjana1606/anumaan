@@ -129,8 +129,8 @@ Total YLL associated:
 \deqn{\text{YLL}_{\text{associated}} = \sum_{r,k} \text{YLL}_{r,k}}
 
 \strong{Polymicrobial weights} are computed via
-\code{flag_polymicrobial()} + \code{compute_polymicrobial_weight()}
-from \code{weight.R}.  When \code{facility_col} is provided the weights
+\code{prep_flag_polymicrobial()} + \code{prep_compute_poly_weights()}.
+When \code{facility_col} is provided the weights
 are derived per facility (reflecting local organism distributions), with
 automatic fallback to globally-pooled proportions for facilities whose
 monomicrobial reference pool is smaller than \code{min_mono_per_facility}.

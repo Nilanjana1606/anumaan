@@ -19,7 +19,7 @@ test_that("amr_config: edge cases", {
 test_that("amr_config: missingness", {
   cfg <- amr_config(column_mappings = NULL)
   expect_true(is.list(cfg$column_mappings))
-  expect_true(length(cfg$date_columns) > 0)
+  expect_null(cfg$date_columns) # NULL by default -> auto-detected downstream
 })
 
 test_that("amr_config: error handling", {

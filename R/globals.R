@@ -142,7 +142,7 @@ utils::globalVariables(c(
 
   # Pathway 2 — aggregate_profiles_for_daly()
   "R_ALL_mean", "R_ALL_lower", "R_ALL_upper",
-  "R_NF_mean",  "R_NF_lower",  "R_NF_upper",
+  "R_NF_mean", "R_NF_lower", "R_NF_upper",
   "R_KNOWN_OUTCOME_mean", "R_KNOWN_OUTCOME_lower", "R_KNOWN_OUTCOME_upper",
   "used_for_YLL", "used_for_YLD", "profile_set_type",
   "n_draws_used", "profile_label",

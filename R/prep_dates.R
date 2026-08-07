@@ -22,40 +22,50 @@
 prep_parse_date_column <- function(x, col_name = "date", table_label = "table") {
   n <- length(x)
 
-  if (inherits(x, "Date"))    return(x)
-  if (inherits(x, c("POSIXct", "POSIXt"))) return(as.Date(x))
+  if (inherits(x, "Date")) {
+    return(x)
+  }
+  if (inherits(x, c("POSIXct", "POSIXt"))) {
+    return(as.Date(x))
+  }
 
-  out   <- rep(as.Date(NA_character_), n)
+  out <- rep(as.Date(NA_character_), n)
   x_chr <- trimws(as.character(x))
   placeholders <- c("", "NULL", "null", "NA", "N/A", "None", "none", "nan", "NaN")
   x_chr[x_chr %in% placeholders] <- NA_character_
 
   idx_present <- which(!is.na(x_chr))
   if (length(idx_present) == 0L) {
-    message(sprintf("[%s] '%s': all values missing - returning NA Date vector.",
-                    table_label, col_name))
+    message(sprintf(
+      "[%s] '%s': all values missing - returning NA Date vector.",
+      table_label, col_name
+    ))
     return(out)
   }
 
   # ---- Numeric probe -------------------------------------------------------
-  x_num      <- suppressWarnings(as.numeric(x_chr))
+  x_num <- suppressWarnings(as.numeric(x_chr))
   is_numeric <- !is.na(x_num)
 
   # Excel serial dates: 10 000-99 999
   excel_idx <- idx_present[is_numeric[idx_present] & x_num[idx_present] > 10000 &
-                              x_num[idx_present] < 100000]
+    x_num[idx_present] < 100000]
   if (length(excel_idx) > 0L) {
     out[excel_idx] <- as.Date(x_num[excel_idx], origin = "1899-12-30")
-    message(sprintf("[%s] '%s': %d value(s) decoded as Excel serial date.",
-                    table_label, col_name, length(excel_idx)))
+    message(sprintf(
+      "[%s] '%s': %d value(s) decoded as Excel serial date.",
+      table_label, col_name, length(excel_idx)
+    ))
   }
 
   # Unix timestamps in milliseconds: > 1e10
   unix_idx <- idx_present[is_numeric[idx_present] & x_num[idx_present] > 1e10]
   if (length(unix_idx) > 0L) {
     out[unix_idx] <- as.Date(as.POSIXct(x_num[unix_idx] / 1000, origin = "1970-01-01"))
-    message(sprintf("[%s] '%s': %d value(s) decoded as Unix timestamp (ms).",
-                    table_label, col_name, length(unix_idx)))
+    message(sprintf(
+      "[%s] '%s': %d value(s) decoded as Unix timestamp (ms).",
+      table_label, col_name, length(unix_idx)
+    ))
   }
 
   # ---- String parsing for remaining indices --------------------------------
@@ -70,34 +80,38 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
         orders = c(
           "Y-m-d", "d-m-Y", "m-d-Y",
           "Y/m/d", "d/m/Y", "m/d/Y",
-          "Ymd",   "dmY",   "mdY",
+          "Ymd", "dmY", "mdY",
           "Y-m-d H:M:S", "d-m-Y H:M:S", "m-d-Y H:M:S"
         ),
         quiet = TRUE
       )
     )
     parsed_date <- as.Date(parsed)
-    succeeded   <- !is.na(parsed_date)
+    succeeded <- !is.na(parsed_date)
     out[remaining[succeeded]] <- parsed_date[succeeded]
 
     # Reversed YYYYDDMM / DDMMYYYY attempt on still-failing values
     still_bad <- remaining[!succeeded]
     if (length(still_bad) > 0L) {
-      candidates  <- x_chr[still_bad]
+      candidates <- x_chr[still_bad]
       digits_only <- gsub("[^0-9]", "", candidates)
-      swapped     <- ifelse(
+      swapped <- ifelse(
         nchar(digits_only) == 8L,
-        paste0(substr(digits_only, 1, 4), "-",
-               substr(digits_only, 7, 8), "-",
-               substr(digits_only, 5, 6)),
+        paste0(
+          substr(digits_only, 1, 4), "-",
+          substr(digits_only, 7, 8), "-",
+          substr(digits_only, 5, 6)
+        ),
         NA_character_
       )
       swap_parsed <- suppressWarnings(as.Date(swapped, format = "%Y-%m-%d"))
-      swap_ok     <- !is.na(swap_parsed)
+      swap_ok <- !is.na(swap_parsed)
       if (any(swap_ok)) {
         out[still_bad[swap_ok]] <- swap_parsed[swap_ok]
-        message(sprintf("[%s] '%s': %d value(s) decoded via day/month swap.",
-                        table_label, col_name, sum(swap_ok)))
+        message(sprintf(
+          "[%s] '%s': %d value(s) decoded via day/month swap.",
+          table_label, col_name, sum(swap_ok)
+        ))
         still_bad <- still_bad[!swap_ok]
       }
     }
@@ -106,7 +120,7 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
       encrypted_like <- nchar(x_chr[still_bad]) > 12 &
         !grepl("[/\\-]", x_chr[still_bad])
       n_encrypted <- sum(encrypted_like, na.rm = TRUE)
-      n_unparsed  <- length(still_bad)
+      n_unparsed <- length(still_bad)
 
       if (n_encrypted > 0L) {
         warning(sprintf(
@@ -125,7 +139,7 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
   }
 
   n_decoded <- sum(!is.na(out[idx_present]))
-  n_failed  <- length(idx_present) - n_decoded
+  n_failed <- length(idx_present) - n_decoded
   message(sprintf(
     "[%s] '%s': %d / %d non-missing value(s) successfully parsed as Date (%d failed).",
     table_label, col_name, n_decoded, length(idx_present), n_failed
@@ -156,7 +170,9 @@ prep_coerce_dates <- function(data, cols = NULL, table_label = "table") {
     )
   }
   cols <- intersect(cols, names(data))
-  if (length(cols) == 0L) return(data)
+  if (length(cols) == 0L) {
+    return(data)
+  }
   for (col in cols) {
     data[[col]] <- prep_parse_date_column(data[[col]], col_name = col, table_label = table_label)
   }
@@ -192,18 +208,18 @@ prep_coerce_dates <- function(data, cols = NULL, table_label = "table") {
 #' @return Invisibly returns data. Prints violation summary.
 #' @export
 prep_validate_date_logic <- function(data,
-                                     admission_col     = "admission_date",
-                                     culture_col       = "culture_date",
-                                     outcome_col       = "outcome_date",
-                                     dob_col           = "dob",
-                                     age_col           = "age",
+                                     admission_col = "admission_date",
+                                     culture_col = "culture_date",
+                                     outcome_col = "outcome_date",
+                                     dob_col = "dob",
+                                     age_col = "age",
                                      outcome_value_col = "final_outcome") {
   violations <- list()
 
   # Check 1: admission_date <= culture_date
   if (all(c(admission_col, culture_col) %in% names(data))) {
     bad <- which(!is.na(data[[admission_col]]) & !is.na(data[[culture_col]]) &
-                   data[[admission_col]] > data[[culture_col]])
+      data[[admission_col]] > data[[culture_col]])
     if (length(bad) > 0L) {
       violations$adm_gt_culture <- bad
       warning(sprintf("[prep_validate_date_logic] %d row(s) have admission_date > culture_date.", length(bad)))
@@ -213,7 +229,7 @@ prep_validate_date_logic <- function(data,
   # Check 2: culture_date <= outcome_date
   if (all(c(culture_col, outcome_col) %in% names(data))) {
     bad <- which(!is.na(data[[culture_col]]) & !is.na(data[[outcome_col]]) &
-                   data[[culture_col]] > data[[outcome_col]])
+      data[[culture_col]] > data[[outcome_col]])
     if (length(bad) > 0L) {
       violations$culture_gt_outcome <- bad
       warning(sprintf("[prep_validate_date_logic] %d row(s) have culture_date > outcome_date.", length(bad)))
@@ -223,7 +239,7 @@ prep_validate_date_logic <- function(data,
   # Check 3: dob <= admission_date
   if (all(c(dob_col, admission_col) %in% names(data))) {
     bad <- which(!is.na(data[[dob_col]]) & !is.na(data[[admission_col]]) &
-                   data[[dob_col]] > data[[admission_col]])
+      data[[dob_col]] > data[[admission_col]])
     if (length(bad) > 0L) {
       violations$dob_gt_admission <- bad
       warning(sprintf("[prep_validate_date_logic] %d row(s) have dob > admission_date.", length(bad)))
@@ -244,7 +260,9 @@ prep_validate_date_logic <- function(data,
     mask <- !is.na(data[[age_col]]) & !is.na(data[[dob_col]]) & !is.na(data[[culture_col]])
     if (any(mask)) {
       computed_age <- as.numeric(difftime(data[[culture_col]][mask],
-                                          data[[dob_col]][mask], units = "days")) / 365.25
+        data[[dob_col]][mask],
+        units = "days"
+      )) / 365.25
       bad_idx <- which(mask)[abs(data[[age_col]][mask] - computed_age) > 2]
       if (length(bad_idx) > 0L) {
         violations$age_dob_mismatch <- bad_idx
@@ -256,8 +274,8 @@ prep_validate_date_logic <- function(data,
   # Check 6: "Died" rows must have an outcome date
   if (all(c(outcome_value_col, outcome_col) %in% names(data))) {
     bad <- which(!is.na(data[[outcome_value_col]]) &
-                   data[[outcome_value_col]] == "Died" &
-                   is.na(data[[outcome_col]]))
+      data[[outcome_value_col]] == "Died" &
+      is.na(data[[outcome_col]]))
     if (length(bad) > 0L) {
       violations$died_no_outcome_date <- bad
       warning(sprintf("[prep_validate_date_logic] %d row(s) have outcome='Died' but no outcome date.", length(bad)))
@@ -267,10 +285,11 @@ prep_validate_date_logic <- function(data,
   if (length(violations) == 0L) {
     message("[prep_validate_date_logic] All date logic checks passed.")
   } else {
-    message(sprintf("[prep_validate_date_logic] %d check(s) with violations. See warnings above.",
-                    length(violations)))
+    message(sprintf(
+      "[prep_validate_date_logic] %d check(s) with violations. See warnings above.",
+      length(violations)
+    ))
   }
 
   invisible(data)
 }
-

@@ -48,7 +48,7 @@ probability, computed differently by residual structure:
     is correct.} Persistent pairwise miscalibration despite good marginal
     calibration suggests unmodelled class-to-class dependence that a
     correlated-residual fit might capture.}
-  \item{Correlated (Commit 6)}{\eqn{P(Y_{d_1}=1, Y_{d_2}=1 \mid \theta) =
+  \item{Correlated}{\eqn{P(Y_{d_1}=1, Y_{d_2}=1 \mid \theta) =
     \Phi_2(\mu_{ed_1}, \mu_{ed_2}; \rho_{d_1 d_2})} -- the standard
     bivariate-probit identity \eqn{P(Z_1>0,Z_2>0) = \Phi_2(\mu_1,\mu_2;\rho)}
     for \eqn{(Z_1,Z_2)\sim N((\mu_1,\mu_2), [[1,\rho],[\rho,1]])}, with

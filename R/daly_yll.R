@@ -63,8 +63,8 @@ daly_load_life_expectancy <- function(le_path) {
 #' \deqn{\text{YLL}_{\text{associated}} = \sum_{r,k} \text{YLL}_{r,k}}
 #'
 #' \strong{Polymicrobial weights} are computed via
-#' \code{flag_polymicrobial()} + \code{compute_polymicrobial_weight()}
-#' from \code{weight.R}.  When \code{facility_col} is provided the weights
+#' \code{prep_flag_polymicrobial()} + \code{prep_compute_poly_weights()}.
+#' When \code{facility_col} is provided the weights
 #' are derived per facility (reflecting local organism distributions), with
 #' automatic fallback to globally-pooled proportions for facilities whose
 #' monomicrobial reference pool is smaller than \code{min_mono_per_facility}.
@@ -181,7 +181,7 @@ daly_calc_yll_associated <- function(
   age_bin_map = c("<1" = "0-1"),
   stratify_by = NULL
 ) {
-  # -- Input validation -------------------------------------------------------
+  # Input validation
   required_cols <- c(
     outcome_col, pathogen_col, patient_col,
     age_bin_col, sex_col
@@ -204,10 +204,10 @@ daly_calc_yll_associated <- function(
     stop("syndrome_col must be supplied when syndrome_name is specified.")
   }
 
-  # -- Step 1: Load life expectancy lookup -----------------------------------
+  # Step 1: Load life expectancy lookup
   le_lookup <- daly_load_life_expectancy(le_path)
 
-  # -- Step 2: Polymicrobial weights (per facility; global fallback) ---------
+  # Step 2: Polymicrobial weights (per facility; global fallback)
   # Computed on the FULL data before death filter so the monomicrobial
   # reference pool is not restricted to fatal cases only.
 
@@ -221,14 +221,14 @@ daly_calc_yll_associated <- function(
     }
 
     df_flagged <- tryCatch(
-      flag_polymicrobial(
+      prep_flag_polymicrobial(
         df_sub,
         patient_col  = patient_col,
         organism_col = pathogen_col
       ),
       error = function(e) {
         message(sprintf(
-          "  [%s] flag_polymicrobial error: %s -- weights set to 1.",
+          "  [%s] prep_flag_polymicrobial error: %s -- weights set to 1.",
           label, conditionMessage(e)
         ))
         df_sub$polymicrobial_weight <- 1
@@ -263,7 +263,7 @@ daly_calc_yll_associated <- function(
       ))
     }
 
-    df_weighted <- compute_polymicrobial_weight(
+    df_weighted <- prep_compute_poly_weights(
       df_flagged,
       episode_col       = "episode_id",
       organism_col      = pathogen_col,
@@ -289,7 +289,7 @@ daly_calc_yll_associated <- function(
     data_weighted <- .compute_poly_weights(data, label = "global")
   }
 
-  # -- Step 3: Filter to death cohort ----------------------------------------
+  # Step 3: Filter to death cohort
   df <- data_weighted %>%
     dplyr::filter(
       .data[[outcome_col]] %in% death_value,
@@ -316,7 +316,7 @@ daly_calc_yll_associated <- function(
     }
   ))
 
-  # -- Step 4: Recode age bins; normalise sex --------------------------------
+  # Step 4: Recode age bins; normalise sex
   if (length(age_bin_map) > 0L) {
     df[[age_bin_col]] <- dplyr::recode(
       as.character(df[[age_bin_col]]),
@@ -333,7 +333,7 @@ daly_calc_yll_associated <- function(
       )
     )
 
-  # -- Step 5: Join life expectancy (age bin x sex) --------------------------
+  # Step 5: Join life expectancy (age bin x sex)
   join_by <- stats::setNames(c("age_bin", "sex"), c(age_bin_col, ".sex_norm"))
   df <- dplyr::left_join(df, le_lookup, by = join_by)
 
@@ -345,18 +345,16 @@ daly_calc_yll_associated <- function(
     ))
   }
 
-  # -- Step 6: YLL per patient-pathogen row ----------------------------------
-  # death_weight = polymicrobial_weight from weight.R
-  #   mono patient  -> weight = 1.0  (full LE attributed to this pathogen)
-  #   poly patient  -> weight = 0-1  (fractional LE per pathogen)
+  # 6. YLL per patient-pathogen row. death_weight = polymicrobial_weight:
+  #    mono patient -> 1.0 (full LE attributed to this pathogen), poly
+  #    patient -> 0-1 (fractional LE per pathogen).
   df <- df %>%
     dplyr::mutate(
       death_weight     = dplyr::coalesce(polymicrobial_weight, 1.0),
       yll_contribution = life_expectancy * death_weight
     )
 
-  # -- Step 7: Aggregate -----------------------------------------------------
-
+  # Step 7: Aggregate
   .agg <- function(df, grp_cols) {
     df %>%
       dplyr::group_by(dplyr::across(dplyr::all_of(grp_cols))) %>%
@@ -419,7 +417,7 @@ daly_calc_yll_associated <- function(
     NULL
   }
 
-  # -- Step 8: Total and summary message -------------------------------------
+  # Step 8: Total and summary message
   YLL_total <- sum(per_pathogen$YLL_associated_k, na.rm = TRUE)
 
   message(sprintf(
@@ -429,7 +427,6 @@ daly_calc_yll_associated <- function(
     sum(per_pathogen$n_patients, na.rm = TRUE)
   ))
 
-  # -- Return -----------------------------------------------------------------
   out <- list(
     total               = YLL_total,
     per_pathogen        = per_pathogen,
@@ -446,8 +443,7 @@ daly_calc_yll_associated <- function(
 }
 
 
-# -- YLL Attributable ----------------------------------------------------------
-
+# YLL Attributable
 #' Compute YLL Attributable to AMR
 #'
 #' Takes the per-patient YLL data produced by \code{daly_calc_yll_associated()}
@@ -549,7 +545,7 @@ daly_calc_yll_attributable <- function(
   syndrome_col = NULL,
   stratify_by = NULL
 ) {
-  # -- Input validation -------------------------------------------------------
+  # Input validation
   required_cols <- c(
     "yll_contribution", "life_expectancy", "death_weight",
     pathogen_col, patient_col, age_bin_col, sex_col
@@ -579,8 +575,7 @@ daly_calc_yll_attributable <- function(
 
   df <- yll_patient_data
 
-  # -- Step 1: Build PAF lookup and join -------------------------------------
-
+  # Step 1: Build PAF lookup and join
   # Always build scalar PAF_k lookup (used for per_pathogen output table).
   paf_scalar_df <- do.call(rbind, lapply(names(paf_mort), function(k) {
     data.frame(
@@ -656,8 +651,7 @@ daly_calc_yll_attributable <- function(
       )
   }
 
-  # -- Step 2: Aggregate -----------------------------------------------------
-
+  # Step 2: Aggregate
   .agg_attr <- function(df, grp_cols) {
     df %>%
       dplyr::group_by(dplyr::across(dplyr::all_of(grp_cols))) %>%
@@ -731,7 +725,7 @@ daly_calc_yll_attributable <- function(
     NULL
   }
 
-  # -- Step 3: Total and summary ----------------------------------------------
+  # Step 3: Total and summary
   YLL_attributable_total <- sum(per_pathogen$YLL_attributable_k, na.rm = TRUE)
   YLL_associated_total <- sum(per_pathogen$YLL_associated_k, na.rm = TRUE)
 
@@ -743,7 +737,6 @@ daly_calc_yll_attributable <- function(
     sum(per_pathogen$n_patients, na.rm = TRUE)
   ))
 
-  # -- Return -----------------------------------------------------------------
   out <- list(
     total               = YLL_attributable_total,
     per_pathogen        = per_pathogen,
@@ -760,8 +753,7 @@ daly_calc_yll_attributable <- function(
 }
 
 
-# -- PAF Mortality -------------------------------------------------------------
-
+# PAF Mortality
 #' Compute Mortality Population Attributable Fraction per Resistance Profile
 #'
 #' Computes PAF_kd_mortality for each pathogen k and resistance profile delta

@@ -14,7 +14,7 @@
 #' @param strict_validation Logical. If TRUE, stops execution if required
 #'   fields are missing. If FALSE, issues warnings. Default FALSE.
 #' @param date_columns Character vector of date column names to parse.
-#'   Default includes standard date fields.
+#'   Default NULL auto-detects date-like columns by name pattern.
 #' @param hai_cutoff Numeric. Number of days after admission to classify
 #'   as Hospital-Acquired Infection (HAI). Default 2.
 #' @param infer_department Logical. Attempt to infer hospital department
@@ -29,16 +29,9 @@
 #' @param contaminant_method Character. Method for contaminant classification:
 #'   "auto" (cascade through available methods), "device_based",
 #'   "heuristic", "provided". Default "auto".
-#' @param mdr_definition Character or numeric. MDR definition: "CDC", "WHO",
-#'   or numeric threshold for number of resistant classes. Default "CDC".
-#' @param xdr_definition Character or numeric. XDR definition. Default "CDC".
-#' @param map_icd10 Logical. Attempt ICD-10 code mapping. Default TRUE.
-#' @param rr_table Character. Name of built-in RR table to use, or path
-#'   to custom RR table. Default "GBD_2021".
-#' @param organism_map Character or named vector. "default" for built-in
-#'   mapping, or custom named vector. Default "default".
-#' @param antibiotic_map Character. Built-in antibiotic classification:
-#'   "WHO_2023" or path to custom. Default "WHO_2023".
+#' @param mdr_definition Character or numeric. MDR/XDR definition (used for
+#'   both): "CDC", "WHO", or numeric threshold for number of resistant
+#'   classes. Default "CDC".
 #' @param intermediate_as_resistant Logical. Treat Intermediate (I) as
 #'   Resistant (R) except for special cases like Colistin. Default TRUE.
 #' @param verbose Logical. Print progress messages during processing.
@@ -62,10 +55,7 @@
 amr_config <- function(column_mappings = NULL,
                        fuzzy_match = TRUE,
                        strict_validation = FALSE,
-                       date_columns = c(
-                         "date_of_admission", "date_of_culture",
-                         "date_of_final_outcome", "DOB"
-                       ),
+                       date_columns = NULL,
                        hai_cutoff = 2,
                        infer_department = TRUE,
                        event_gap_days = 14,
@@ -73,11 +63,6 @@ amr_config <- function(column_mappings = NULL,
                        age_bins = "GBD_standard",
                        contaminant_method = "auto",
                        mdr_definition = "CDC",
-                       xdr_definition = "CDC",
-                       map_icd10 = TRUE,
-                       rr_table = "GBD_2021",
-                       organism_map = "default",
-                       antibiotic_map = "WHO_2023",
                        intermediate_as_resistant = TRUE,
                        verbose = TRUE) {
   # Use default column mappings if none provided
@@ -108,13 +93,6 @@ amr_config <- function(column_mappings = NULL,
     age_bins = age_bins,
     contaminant_method = contaminant_method,
     mdr_definition = mdr_definition,
-    xdr_definition = xdr_definition,
-    map_icd10 = map_icd10,
-
-    # Reference data
-    rr_table = rr_table,
-    organism_map = organism_map,
-    antibiotic_map = antibiotic_map,
 
     # Processing rules
     intermediate_as_resistant = intermediate_as_resistant,
@@ -141,7 +119,10 @@ print.amr_config <- function(x, ...) {
   cat("Phase 1 - Standardization:\n")
   cat(sprintf("  Fuzzy column matching: %s\n", x$fuzzy_match))
   cat(sprintf("  Strict validation: %s\n", x$strict_validation))
-  cat(sprintf("  Date columns: %s\n", paste(x$date_columns, collapse = ", ")))
+  cat(sprintf(
+    "  Date columns: %s\n",
+    if (is.null(x$date_columns)) "auto-detected" else paste(x$date_columns, collapse = ", ")
+  ))
 
   cat("\nPhase 2 - Enrichment:\n")
   cat(sprintf("  HAI cutoff: %d days\n", x$hai_cutoff))
@@ -155,13 +136,7 @@ print.amr_config <- function(x, ...) {
     if (is.character(x$age_bins)) "custom" else paste(length(x$age_bins), "bins")
   ))
   cat(sprintf("  Contaminant method: %s\n", x$contaminant_method))
-  cat(sprintf("  MDR definition: %s\n", x$mdr_definition))
-  cat(sprintf("  XDR definition: %s\n", x$xdr_definition))
-
-  cat("\nReference Data:\n")
-  cat(sprintf("  RR table: %s\n", x$rr_table))
-  cat(sprintf("  Organism map: %s\n", x$organism_map))
-  cat(sprintf("  Antibiotic map: %s\n", x$antibiotic_map))
+  cat(sprintf("  MDR/XDR definition: %s\n", x$mdr_definition))
 
   cat("\nProcessing Rules:\n")
   cat(sprintf("  Intermediate as Resistant: %s\n", x$intermediate_as_resistant))

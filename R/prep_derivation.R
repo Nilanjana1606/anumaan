@@ -22,7 +22,9 @@
 #' @noRd
 find_extdata_file <- function(filename) {
   file_path <- system.file("extdata", filename, package = "anumaan")
-  if (file_path != "" && file.exists(file_path)) return(file_path)
+  if (file_path != "" && file.exists(file_path)) {
+    return(file_path)
+  }
 
   pkg_root <- tryCatch(
     normalizePath(system.file(package = "anumaan")),
@@ -30,7 +32,9 @@ find_extdata_file <- function(filename) {
   )
   if (!is.null(pkg_root)) {
     extdata_path <- file.path(pkg_root, "inst", "extdata", filename)
-    if (file.exists(extdata_path)) return(normalizePath(extdata_path))
+    if (file.exists(extdata_path)) {
+      return(normalizePath(extdata_path))
+    }
   }
 
   possible_roots <- c(
@@ -40,7 +44,9 @@ find_extdata_file <- function(filename) {
   )
   for (root in possible_roots) {
     extdata_path <- file.path(root, "inst", "extdata", filename)
-    if (file.exists(extdata_path)) return(normalizePath(extdata_path))
+    if (file.exists(extdata_path)) {
+      return(normalizePath(extdata_path))
+    }
   }
 
   return("")
@@ -132,17 +138,17 @@ get_age_bins <- function(type = "GBD_standard") {
 #'   \code{Age_resolved = 3.8}) added.
 #' @export
 prep_assign_age_bins <- function(data,
-                                  age_col        = "Age",
-                                  bins           = "GBD_standard",
-                                  age_unit       = "years",
-                                  age_months_col = NULL,
-                                  age_days_col   = NULL,
-                                  negative_age_strategy = c("fallback", "na"),
-                                  fallback_years_col = "year",
-                                  fallback_months_col = "months",
-                                  fallback_days_col = "age_days",
-                                  fallback_dob_col = "dob",
-                                  fallback_admission_col = "admission_date") {
+                                 age_col = "Age",
+                                 bins = "GBD_standard",
+                                 age_unit = "years",
+                                 age_months_col = NULL,
+                                 age_days_col = NULL,
+                                 negative_age_strategy = c("fallback", "na"),
+                                 fallback_years_col = "year",
+                                 fallback_months_col = "months",
+                                 fallback_days_col = "age_days",
+                                 fallback_dob_col = "dob",
+                                 fallback_admission_col = "admission_date") {
   if (!age_col %in% names(data)) stop(sprintf("Age column '%s' not found", age_col))
 
   age_unit <- match.arg(age_unit, c("years", "months", "days"))
@@ -161,8 +167,9 @@ prep_assign_age_bins <- function(data,
   # Add months component if provided. Missing primary age can still be
   # resolved from month/day components.
   if (!is.null(age_months_col)) {
-    if (!age_months_col %in% names(data))
+    if (!age_months_col %in% names(data)) {
       stop(sprintf("age_months_col '%s' not found in data", age_months_col))
+    }
     m <- as.numeric(data[[age_months_col]])
     component_years[!is.na(m)] <- component_years[!is.na(m)] + m[!is.na(m)] / 12
     component_present <- component_present | !is.na(m)
@@ -171,8 +178,9 @@ prep_assign_age_bins <- function(data,
   # Add days component if provided. Missing primary age can still be
   # resolved from month/day components.
   if (!is.null(age_days_col)) {
-    if (!age_days_col %in% names(data))
+    if (!age_days_col %in% names(data)) {
       stop(sprintf("age_days_col '%s' not found in data", age_days_col))
+    }
     d <- as.numeric(data[[age_days_col]])
     component_years[!is.na(d)] <- component_years[!is.na(d)] + d[!is.na(d)] / 365.25
     component_present <- component_present | !is.na(d)
@@ -212,8 +220,8 @@ prep_assign_age_bins <- function(data,
         } else if (!is.na(days_vec[i]) && days_vec[i] > 0) {
           replacement <- days_vec[i] / 365.25
         } else if (!is.na(years_vec[i]) && years_vec[i] == 0 &&
-                   (is.na(months_vec[i]) || months_vec[i] == 0) &&
-                   (is.na(days_vec[i]) || days_vec[i] == 0)) {
+          (is.na(months_vec[i]) || months_vec[i] == 0) &&
+          (is.na(days_vec[i]) || days_vec[i] == 0)) {
           replacement <- 0
         }
 
@@ -264,7 +272,7 @@ prep_assign_age_bins <- function(data,
   # Example: primary age absent but months = 45  →  45 / 12 = 3.75 → 3.8
   data$Age_resolved <- round(age_years, 1)
 
-  n_binned   <- sum(!is.na(data$Age_bin))
+  n_binned <- sum(!is.na(data$Age_bin))
   n_unbinned <- sum(is.na(data$Age_bin) & !is.na(age_years))
   message(sprintf("Assigned age bins: %d binned, %d unbinned", n_binned, n_unbinned))
   return(data)
@@ -286,18 +294,18 @@ prep_assign_age_bins <- function(data,
 #'   \code{age_confidence} columns.
 #' @export
 prep_fill_age <- function(data,
-                           age_col   = "Age",
-                           dob_col   = "DOB",
-                           date_col  = "date_of_culture",
-                           overwrite = FALSE) {
-  has_age  <- age_col  %in% names(data)
-  has_dob  <- dob_col  %in% names(data)
+                          age_col = "Age",
+                          dob_col = "DOB",
+                          date_col = "date_of_culture",
+                          overwrite = FALSE) {
+  has_age <- age_col %in% names(data)
+  has_dob <- dob_col %in% names(data)
   has_date <- date_col %in% names(data)
 
   if (!has_age) data[[age_col]] <- NA_real_
 
   if (!"age_method" %in% names(data)) {
-    data$age_method     <- NA_character_
+    data$age_method <- NA_character_
     data$age_confidence <- NA_character_
   }
 
@@ -318,9 +326,9 @@ prep_fill_age <- function(data,
         ),
         age_method = dplyr::case_when(
           !is.na(calculated_age) & (overwrite | is.na(age_method)) ~ "calculated_from_dob",
-          !is.na(age_method)                                        ~ age_method,
-          !is.na(!!rlang::sym(age_col))                            ~ "provided",
-          TRUE                                                       ~ NA_character_
+          !is.na(age_method) ~ age_method,
+          !is.na(!!rlang::sym(age_col)) ~ "provided",
+          TRUE ~ NA_character_
         ),
         age_confidence = dplyr::case_when(
           age_method %in% c("calculated_from_dob", "provided") ~ "high",
@@ -330,8 +338,9 @@ prep_fill_age <- function(data,
       dplyr::select(-calculated_age)
 
     n_enriched <- n_before_missing - sum(is.na(data[[age_col]]))
-    if (n_enriched > 0)
+    if (n_enriched > 0) {
       message(sprintf("Enriched Age: %d rows filled using DOB calculation", n_enriched))
+    }
   } else {
     data <- data %>%
       dplyr::mutate(
@@ -350,9 +359,12 @@ prep_fill_age <- function(data,
   print(dplyr::count(data, age_method, age_confidence) %>% dplyr::arrange(dplyr::desc(n)))
 
   n_still_missing <- sum(is.na(data[[age_col]]))
-  if (n_still_missing > 0)
-    message(sprintf("[!] %d rows still missing Age (%.1f%%)",
-                    n_still_missing, 100 * n_still_missing / nrow(data)))
+  if (n_still_missing > 0) {
+    message(sprintf(
+      "[!] %d rows still missing Age (%.1f%%)",
+      n_still_missing, 100 * n_still_missing / nrow(data)
+    ))
+  }
 
   return(data)
 }
@@ -373,20 +385,20 @@ prep_fill_age <- function(data,
 #' @return Data frame with \code{hospital_department} enriched.
 #' @export
 prep_infer_department <- function(data,
-                                   department_col = "hospital_department",
-                                   specimen_col   = "specimen_type",
-                                   diagnosis_col  = "diagnosis_1",
-                                   age_col        = "Age",
-                                   overwrite      = FALSE) {
-  has_dept      <- department_col %in% names(data)
-  has_specimen  <- specimen_col   %in% names(data)
-  has_diagnosis <- diagnosis_col  %in% names(data)
-  has_age       <- age_col        %in% names(data)
+                                  department_col = "hospital_department",
+                                  specimen_col = "specimen_type",
+                                  diagnosis_col = "diagnosis_1",
+                                  age_col = "Age",
+                                  overwrite = FALSE) {
+  has_dept <- department_col %in% names(data)
+  has_specimen <- specimen_col %in% names(data)
+  has_diagnosis <- diagnosis_col %in% names(data)
+  has_age <- age_col %in% names(data)
 
-  if (!has_dept)      data[[department_col]] <- NA_character_
-  if (!has_age)       data[[age_col]]        <- NA_real_
-  if (!has_specimen)  data[[specimen_col]]   <- NA_character_
-  if (!has_diagnosis) data[[diagnosis_col]]  <- NA_character_
+  if (!has_dept) data[[department_col]] <- NA_character_
+  if (!has_age) data[[age_col]] <- NA_real_
+  if (!has_specimen) data[[specimen_col]] <- NA_character_
+  if (!has_diagnosis) data[[diagnosis_col]] <- NA_character_
 
   if (!has_specimen && !has_diagnosis && !has_age) {
     message("[!] Cannot infer department: no contextual data available")
@@ -409,30 +421,33 @@ prep_infer_department <- function(data,
         TRUE ~ NA_character_
       ),
       !!department_col := dplyr::case_when(
-        overwrite & !is.na(inferred_dept)                                     ~ inferred_dept,
-        is.na(!!rlang::sym(department_col)) & !is.na(inferred_dept)           ~ inferred_dept,
-        TRUE                                                                    ~ !!rlang::sym(department_col)
+        overwrite & !is.na(inferred_dept) ~ inferred_dept,
+        is.na(!!rlang::sym(department_col)) & !is.na(inferred_dept) ~ inferred_dept,
+        TRUE ~ !!rlang::sym(department_col)
       ),
       department_method = dplyr::case_when(
-        !is.na(inferred_dept)                    ~ "inferred_heuristic",
-        !is.na(!!rlang::sym(department_col))     ~ "provided",
-        TRUE                                      ~ NA_character_
+        !is.na(inferred_dept) ~ "inferred_heuristic",
+        !is.na(!!rlang::sym(department_col)) ~ "provided",
+        TRUE ~ NA_character_
       ),
       department_confidence = dplyr::case_when(
-        department_method == "provided"           ~ "high",
+        department_method == "provided" ~ "high",
         department_method == "inferred_heuristic" ~ "low",
-        TRUE                                      ~ NA_character_
+        TRUE ~ NA_character_
       )
     ) %>%
     dplyr::select(-inferred_dept)
 
   n_enriched <- n_before_missing - sum(is.na(data[[department_col]]))
-  if (n_enriched > 0)
+  if (n_enriched > 0) {
     message(sprintf("Enriched department: %d rows filled (LOW confidence - heuristic)", n_enriched))
+  }
 
   message("\nDepartment distribution:")
-  print(dplyr::arrange(dplyr::count(data, !!rlang::sym(department_col), department_confidence),
-                       dplyr::desc(n)))
+  print(dplyr::arrange(
+    dplyr::count(data, !!rlang::sym(department_col), department_confidence),
+    dplyr::desc(n)
+  ))
 
   return(data)
 }
@@ -471,23 +486,23 @@ prep_infer_department <- function(data,
 #'   \code{los_confidence} populated where possible.
 #' @export
 prep_derive_los_from_dates <- function(data,
-                                        admission_col      = "admission_date",
-                                        outcome_col        = "outcome_date",
-                                        los_col            = "los_days",
-                                        unit_admission_col = "unit_admission_date",
-                                        unit_duration_col  = "unit_duration_days",
-                                        overwrite          = FALSE) {
+                                       admission_col = "admission_date",
+                                       outcome_col = "outcome_date",
+                                       los_col = "los_days",
+                                       unit_admission_col = "unit_admission_date",
+                                       unit_duration_col = "unit_duration_days",
+                                       overwrite = FALSE) {
   if (!los_col %in% names(data)) data[[los_col]] <- NA_real_
-  if (!"los_method"     %in% names(data)) data$los_method     <- NA_character_
+  if (!"los_method" %in% names(data)) data$los_method <- NA_character_
   if (!"los_confidence" %in% names(data)) data$los_confidence <- NA_character_
 
   # Mark already-provided values
   provided <- !is.na(data[[los_col]])
-  data$los_method[provided & is.na(data$los_method)]         <- "provided"
+  data$los_method[provided & is.na(data$los_method)] <- "provided"
   data$los_confidence[provided & is.na(data$los_confidence)] <- "high"
 
   rows_missing <- if (overwrite) rep(TRUE, nrow(data)) else is.na(data[[los_col]])
-  n_missing    <- sum(rows_missing)
+  n_missing <- sum(rows_missing)
 
   if (n_missing == 0L) {
     message(sprintf("[prep_derive_los_from_dates] %s already complete.", los_col))
@@ -498,37 +513,45 @@ prep_derive_los_from_dates <- function(data,
   if (all(c(admission_col, outcome_col) %in% names(data))) {
     can_calc <- rows_missing & !is.na(data[[admission_col]]) & !is.na(data[[outcome_col]])
     if (any(can_calc)) {
-      data[[los_col]][can_calc]     <- as.numeric(
-        difftime(data[[outcome_col]][can_calc], data[[admission_col]][can_calc], units = "days"))
-      data$los_method[can_calc]     <- "calculated_from_dates"
+      data[[los_col]][can_calc] <- as.numeric(
+        difftime(data[[outcome_col]][can_calc], data[[admission_col]][can_calc], units = "days")
+      )
+      data$los_method[can_calc] <- "calculated_from_dates"
       data$los_confidence[can_calc] <- "high"
-      message(sprintf("[prep_derive_los_from_dates] %d rows filled from %s - %s.",
-                      sum(can_calc), outcome_col, admission_col))
+      message(sprintf(
+        "[prep_derive_los_from_dates] %d rows filled from %s - %s.",
+        sum(can_calc), outcome_col, admission_col
+      ))
       rows_missing <- if (overwrite) rep(FALSE, nrow(data)) else is.na(data[[los_col]])
     }
   }
 
   # Fallback (AIIMS): unit_duration_days
   if (any(rows_missing) &&
-      all(c(unit_admission_col, unit_duration_col) %in% names(data))) {
+    all(c(unit_admission_col, unit_duration_col) %in% names(data))) {
     can_calc <- rows_missing & !is.na(data[[unit_admission_col]]) &
       !is.na(data[[unit_duration_col]])
     if (any(can_calc)) {
-      data[[los_col]][can_calc]     <- as.numeric(data[[unit_duration_col]][can_calc])
-      data$los_method[can_calc]     <- "aiims_unit_duration"
+      data[[los_col]][can_calc] <- as.numeric(data[[unit_duration_col]][can_calc])
+      data$los_method[can_calc] <- "aiims_unit_duration"
       data$los_confidence[can_calc] <- "medium"
-      message(sprintf("[prep_derive_los_from_dates] %d rows filled from AIIMS unit duration.",
-                      sum(can_calc)))
+      message(sprintf(
+        "[prep_derive_los_from_dates] %d rows filled from AIIMS unit duration.",
+        sum(can_calc)
+      ))
     }
   }
 
   n_negative <- sum(!is.na(data[[los_col]]) & data[[los_col]] < 0, na.rm = TRUE)
-  if (n_negative > 0)
+  if (n_negative > 0) {
     warning(sprintf("[prep_derive_los_from_dates] %d row(s) have negative LOS.", n_negative))
+  }
 
   n_filled <- n_missing - sum(is.na(data[[los_col]]))
-  message(sprintf("[prep_derive_los_from_dates] %d filled; %d remain missing.",
-                  n_filled, sum(is.na(data[[los_col]]))))
+  message(sprintf(
+    "[prep_derive_los_from_dates] %d filled; %d remain missing.",
+    n_filled, sum(is.na(data[[los_col]]))
+  ))
 
   los_non_missing <- dplyr::filter(data, !is.na(!!rlang::sym(los_col)))
   message("\nLOS summary:")
@@ -542,10 +565,10 @@ prep_derive_los_from_dates <- function(data,
   } else {
     print(dplyr::summarise(
       los_non_missing,
-      mean_los   = mean(!!rlang::sym(los_col),   na.rm = TRUE),
+      mean_los   = mean(!!rlang::sym(los_col), na.rm = TRUE),
       median_los = median(!!rlang::sym(los_col), na.rm = TRUE),
-      min_los    = min(!!rlang::sym(los_col),    na.rm = TRUE),
-      max_los    = max(!!rlang::sym(los_col),    na.rm = TRUE)
+      min_los    = min(!!rlang::sym(los_col), na.rm = TRUE),
+      max_los    = max(!!rlang::sym(los_col), na.rm = TRUE)
     ))
   }
 
@@ -579,16 +602,16 @@ prep_derive_los_from_dates <- function(data,
 #' @return Data frame with \code{dob} column added/populated.
 #' @export
 prep_derive_dob_from_components <- function(data,
-                                             dob_year_col       = "dob_year",
-                                             dob_month_col      = "dob_month",
-                                             dob_day_col        = "dob_day",
-                                             age_years_col      = "age_years",
-                                             reference_date_col = "admission_date",
-                                             dob_output_col     = "dob") {
+                                            dob_year_col = "dob_year",
+                                            dob_month_col = "dob_month",
+                                            dob_day_col = "dob_day",
+                                            age_years_col = "age_years",
+                                            reference_date_col = "admission_date",
+                                            dob_output_col = "dob") {
   if (!dob_output_col %in% names(data)) data[[dob_output_col]] <- as.Date(NA_character_)
 
   rows_missing <- is.na(data[[dob_output_col]])
-  n_missing    <- sum(rows_missing)
+  n_missing <- sum(rows_missing)
   if (n_missing == 0L) {
     message(sprintf("[prep_derive_dob_from_components] %s already complete.", dob_output_col))
     return(data)
@@ -603,10 +626,12 @@ prep_derive_dob_from_components <- function(data,
       !is.na(data[[dob_day_col]])
 
     if (any(can_build)) {
-      dob_str <- sprintf("%04d-%02d-%02d",
-                         as.integer(data[[dob_year_col]][can_build]),
-                         as.integer(data[[dob_month_col]][can_build]),
-                         as.integer(data[[dob_day_col]][can_build]))
+      dob_str <- sprintf(
+        "%04d-%02d-%02d",
+        as.integer(data[[dob_year_col]][can_build]),
+        as.integer(data[[dob_month_col]][can_build]),
+        as.integer(data[[dob_day_col]][can_build])
+      )
       data[[dob_output_col]][can_build] <- suppressWarnings(as.Date(dob_str))
       n_built <- sum(!is.na(data[[dob_output_col]][can_build]))
       message(sprintf("[prep_derive_dob_from_components] %d DOBs assembled from year/month/day.", n_built))
@@ -616,8 +641,8 @@ prep_derive_dob_from_components <- function(data,
 
   # Strategy 2: age in years + reference date
   if (any(rows_missing) &&
-      age_years_col %in% names(data) &&
-      reference_date_col %in% names(data)) {
+    age_years_col %in% names(data) &&
+    reference_date_col %in% names(data)) {
     can_estimate <- rows_missing &
       !is.na(data[[age_years_col]]) &
       !is.na(data[[reference_date_col]])
@@ -626,13 +651,17 @@ prep_derive_dob_from_components <- function(data,
       est_dob <- data[[reference_date_col]][can_estimate] -
         round(as.numeric(data[[age_years_col]][can_estimate]) * 365.25)
       data[[dob_output_col]][can_estimate] <- est_dob
-      message(sprintf("[prep_derive_dob_from_components] %d DOBs estimated from age + reference date.",
-                      sum(can_estimate)))
+      message(sprintf(
+        "[prep_derive_dob_from_components] %d DOBs estimated from age + reference date.",
+        sum(can_estimate)
+      ))
     }
   }
 
   n_filled <- n_missing - sum(is.na(data[[dob_output_col]]))
-  message(sprintf("[prep_derive_dob_from_components] %d filled; %d remain missing.", n_filled,
-                  sum(is.na(data[[dob_output_col]]))))
+  message(sprintf(
+    "[prep_derive_dob_from_components] %d filled; %d remain missing.", n_filled,
+    sum(is.na(data[[dob_output_col]]))
+  ))
   return(data)
 }

@@ -15,7 +15,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
                                                  facility_col = NULL,
                                                  facility_name = NULL,
                                                  pathogen_name = NULL) {
-  # -- Input validation ------------------------------------------------------
+  # Input validation
   if (xor(is.null(specimen_col), is.null(specimen_name))) {
     stop("specimen_col and specimen_name must both be provided or both be NULL.")
   }
@@ -35,7 +35,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
     stop("facility_col must be provided when facility_name is specified.")
   }
 
-  # -- Step 1: Filter syndrome + specimen (optional) + non-fatal -------------
+  # Step 1: Filter syndrome + specimen (optional) + non-fatal
   df <- data %>%
     dplyr::filter(
       .data[[syndrome_col]] == syndrome_name,
@@ -49,7 +49,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
     stop("No non-fatal records remain after syndrome/specimen filtering.")
   }
 
-  # -- Step 2: Optional single-facility restriction ---------------------------
+  # Step 2: Optional single-facility restriction
   if (!is.null(facility_name)) {
     df <- df %>% dplyr::filter(.data[[facility_col]] == facility_name)
     if (nrow(df) == 0) {
@@ -57,7 +57,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
     }
   }
 
-  # -- Step 3: Optional pathogen filter -------------------------------------
+  # Step 3: Optional pathogen filter
   if (!is.null(pathogen_name)) {
     df <- df %>% dplyr::filter(.data[[pathogen_col]] %in% pathogen_name)
     if (nrow(df) == 0) {
@@ -72,7 +72,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
     ))
   }
 
-  # -- Step 4: GLASS filter -- polymicrobial patients only -------------------
+  # Step 4: GLASS filter -- polymicrobial patients only
   # Monomicrobial patients (polymicrobial_col == 0) are never filtered.
   if (!is.null(glass_ref)) {
     if (is.data.frame(glass_ref)) {
@@ -101,7 +101,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
     }
   }
 
-  # -- Step 5: Deduplicate to one row per patient x pathogen ----------------
+  # Step 5: Deduplicate to one row per patient x pathogen
   # The raw data has one row per antibiotic tested. Collapse to patient-pathogen
   # level first so that each patient-pathogen pair contributes exactly once.
   group_cols <- if (!is.null(facility_col)) c(facility_col, patient_col) else patient_col
@@ -109,7 +109,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
   patient_pathogen <- df %>%
     dplyr::distinct(dplyr::across(dplyr::all_of(c(group_cols, pathogen_col))))
 
-  # -- Step 5b: Fractional weight 1/m_r -------------------------------------
+  # Step 5b: Fractional weight 1/m_r
   # m_r = distinct valid pathogens for patient r (within facility if relevant).
   patient_pathogen <- patient_pathogen %>%
     dplyr::group_by(dplyr::across(dplyr::all_of(group_cols))) %>%
@@ -119,14 +119,14 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
     ) %>%
     dplyr::ungroup()
 
-  # -- Step 6: N^NF_LK = weighted sum per (facility, pathogen) --------------
+  # Step 6: N^NF_LK = weighted sum per (facility, pathogen)
   agg_cols <- if (!is.null(facility_col)) c(facility_col, pathogen_col) else pathogen_col
 
   N_LK <- patient_pathogen %>%
     dplyr::group_by(dplyr::across(dplyr::all_of(agg_cols))) %>%
     dplyr::summarise(N_NF_LK = sum(weight, na.rm = TRUE), .groups = "drop")
 
-  # -- Step 7: N^NF_L = unique non-fatal patients per facility --------------
+  # Step 7: N^NF_L = unique non-fatal patients per facility
   fac_grp <- if (!is.null(facility_col)) facility_col else character(0)
 
   N_L <- df %>%
@@ -136,7 +136,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
       .groups = "drop"
     )
 
-  # -- Step 8: Compute P'_LK and return -------------------------------------
+  # Step 8: Compute P'_LK and return
   if (!is.null(facility_col)) {
     facility_level <- dplyr::left_join(N_LK, N_L, by = facility_col) %>%
       dplyr::mutate(P_Lk_prime = N_NF_LK / N_NF_L)
@@ -172,8 +172,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
 }
 
 
-# -- P_LK : Fatal pathogen distribution ----------------------------------------
-
+# P_LK : Fatal pathogen distribution
 #' Calculate fatal pathogen distribution (P_\{Lk\})
 #'
 #' Computes the fatal pathogen distribution for a given infectious syndrome
@@ -243,7 +242,7 @@ daly_calc_pathogen_fraction_fatal <- function(data,
                                               facility_col = NULL,
                                               facility_name = NULL,
                                               pathogen_name = NULL) {
-  # -- Input validation -------------------------------------------------------
+  # Input validation
   required_cols <- c(
     syndrome_col, polymicrobial_col,
     patient_col, pathogen_col, outcome_col
@@ -263,7 +262,7 @@ daly_calc_pathogen_fraction_fatal <- function(data,
     stop("specimen_name must be provided when specimen_col is specified.")
   }
 
-  # -- Step 1: Filter syndrome + (optional specimen) + fatal outcome ---------
+  # Step 1: Filter syndrome + (optional specimen) + fatal outcome
   df <- data %>%
     dplyr::filter(
       .data[[syndrome_col]] == syndrome_name,
@@ -280,7 +279,7 @@ daly_calc_pathogen_fraction_fatal <- function(data,
     ))
   }
 
-  # -- Step 2: Optional single-facility restriction ---------------------------
+  # Step 2: Optional single-facility restriction
   if (!is.null(facility_name)) {
     df <- df %>% dplyr::filter(.data[[facility_col]] == facility_name)
     if (nrow(df) == 0) {
@@ -288,7 +287,7 @@ daly_calc_pathogen_fraction_fatal <- function(data,
     }
   }
 
-  # -- Step 3: Optional pathogen filter --------------------------------------
+  # Step 3: Optional pathogen filter
   if (!is.null(pathogen_name)) {
     df <- df %>% dplyr::filter(.data[[pathogen_col]] %in% pathogen_name)
     if (nrow(df) == 0) {
@@ -303,7 +302,7 @@ daly_calc_pathogen_fraction_fatal <- function(data,
     ))
   }
 
-  # -- Step 4: GLASS filter -- polymicrobial patients only --------------------
+  # Step 4: GLASS filter -- polymicrobial patients only
   # Monomicrobial patients (polymicrobial_col == 0) are never filtered.
   if (!is.null(glass_ref)) {
     if (is.data.frame(glass_ref)) {
@@ -338,7 +337,7 @@ daly_calc_pathogen_fraction_fatal <- function(data,
     }
   }
 
-  # -- Step 5: Patient-level fractional weight 1/m_r -------------------------
+  # Step 5: Patient-level fractional weight 1/m_r
   # m_r = distinct valid pathogens for fatal patient r.
   group_cols <- if (!is.null(facility_col)) c(facility_col, patient_col) else patient_col
 
@@ -350,14 +349,14 @@ daly_calc_pathogen_fraction_fatal <- function(data,
     ) %>%
     dplyr::ungroup()
 
-  # -- Step 6: N^F_LK = weighted sum per (facility, pathogen) ---------------
+  # Step 6: N^F_LK = weighted sum per (facility, pathogen)
   agg_cols <- if (!is.null(facility_col)) c(facility_col, pathogen_col) else pathogen_col
 
   N_LK <- df %>%
     dplyr::group_by(dplyr::across(dplyr::all_of(agg_cols))) %>%
     dplyr::summarise(N_F_LK = sum(weight, na.rm = TRUE), .groups = "drop")
 
-  # -- Step 7: N^F_L = unique fatal patients per facility --------------------
+  # Step 7: N^F_L = unique fatal patients per facility
   fac_grp <- if (!is.null(facility_col)) facility_col else character(0)
 
   N_L <- df %>%
@@ -367,7 +366,7 @@ daly_calc_pathogen_fraction_fatal <- function(data,
       .groups = "drop"
     )
 
-  # -- Step 8: Compute P_LK and return ---------------------------------------
+  # Step 8: Compute P_LK and return
   if (!is.null(facility_col)) {
     facility_level <- dplyr::left_join(N_LK, N_L, by = facility_col) %>%
       dplyr::mutate(P_Lk_fatal = N_F_LK / N_F_L)
@@ -403,8 +402,7 @@ daly_calc_pathogen_fraction_fatal <- function(data,
 }
 
 
-# -- CFR_LK : Case fatality ratio by syndrome and pathogen ----------------------
-
+# CFR_LK : Case fatality ratio by syndrome and pathogen
 #' Calculate case fatality ratio by syndrome and pathogen (CFR_\{Lk\})
 #'
 #' Computes the case fatality ratio (CFR) for each pathogen (k) within a
@@ -467,7 +465,7 @@ daly_calc_case_fatality <- function(data,
                                     facility_col = NULL,
                                     facility_name = NULL,
                                     pathogen_name = NULL) {
-  # -- Input validation ------------------------------------------------------
+  # Input validation
   required_cols <- c(
     syndrome_col, specimen_col, polymicrobial_col,
     patient_col, pathogen_col, outcome_col
@@ -483,7 +481,7 @@ daly_calc_case_fatality <- function(data,
     stop("facility_col must be provided when facility_name is specified.")
   }
 
-  # -- Step 1: Filter syndrome + specimen -----------------------------------
+  # Step 1: Filter syndrome + specimen
   df <- data %>%
     dplyr::filter(
       .data[[syndrome_col]] == syndrome_name,
@@ -493,7 +491,7 @@ daly_calc_case_fatality <- function(data,
     stop("No records remain after syndrome/specimen filtering.")
   }
 
-  # -- Step 2: Optional single-facility restriction --------------------------
+  # Step 2: Optional single-facility restriction
   if (!is.null(facility_name)) {
     df <- df %>% dplyr::filter(.data[[facility_col]] == facility_name)
     if (nrow(df) == 0) {
@@ -501,7 +499,7 @@ daly_calc_case_fatality <- function(data,
     }
   }
 
-  # -- Step 3: Optional pathogen filter -------------------------------------
+  # Step 3: Optional pathogen filter
   if (!is.null(pathogen_name)) {
     df <- df %>% dplyr::filter(.data[[pathogen_col]] %in% pathogen_name)
     if (nrow(df) == 0) {
@@ -516,7 +514,7 @@ daly_calc_case_fatality <- function(data,
     ))
   }
 
-  # -- Step 4: GLASS filter -- polymicrobial patients only -------------------
+  # Step 4: GLASS filter -- polymicrobial patients only
   if (!is.null(glass_ref)) {
     if (is.data.frame(glass_ref)) {
       valid_pathogens <- glass_ref %>%
@@ -544,7 +542,7 @@ daly_calc_case_fatality <- function(data,
     }
   }
 
-  # -- Step 5: Patient-level fractional weight 1/m_r ------------------------
+  # Step 5: Patient-level fractional weight 1/m_r
   group_cols <- if (!is.null(facility_col)) c(facility_col, patient_col) else patient_col
 
   df <- df %>%
@@ -556,7 +554,7 @@ daly_calc_case_fatality <- function(data,
     ) %>%
     dplyr::ungroup()
 
-  # -- Step 6: Weighted deaths + totals per (facility, pathogen) -------------
+  # Step 6: Weighted deaths + totals per (facility, pathogen)
   agg_cols <- if (!is.null(facility_col)) c(facility_col, pathogen_col) else pathogen_col
 
   cfr_raw <- df %>%
@@ -572,7 +570,7 @@ daly_calc_case_fatality <- function(data,
       .groups = "drop"
     )
 
-  # -- Step 7: Pooled across facilities (if applicable) ----------------------
+  # Step 7: Pooled across facilities (if applicable)
   if (!is.null(facility_col) && is.null(facility_name)) {
     pooled <- cfr_raw %>%
       dplyr::group_by(.data[[pathogen_col]]) %>%
@@ -603,8 +601,7 @@ daly_calc_case_fatality <- function(data,
 }
 
 
-# -- Top N pathogens -----------------------------------------------------------
-
+# Top N pathogens
 #' Identify top N pathogens by occurrence
 #'
 #' Ranks pathogens by the number of records (rows) in the dataset, optionally
@@ -645,7 +642,7 @@ daly_get_top_pathogens <- function(data,
                                    outcome_name = NULL,
                                    facility_col = NULL,
                                    facility_name = NULL) {
-  # -- Input validation ------------------------------------------------------
+  # Input validation
   if (!pathogen_col %in% names(data)) {
     stop(sprintf("pathogen_col '%s' not found in data.", pathogen_col))
   }
@@ -655,7 +652,7 @@ daly_get_top_pathogens <- function(data,
 
   df <- data
 
-  # -- Optional filters ------------------------------------------------------
+  # Optional filters
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     df <- df %>% dplyr::filter(.data[[syndrome_col]] == syndrome_name)
   }
@@ -674,7 +671,7 @@ daly_get_top_pathogens <- function(data,
     return(data.frame())
   }
 
-  # -- Count and rank per facility (if requested) or overall -----------------
+  # Count and rank per facility (if requested) or overall
   group_vars <- if (!is.null(facility_col)) {
     c(facility_col, pathogen_col)
   } else {
@@ -711,8 +708,7 @@ daly_get_top_pathogens <- function(data,
 
   return(ranked)
 }
-# -- YLD per pathogen ----------------------------------------------------------
-
+# YLD per pathogen
 #' Calculate YLD per pathogen
 #'
 #' Computes Years Lived with Disability (YLD) attributable to each pathogen K

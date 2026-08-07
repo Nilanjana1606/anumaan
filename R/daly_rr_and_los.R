@@ -557,9 +557,6 @@ daly_compute_patient_los <- function(
 #' @param min_n Integer. Minimum patients required in a class model.
 #' @param min_resistant Integer. Minimum resistant patients required.
 #' @param min_susceptible Integer. Minimum susceptible patients required.
-#' @param add_centre_fe Logical. Retained for backward compatibility; ignored
-#'   when \code{facility_col} is provided (per-hospital fitting is used) or
-#'   \code{NULL} (no facility information available).
 #'
 #' @return Data frame with pathogen, antibiotic_class, hospital (NA when
 #'   \code{facility_col} is \code{NULL}), RR_LOS, CI_lower,
@@ -592,8 +589,7 @@ daly_fit_los_rr <- function(
   max_los = 365,
   min_n = 20L,
   min_resistant = 5L,
-  min_susceptible = 5L,
-  add_centre_fe = TRUE
+  min_susceptible = 5L
 ) {
   required_cols <- c(
     patient_id_col, organism_col,
@@ -1783,11 +1779,6 @@ daly_derive_hai_cai_for_mortality <- function(
 }
 
 
-# -- daly_fit_mortality_rr -----------------------------------------------------
-
-# daly_rr_and_los.R
-# Mortality model for adjusted OR and adjusted RR of death
-
 #' Fit mortality model and derive adjusted relative risk of death
 #'
 #' Fits a pathogen-class specific mixed-effects logistic regression model:
@@ -1844,9 +1835,6 @@ daly_derive_hai_cai_for_mortality <- function(
 #' @param phi_threshold Numeric. HAI / ICU collinearity warning threshold.
 #' @param min_n Integer. Minimum patients per fitted model.
 #' @param min_deaths Integer. Minimum deaths per fitted model.
-#' @param use_random_intercept Logical. Retained for backward compatibility;
-#'   ignored when \code{facility_col} is provided (per-hospital fitting is
-#'   used) or \code{NULL} (no facility information available).
 #'
 #' @return Data frame with hospital (NA when \code{facility_col} is
 #'   \code{NULL}), adjusted OR and adjusted RR of death.
@@ -1876,13 +1864,8 @@ daly_fit_mortality_rr <- function(
   icu_values = c("ICU", "Intensive Care", "Critical Care", "PICU", "NICU"),
   phi_threshold = 0.7,
   min_n = 20L,
-  min_deaths = 10L,
-  use_random_intercept = TRUE
+  min_deaths = 10L
 ) {
-  if (!requireNamespace("lme4", quietly = TRUE)) {
-    stop("Package 'lme4' is required for daly_fit_mortality_rr().")
-  }
-
   required_cols <- c(
     patient_id_col, organism_col,
     infection_type_col, antibiotic_class_col,
@@ -1916,9 +1899,7 @@ daly_fit_mortality_rr <- function(
     message("No facility_col provided: hospital random effect will not be included. Returning pooled RR.")
   }
 
-  # ---------------------------------------------------------------------------
   # Step 1: derive HAI / CAI for mortality model
-  # ---------------------------------------------------------------------------
   data <- daly_derive_hai_cai_for_mortality(
     data = data,
     infection_type_col = infection_type_col,
@@ -1931,9 +1912,7 @@ daly_fit_mortality_rr <- function(
     patient_id_col = patient_id_col
   )
 
-  # ---------------------------------------------------------------------------
   # Step 2: optional syndrome restriction
-  # ---------------------------------------------------------------------------
   df <- data
   if (!is.null(syndrome_name)) {
     df <- df[df[[syndrome_col]] == syndrome_name, , drop = FALSE]
@@ -1944,9 +1923,7 @@ daly_fit_mortality_rr <- function(
     return(data.frame())
   }
 
-  # ---------------------------------------------------------------------------
   # Step 3: ICU indicator
-  # ---------------------------------------------------------------------------
   icu_tbl <- .derive_icu_binary(
     data = df,
     patient_id_col = patient_id_col,
@@ -1954,10 +1931,8 @@ daly_fit_mortality_rr <- function(
     icu_values = icu_values
   )
 
-  # ---------------------------------------------------------------------------
   # Step 4: patient-level covariates
   # one row per patient
-  # ---------------------------------------------------------------------------
   patient_covars <- df |>
     dplyr::group_by(.data[[patient_id_col]]) |>
     dplyr::slice(1L) |>
@@ -1991,9 +1966,7 @@ daly_fit_mortality_rr <- function(
 
   patient_covars <- dplyr::left_join(patient_covars, icu_tbl, by = patient_id_col)
 
-  # ---------------------------------------------------------------------------
   # Step 5: comorbidity encoding
-  # ---------------------------------------------------------------------------
   if (!is.null(comorbidity_col) && comorbidity_col %in% names(df)) {
     comorb_df <- df |>
       dplyr::group_by(.data[[patient_id_col]]) |>
@@ -2017,9 +1990,7 @@ daly_fit_mortality_rr <- function(
     patient_covars$comorbidity_encoded <- NA_real_
   }
 
-  # ---------------------------------------------------------------------------
   # Step 6: build class-level resistance matrix
-  # ---------------------------------------------------------------------------
   resistance_wide <- .build_class_resistance_wide(
     data = df,
     patient_id_col = patient_id_col,
@@ -2032,9 +2003,7 @@ daly_fit_mortality_rr <- function(
   class_name_map <- attr(resistance_wide, "class_name_map")
   class_safe_cols <- setdiff(names(resistance_wide), patient_id_col)
 
-  # ---------------------------------------------------------------------------
   # Step 7: merge patient-level model data
-  # ---------------------------------------------------------------------------
   model_base <- patient_covars |>
     dplyr::inner_join(resistance_wide, by = patient_id_col) |>
     dplyr::filter(!is.na(death), !is.na(HAI), !is.na(Age_model), !is.na(Sex_model))
@@ -2239,7 +2208,7 @@ daly_fit_mortality_rr <- function(
 
   result
 }
-# los.R
+
 # Length-of-stay distribution fitting and comparison
 
 #' Safely Fit a Distribution
@@ -2555,39 +2524,18 @@ get_los_by_resistance <- function(abx_data,
     by = patient_id_col
   )
 
-  los_R <- org_los %>%
-    dplyr::filter(.data$R_count > 0) %>%
-    tidyr::uncount(.data$R_count) %>%
-    dplyr::pull("LOS_days")
-
-  los_S <- org_los %>%
-    dplyr::filter(.data$S_count > 0) %>%
-    tidyr::uncount(.data$S_count) %>%
-    dplyr::pull("LOS_days")
+  # rep() instead of tidyr::uncount(): same expanded LOS vectors, no tibble round-trip.
+  los_R <- rep(org_los$LOS_days[org_los$R_count > 0], org_los$R_count[org_los$R_count > 0])
+  los_S <- rep(org_los$LOS_days[org_los$S_count > 0], org_los$S_count[org_los$S_count > 0])
 
   list(R = los_R, S = los_S)
 }
 
 
-# ===========================================================================
-# Relative risk reference data, pathogen-drug mappings, and profile-level
-# RR assignment.
-#
-# Loads GBD-derived relative risk (RR) estimates for pathogen-antibiotic class
-# combinations, maps organism and drug class names to RR categories, and
-# assigns profile-level RR values to resistance profiles using the GBD max
-# rule: the profile RR equals the highest class-level RR among all resistant
-# classes in that profile. Re-normalises profile probabilities after dropping
-# profiles whose resistant classes carry no RR estimate, and computes the
-# fatal resistance prevalence R_k and expected odds ratio E[OR_death] for
-# each pathogen.
-#
-#   daly_load_rr_reference()              loads rr_list_gbd.xlsx
-#   daly_add_rr_mappings()                appends rr_pathogen and rr_drug columns
-#   daly_assign_rr_to_profiles()          assigns RR_LOS_profile via max rule
-#   daly_filter_profiles_to_rr_classes()  drops and re-normalises unmatched profiles
-#   daly_calc_resistance_prevalence_fatal() computes R_k and E[OR_death]
-# ===========================================================================
+# Relative risk reference data, pathogen-drug mappings, and profile-level RR
+# assignment. Profile RR uses the GBD max rule: the highest class-level RR
+# among a profile's resistant classes, with profiles re-normalised after
+# dropping any whose resistant classes carry no RR estimate.
 
 #' Load RR (Relative Risk) Reference Data
 #'
@@ -2658,14 +2606,14 @@ daly_load_rr_reference <- function() {
 #' @export
 daly_add_rr_mappings <- function(data,
                                  organism_col = "organism_normalized",
-                                 class_col    = "antibiotic_class") {
+                                 class_col = "antibiotic_class") {
   # -- Pathogen mapping -------------------------------------------------------
   if (!is.null(organism_col) && organism_col %in% names(data)) {
     taxonomy <- get_organism_taxonomy()
     if (nrow(taxonomy) > 0) {
       rr_map <- unique(data.frame(
         organism_name = taxonomy$organism_name,
-        rr_pathogen   = taxonomy$organism_name,
+        rr_pathogen = taxonomy$organism_name,
         stringsAsFactors = FALSE
       ))
       data <- dplyr::left_join(
@@ -2678,8 +2626,9 @@ daly_add_rr_mappings <- function(data,
         n_mapped, nrow(data), 100 * n_mapped / nrow(data)
       ))
       unmapped <- unique(data[[organism_col]][is.na(data$rr_pathogen)])
-      if (length(unmapped) > 0)
+      if (length(unmapped) > 0) {
         message("Unmapped organisms: ", paste(head(unmapped, 10), collapse = ", "))
+      }
     } else {
       warning("Organism taxonomy is empty. Skipping pathogen mapping.")
     }
@@ -2710,8 +2659,6 @@ daly_add_rr_mappings <- function(data,
 }
 
 
-
-
 #' Assign Per-Class LOS RR to Resistance Profiles (Max Rule)
 #'
 #' For each resistance profile delta (from compute_resistance_profiles()),
@@ -2721,8 +2668,13 @@ daly_add_rr_mappings <- function(data,
 #' where C_R(d) = \{c : d_c = 1\}.
 #' The CI reported for each profile is that of its dominant (max-RR) class.
 #'
+#' If \code{rr_table} was fit with a \code{syndrome_name} filter, its RR
+#' values are syndrome-specific but get applied here to all profiles of a
+#' pathogen -- i.e. it assumes syndrome-invariant LOS prolongation. Refit
+#' with \code{syndrome_name = NULL} for a RR pooled across syndromes.
+#'
 #' @param profiles_output Named list from compute_resistance_profiles().
-#' @param rr_table Data frame from daly_fit_los_rr() or daly_fit_los_rr_nima().
+#' @param rr_table Data frame from daly_fit_los_rr() or daly_fit_los_rr_distribution().
 #'   Must have columns pathogen_col, class_col, rr_col, and optionally
 #'   CI_lower / CI_upper.
 #' @param pathogen_col Character. Default \code{"pathogen"}.

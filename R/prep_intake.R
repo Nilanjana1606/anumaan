@@ -35,61 +35,70 @@ prep_check_columns <- function(data,
   }
 
   blank_names <- sum(is.na(names(data)) | trimws(names(data)) == "")
-  dup_names   <- sum(duplicated(names(data)))
-  if (blank_names > 0L)
+  dup_names <- sum(duplicated(names(data)))
+  if (blank_names > 0L) {
     warning(sprintf("[%s] %d blank column name(s) found.", table_label, blank_names))
-  if (dup_names > 0L)
-    warning(sprintf("[%s] %d duplicated column name(s): %s",
-                    table_label, dup_names,
-                    paste(names(data)[duplicated(names(data))], collapse = ", ")))
+  }
+  if (dup_names > 0L) {
+    warning(sprintf(
+      "[%s] %d duplicated column name(s): %s",
+      table_label, dup_names,
+      paste(names(data)[duplicated(names(data))], collapse = ", ")
+    ))
+  }
 
   missing <- setdiff(required, names(data))
   if (length(missing) > 0L) {
-    msg <- sprintf("[%s] Missing required column(s): %s",
-                   table_label, paste(missing, collapse = ", "))
+    msg <- sprintf(
+      "[%s] Missing required column(s): %s",
+      table_label, paste(missing, collapse = ", ")
+    )
     if (stop_on_missing) stop(msg) else warning(msg)
   }
 
   report_rows <- list()
   for (col in names(data)) {
-    actual_class   <- paste(class(data[[col]]), collapse = "/")
+    actual_class <- paste(class(data[[col]]), collapse = "/")
     expected_class <- if (col %in% names(expected_types)) expected_types[[col]] else NA_character_
     type_ok <- if (!is.na(expected_class)) inherits(data[[col]], expected_class) else TRUE
-    n_na    <- sum(is.na(data[[col]]))
+    n_na <- sum(is.na(data[[col]]))
     n_total <- nrow(data)
-    pct_na  <- if (n_total > 0) round(100 * n_na / n_total, 1) else NA_real_
+    pct_na <- if (n_total > 0) round(100 * n_na / n_total, 1) else NA_real_
 
     report_rows[[length(report_rows) + 1L]] <- data.frame(
-      table         = table_label,
-      column        = col,
-      required      = col %in% required,
-      present       = TRUE,
-      actual_type   = actual_class,
+      table = table_label,
+      column = col,
+      required = col %in% required,
+      present = TRUE,
+      actual_type = actual_class,
       expected_type = if (!is.na(expected_class)) expected_class else "",
-      type_ok       = type_ok,
-      n_total       = n_total,
-      n_na          = n_na,
-      pct_na        = pct_na,
+      type_ok = type_ok,
+      n_total = n_total,
+      n_na = n_na,
+      pct_na = pct_na,
       stringsAsFactors = FALSE
     )
 
-    if (!type_ok)
-      warning(sprintf("[%s] Column '%s': expected class '%s', found '%s'.",
-                      table_label, col, expected_class, actual_class))
+    if (!type_ok) {
+      warning(sprintf(
+        "[%s] Column '%s': expected class '%s', found '%s'.",
+        table_label, col, expected_class, actual_class
+      ))
+    }
   }
 
   for (col in missing) {
     report_rows[[length(report_rows) + 1L]] <- data.frame(
-      table         = table_label,
-      column        = col,
-      required      = TRUE,
-      present       = FALSE,
-      actual_type   = NA_character_,
+      table = table_label,
+      column = col,
+      required = TRUE,
+      present = FALSE,
+      actual_type = NA_character_,
       expected_type = if (col %in% names(expected_types)) expected_types[[col]] else "",
-      type_ok       = FALSE,
-      n_total       = NA_integer_,
-      n_na          = NA_integer_,
-      pct_na        = NA_real_,
+      type_ok = FALSE,
+      n_total = NA_integer_,
+      n_na = NA_integer_,
+      pct_na = NA_real_,
       stringsAsFactors = FALSE
     )
   }
@@ -134,21 +143,24 @@ prep_check_keys <- function(data,
     return(invisible(NULL))
   }
 
-  raw          <- as.character(data[[key_col]])
+  raw <- as.character(data[[key_col]])
   placeholders <- c("", "NULL", "null", "NA", "N/A", "None", "none", "nan", "NaN")
-  is_missing   <- is.na(raw) | trimws(raw) %in% placeholders
-  n_total      <- length(raw)
-  n_missing    <- sum(is_missing)
-  pct_missing  <- round(100 * n_missing / max(n_total, 1), 1)
-  n_distinct   <- length(unique(raw[!is_missing]))
-  n_dup        <- sum(duplicated(raw[!is_missing]))
+  is_missing <- is.na(raw) | trimws(raw) %in% placeholders
+  n_total <- length(raw)
+  n_missing <- sum(is_missing)
+  pct_missing <- round(100 * n_missing / max(n_total, 1), 1)
+  n_distinct <- length(unique(raw[!is_missing]))
+  n_dup <- sum(duplicated(raw[!is_missing]))
   date_pair_checked <- admission_col %in% names(data) && culture_col %in% names(data)
   n_missing_both_dates <- NA_integer_
   pct_missing_both_dates <- NA_real_
 
-  if (pct_missing > warn_missing_pct)
-    warning(sprintf("[%s] Key '%s': %.1f%% missing/placeholder (%d of %d rows).",
-                    table_label, key_col, pct_missing, n_missing, n_total))
+  if (pct_missing > warn_missing_pct) {
+    warning(sprintf(
+      "[%s] Key '%s': %.1f%% missing/placeholder (%d of %d rows).",
+      table_label, key_col, pct_missing, n_missing, n_total
+    ))
+  }
 
   if (date_pair_checked) {
     admission_raw <- as.character(data[[admission_col]])
@@ -178,15 +190,15 @@ prep_check_keys <- function(data,
   ))
 
   invisible(data.frame(
-    table                  = table_label,
-    key_col                = key_col,
-    n_total                = n_total,
-    n_missing              = n_missing,
-    pct_missing            = pct_missing,
-    n_distinct             = n_distinct,
-    n_duplicated           = n_dup,
-    date_pair_checked      = date_pair_checked,
-    n_missing_both_dates   = n_missing_both_dates,
+    table = table_label,
+    key_col = key_col,
+    n_total = n_total,
+    n_missing = n_missing,
+    pct_missing = pct_missing,
+    n_distinct = n_distinct,
+    n_duplicated = n_dup,
+    date_pair_checked = date_pair_checked,
+    n_missing_both_dates = n_missing_both_dates,
     pct_missing_both_dates = pct_missing_both_dates,
     stringsAsFactors = FALSE
   ))
@@ -211,11 +223,11 @@ prep_check_keys <- function(data,
 #' @return A list with \code{data} (date-coerced) and \code{report} (check summary).
 #' @export
 prep_validate_table <- function(data,
-                                required_cols   = character(),
-                                key_col         = NULL,
-                                expected_types  = character(),
-                                date_cols       = NULL,
-                                table_label     = "table",
+                                required_cols = character(),
+                                key_col = NULL,
+                                expected_types = character(),
+                                date_cols = NULL,
+                                table_label = "table",
                                 stop_on_missing = TRUE) {
   col_report <- prep_check_columns(
     data            = data,
@@ -256,14 +268,16 @@ validate_required_fields <- function(data,
                                      allow_na = FALSE,
                                      min_completeness = 0.8) {
   validation_msgs <- character()
-  missing_cols    <- character()
+  missing_cols <- character()
   incomplete_cols <- data.frame()
 
   missing_cols <- setdiff(required_cols, names(data))
 
   if (length(missing_cols) > 0) {
-    msg <- sprintf("Missing required columns: %s",
-                   paste(missing_cols, collapse = ", "))
+    msg <- sprintf(
+      "Missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    )
     validation_msgs <- c(validation_msgs, msg)
   }
 
@@ -278,17 +292,19 @@ validate_required_fields <- function(data,
 
     if (any(incomplete)) {
       incomplete_cols <- data.frame(
-        column       = names(completeness)[incomplete],
+        column = names(completeness)[incomplete],
         completeness = completeness[incomplete],
-        n_missing    = sapply(names(completeness)[incomplete], function(col) {
+        n_missing = sapply(names(completeness)[incomplete], function(col) {
           sum(is.na(data[[col]]))
         }),
         stringsAsFactors = FALSE
       )
 
-      msg <- sprintf("Columns below %.0f%% completeness: %s",
-                     min_completeness * 100,
-                     paste(incomplete_cols$column, collapse = ", "))
+      msg <- sprintf(
+        "Columns below %.0f%% completeness: %s",
+        min_completeness * 100,
+        paste(incomplete_cols$column, collapse = ", ")
+      )
       validation_msgs <- c(validation_msgs, msg)
     }
   }
@@ -296,17 +312,19 @@ validate_required_fields <- function(data,
   is_valid <- length(missing_cols) == 0 && nrow(incomplete_cols) == 0
 
   result <- list(
-    valid          = is_valid,
-    missing_cols   = missing_cols,
+    valid = is_valid,
+    missing_cols = missing_cols,
     incomplete_cols = incomplete_cols,
-    messages       = validation_msgs,
-    n_rows         = nrow(data),
+    messages = validation_msgs,
+    n_rows = nrow(data),
     n_cols_checked = length(required_cols)
   )
 
   if (is_valid) {
-    message(sprintf("[v] Validation passed: All %d required columns present and complete",
-                    length(required_cols)))
+    message(sprintf(
+      "[v] Validation passed: All %d required columns present and complete",
+      length(required_cols)
+    ))
   } else {
     message("[x] Validation failed:")
     for (msg in validation_msgs) message(sprintf("  - %s", msg))
@@ -316,8 +334,9 @@ validate_required_fields <- function(data,
     }
   }
 
-  if (!is_valid && stop_on_failure)
+  if (!is_valid && stop_on_failure) {
     stop("Data validation failed. See messages above.")
+  }
 
   return(result)
 }
@@ -337,30 +356,36 @@ validate_required_fields <- function(data,
 #' @return List with quality assessment.
 #' @export
 validate_data_quality <- function(data,
-                                  min_rows        = 10,
+                                  min_rows = 10,
                                   max_missing_pct = 50,
-                                  required_cols   = c("patient_id", "organism_normalized"),
+                                  required_cols = c("patient_id", "organism_normalized"),
                                   stop_on_failure = FALSE) {
   quality_issues <- character()
 
   n_rows <- nrow(data)
-  if (n_rows < min_rows)
-    quality_issues <- c(quality_issues,
-                        sprintf("Dataset too small: %d rows (minimum: %d)", n_rows, min_rows))
+  if (n_rows < min_rows) {
+    quality_issues <- c(
+      quality_issues,
+      sprintf("Dataset too small: %d rows (minimum: %d)", n_rows, min_rows)
+    )
+  }
 
   missing_req <- setdiff(required_cols, names(data))
-  if (length(missing_req) > 0)
-    quality_issues <- c(quality_issues,
-                        sprintf("Missing required columns: %s", paste(missing_req, collapse = ", ")))
+  if (length(missing_req) > 0) {
+    quality_issues <- c(
+      quality_issues,
+      sprintf("Missing required columns: %s", paste(missing_req, collapse = ", "))
+    )
+  }
 
   completeness <- sapply(names(data), function(col) {
     100 * sum(!is.na(data[[col]])) / n_rows
   })
 
   col_completeness <- data.frame(
-    column          = names(completeness),
+    column = names(completeness),
     completeness_pct = as.numeric(completeness),
-    n_missing       = sapply(names(data), function(col) sum(is.na(data[[col]]))),
+    n_missing = sapply(names(data), function(col) sum(is.na(data[[col]]))),
     stringsAsFactors = FALSE
   ) %>%
     dplyr::arrange(completeness_pct)
@@ -368,17 +393,27 @@ validate_data_quality <- function(data,
   poor_cols <- col_completeness %>%
     dplyr::filter(completeness_pct < (100 - max_missing_pct))
 
-  if (nrow(poor_cols) > 0)
-    quality_issues <- c(quality_issues,
-                        sprintf("%d columns exceed %.0f%% missing threshold: %s",
-                                nrow(poor_cols), max_missing_pct,
-                                paste(poor_cols$column[1:min(5, nrow(poor_cols))], collapse = ", ")))
+  if (nrow(poor_cols) > 0) {
+    quality_issues <- c(
+      quality_issues,
+      sprintf(
+        "%d columns exceed %.0f%% missing threshold: %s",
+        nrow(poor_cols), max_missing_pct,
+        paste(poor_cols$column[1:min(5, nrow(poor_cols))], collapse = ", ")
+      )
+    )
+  }
 
   overall_completeness <- sum(!is.na(data)) / (nrow(data) * ncol(data))
-  if (overall_completeness < 0.5)
-    quality_issues <- c(quality_issues,
-                        sprintf("Overall completeness too low: %.1f%% (target: >=50%%)",
-                                overall_completeness * 100))
+  if (overall_completeness < 0.5) {
+    quality_issues <- c(
+      quality_issues,
+      sprintf(
+        "Overall completeness too low: %.1f%% (target: >=50%%)",
+        overall_completeness * 100
+      )
+    )
+  }
 
   passes_quality <- length(quality_issues) == 0
 
@@ -392,8 +427,10 @@ validate_data_quality <- function(data,
   )
 
   if (passes_quality) {
-    message(sprintf("[v] Quality check passed: %d rows x %d cols, %.1f%% complete",
-                    n_rows, ncol(data), overall_completeness * 100))
+    message(sprintf(
+      "[v] Quality check passed: %d rows x %d cols, %.1f%% complete",
+      n_rows, ncol(data), overall_completeness * 100
+    ))
   } else {
     message("[x] Quality issues detected:")
     for (issue in quality_issues) message(sprintf("  - %s", issue))
@@ -423,10 +460,10 @@ validate_data_quality <- function(data,
 #' @return Data frame with \code{.provenance} attribute attached.
 #' @export
 prep_log_source <- function(data,
-                            study_type  = "generic",
+                            study_type = "generic",
                             centre_name = NULL,
-                            file_path   = NULL,
-                            sheet_name  = NULL) {
+                            file_path = NULL,
+                            sheet_name = NULL) {
   provenance <- list(
     centre_name   = centre_name %||% NA_character_,
     study_type    = study_type,
@@ -492,8 +529,9 @@ prep_inventory_columns <- function(data) {
 #' @return Tibble: column | present_in (comma-separated centres) | missing_from | n_centres_present
 #' @export
 prep_detect_schema_drift <- function(data_list, reference_centre = NULL) {
-  if (!is.list(data_list) || length(data_list) == 0L)
+  if (!is.list(data_list) || length(data_list) == 0L) {
     stop("`data_list` must be a non-empty named list of data frames.")
+  }
 
   centre_names <- names(data_list)
   if (is.null(centre_names)) centre_names <- paste0("centre_", seq_along(data_list))
@@ -510,18 +548,23 @@ prep_detect_schema_drift <- function(data_list, reference_centre = NULL) {
     all_cols %in% names(data_list[[ctr]])
   })
 
-  if (is.vector(presence_matrix))
-    presence_matrix <- matrix(presence_matrix, nrow = length(all_cols),
-                              dimnames = list(all_cols, centre_names))
+  if (is.vector(presence_matrix)) {
+    presence_matrix <- matrix(presence_matrix,
+      nrow = length(all_cols),
+      dimnames = list(all_cols, centre_names)
+    )
+  }
 
   result <- tibble::tibble(
-    column           = all_cols,
+    column = all_cols,
     n_centres_present = rowSums(presence_matrix),
-    present_in       = apply(presence_matrix, 1, function(x)
-      paste(centre_names[x], collapse = ", ")),
-    missing_from     = apply(presence_matrix, 1, function(x)
-      paste(centre_names[!x], collapse = ", ")),
-    is_universal     = rowSums(presence_matrix) == length(centre_names),
+    present_in = apply(presence_matrix, 1, function(x) {
+      paste(centre_names[x], collapse = ", ")
+    }),
+    missing_from = apply(presence_matrix, 1, function(x) {
+      paste(centre_names[!x], collapse = ", ")
+    }),
+    is_universal = rowSums(presence_matrix) == length(centre_names),
     is_reference_col = all_cols %in% ref_cols
   ) %>%
     dplyr::arrange(n_centres_present, column)

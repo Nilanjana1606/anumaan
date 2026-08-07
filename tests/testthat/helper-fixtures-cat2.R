@@ -48,8 +48,10 @@ cat2_intake_minimal_valid <- function() {
       "Gentamicin", "Cefepime", "Amikacin", "Ceftriaxone", "Vancomycin",
       "Colistin", "Levofloxacin", "Teicoplanin", "Meropenem", "Penicillin"
     ),
-    antibiotic_value = c("R", "S", "S", "I", "R", "S", "R", "S", "S", "I",
-                         "R", "S", "S", "R", "S", "I", "R", "S", "S", "S"),
+    antibiotic_value = c(
+      "R", "S", "S", "I", "R", "S", "R", "S", "S", "I",
+      "R", "S", "S", "R", "S", "I", "R", "S", "S", "S"
+    ),
     final_outcome = c(
       "Survived", "Died", "Survived", "Survived", "Died",
       "Survived", "Survived", "Died", "Survived", "Survived",

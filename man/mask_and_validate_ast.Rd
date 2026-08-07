@@ -65,7 +65,7 @@ when \code{refit = TRUE}; default to the original fit's
 
 \item{n_gibbs_burnin, n_gibbs_kept}{Integer. Gibbs burn-in/kept-iteration
 counts forwarded to \code{.gibbs_conditional_profile_probs()} for
-correlated-residual fits' masked-cell prediction (Commit 6). Ignored for
+correlated-residual fits' masked-cell prediction. Ignored for
 identity-residual fits. Default \code{10L}/\code{20L}.}
 }
 \value{
@@ -114,7 +114,7 @@ only observed (non-\code{NA}) cells are ever candidates; and no event is
 ever left with zero observed classes across \emph{all} \code{class_cols}
 (which would otherwise silently drop that event from a refit).
 
-\strong{Prediction} (Commit 6): for \code{fitted_model$residual_structure
+\strong{Prediction}: for \code{fitted_model$residual_structure
 == "identity"}, \eqn{\Phi(\mu_{ed})} is the exact model-implied
 probability for a masked cell regardless of what else is known about that
 event (classes are conditionally independent given \eqn{\mu}). For

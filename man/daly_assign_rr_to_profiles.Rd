@@ -16,7 +16,7 @@ daly_assign_rr_to_profiles(
 \arguments{
 \item{profiles_output}{Named list from compute_resistance_profiles().}
 
-\item{rr_table}{Data frame from daly_fit_los_rr() or daly_fit_los_rr_nima().
+\item{rr_table}{Data frame from daly_fit_los_rr() or daly_fit_los_rr_distribution().
 Must have columns pathogen_col, class_col, rr_col, and optionally
 CI_lower / CI_upper.}
 
@@ -41,4 +41,10 @@ determines the profile-level RR_kd_LOS using the GBD max rule:
             = 1                                      [if d = all-susceptible]
 where C_R(d) = \{c : d_c = 1\}.
 The CI reported for each profile is that of its dominant (max-RR) class.
+}
+\details{
+If \code{rr_table} was fit with a \code{syndrome_name} filter, its RR
+values are syndrome-specific but get applied here to all profiles of a
+pathogen -- i.e. it assumes syndrome-invariant LOS prolongation. Refit
+with \code{syndrome_name = NULL} for a RR pooled across syndromes.
 }

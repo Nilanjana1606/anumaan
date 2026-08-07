@@ -41,13 +41,17 @@ test_that("prep_standardize_specimens: stewardship specimen additions classify c
   out <- prep_standardize_specimens(dat)
   expect_equal(
     out$specimen_normalized,
-    c("Instrument", "Lung aspirate", "Brain abscess",
-      "Superficial Biopsy", "Hair", "Lymph node")
+    c(
+      "Instrument", "Lung aspirate", "Brain abscess",
+      "Superficial Biopsy", "Hair", "Lymph node"
+    )
   )
   expect_equal(
     out$sterile_classification,
-    c("Others/Ambiguous", "Sterile", "Sterile",
-      "Others/Ambiguous", "Non-Sterile", "Sterile")
+    c(
+      "Others/Ambiguous", "Sterile", "Sterile",
+      "Others/Ambiguous", "Non-Sterile", "Sterile"
+    )
   )
 })
 

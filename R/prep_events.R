@@ -48,38 +48,44 @@
 #' @return Original data frame with \code{event_id} column added.
 #' @export
 prep_create_event_ids <- function(data,
-                                   patient_col    = "patient_id",
-                                   date_col       = "date_of_culture",
-                                   organism_col   = "organism_normalized",
-                                   specimen_col   = "specimen_type",
-                                   antibiotic_col = "antibiotic_name",
-                                   value_col      = "antibiotic_value",
-                                   gap_days       = 14,
-                                   culture_col    = "id_organisminfo",
-                                   admission_col  = "date_of_admission",
-                                   keep_event_culture = c("all", "closest_to_admission")) {
+                                  patient_col = "patient_id",
+                                  date_col = "date_of_culture",
+                                  organism_col = "organism_normalized",
+                                  specimen_col = "specimen_type",
+                                  antibiotic_col = "antibiotic_name",
+                                  value_col = "antibiotic_value",
+                                  gap_days = 14,
+                                  culture_col = "id_organisminfo",
+                                  admission_col = "date_of_admission",
+                                  keep_event_culture = c("all", "closest_to_admission")) {
   keep_event_culture <- match.arg(keep_event_culture)
   missing_cols <- setdiff(c(patient_col, date_col, organism_col), names(data))
-  if (length(missing_cols) > 0)
+  if (length(missing_cols) > 0) {
     stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
+  }
 
-  use_specimen   <- specimen_col   %in% names(data)
+  use_specimen <- specimen_col %in% names(data)
   use_antibiogram <- antibiotic_col %in% names(data) && value_col %in% names(data)
   use_culture <- culture_col %in% names(data)
   use_admission <- admission_col %in% names(data)
 
-  if (!use_specimen)
+  if (!use_specimen) {
     message(sprintf("Column '%s' not found -- events created without specimen matching.", specimen_col))
-  if (!use_antibiogram)
+  }
+  if (!use_antibiogram) {
     message("Antibiotic columns not found -- events created without antibiogram comparison.")
-  if (keep_event_culture == "closest_to_admission" && !use_admission)
-    stop(sprintf("Column '%s' not found -- required when keep_event_culture = 'closest_to_admission'.",
-                 admission_col), call. = FALSE)
+  }
+  if (keep_event_culture == "closest_to_admission" && !use_admission) {
+    stop(sprintf(
+      "Column '%s' not found -- required when keep_event_culture = 'closest_to_admission'.",
+      admission_col
+    ), call. = FALSE)
+  }
 
   message(sprintf("Creating events (gap threshold: >%d days) ...", gap_days))
 
-  data$.pt  <- as.character(data[[patient_col]])
-  data$.dt  <- as.Date(data[[date_col]])
+  data$.pt <- as.character(data[[patient_col]])
+  data$.dt <- as.Date(data[[date_col]])
   data$.org <- trimws(tolower(as.character(data[[organism_col]])))
   data$.spc <- if (use_specimen) trimws(tolower(as.character(data[[specimen_col]]))) else "unknown"
   data$.culture_key <- if (use_culture) {
@@ -88,7 +94,7 @@ prep_create_event_ids <- function(data,
     paste(data$.pt, data$.dt, data$.spc, data$.org, sep = "||")
   }
 
-  data$.pt[is.na(data$.pt)]   <- "__NA__"
+  data$.pt[is.na(data$.pt)] <- "__NA__"
   data$.org[is.na(data$.org)] <- "__NA__"
   data$.spc[is.na(data$.spc)] <- "__NA__"
   missing_culture_key <- is.na(data$.culture_key) | !nzchar(data$.culture_key)
@@ -129,17 +135,17 @@ prep_create_event_ids <- function(data,
     dplyr::group_by(.pt, .org, .spc) %>%
     dplyr::arrange(.dt, .by_group = TRUE) %>%
     dplyr::mutate(
-      .lag_abg        = dplyr::lag(.abg_key),
-      .ep_start       = dplyr::first(.dt),
+      .lag_abg = dplyr::lag(.abg_key),
+      .ep_start = dplyr::first(.dt),
       .gap_from_start = as.numeric(difftime(.dt, .ep_start, units = "days")),
       .new_ep = dplyr::case_when(
-        dplyr::row_number() == 1                                         ~ TRUE,
-        .gap_from_start > gap_days                                       ~ TRUE,
-        !is.na(.abg_key) & !is.na(.lag_abg) & .abg_key != .lag_abg      ~ TRUE,
-        TRUE                                                              ~ FALSE
+        dplyr::row_number() == 1 ~ TRUE,
+        .gap_from_start > gap_days ~ TRUE,
+        !is.na(.abg_key) & !is.na(.lag_abg) & .abg_key != .lag_abg ~ TRUE,
+        TRUE ~ FALSE
       ),
       .chain_seq = cumsum(.new_ep),
-      .prov_key  = paste(.pt, .org, .spc, .chain_seq, sep = "||")
+      .prov_key = paste(.pt, .org, .spc, .chain_seq, sep = "||")
     ) %>%
     dplyr::ungroup()
 
@@ -157,7 +163,7 @@ prep_create_event_ids <- function(data,
   patient_event_index <- event_meta %>%
     dplyr::group_by(.pt) %>%
     dplyr::mutate(
-      .ep_idx  = dplyr::row_number(),
+      .ep_idx = dplyr::row_number(),
       event_id = paste0(
         .pt, "_", .spc, "_",
         format(.ep_start, "%Y%m%d"), "_",
@@ -215,20 +221,26 @@ prep_create_event_ids <- function(data,
       dplyr::filter(is.na(event_id) | is.na(.event_keep_culture) | .culture_key == .event_keep_culture)
   }
 
-  n_patients  <- dplyr::n_distinct(data[[patient_col]], na.rm = TRUE)
-  n_events    <- dplyr::n_distinct(data[["event_id"]], na.rm = TRUE)
+  n_patients <- dplyr::n_distinct(data[[patient_col]], na.rm = TRUE)
+  n_events <- dplyr::n_distinct(data[["event_id"]], na.rm = TRUE)
   n_unmatched <- sum(is.na(data[["event_id"]]))
 
-  message(sprintf("Done: %d patients -> %d events (%.2f per patient)",
-                  n_patients, n_events, n_events / max(n_patients, 1)))
-  if (n_unmatched > 0)
+  message(sprintf(
+    "Done: %d patients -> %d events (%.2f per patient)",
+    n_patients, n_events, n_events / max(n_patients, 1)
+  ))
+  if (n_unmatched > 0) {
     message(sprintf("Warning: %d rows have no event_id (join miss).", n_unmatched))
+  }
 
-  tmp_cols <- intersect(names(data), c(".pt", ".dt", ".spc", ".org", ".abx", ".val",
-                                       ".culture_key", ".adm_dt", ".culture_distance",
-                                       ".event_keep_culture", ".event_keep_date"))
-  if (length(tmp_cols) > 0)
+  tmp_cols <- intersect(names(data), c(
+    ".pt", ".dt", ".spc", ".org", ".abx", ".val",
+    ".culture_key", ".adm_dt", ".culture_distance",
+    ".event_keep_culture", ".event_keep_date"
+  ))
+  if (length(tmp_cols) > 0) {
     data <- data %>% dplyr::select(-dplyr::all_of(tmp_cols))
+  }
 
   return(data)
 }
@@ -258,21 +270,23 @@ prep_create_event_ids <- function(data,
 #' @return Deduplicated data frame.
 #' @export
 prep_deduplicate_events <- function(data,
-                                     event_col      = "event_id",
-                                     organism_col   = "organism_normalized",
-                                     antibiotic_col = "antibiotic_normalized",
-                                     key_cols       = NULL,
-                                     keep           = "first") {
-  if (!keep %in% c("first", "last", "none", "all"))
+                                    event_col = "event_id",
+                                    organism_col = "organism_normalized",
+                                    antibiotic_col = "antibiotic_normalized",
+                                    key_cols = NULL,
+                                    keep = "first") {
+  if (!keep %in% c("first", "last", "none", "all")) {
     stop("keep must be 'first', 'last', 'none', or 'all'")
+  }
 
   n_before <- nrow(data)
 
   # --- Generic mode (key_cols supplied) ---
   if (!is.null(key_cols)) {
     missing_cols <- setdiff(key_cols, names(data))
-    if (length(missing_cols) > 0)
+    if (length(missing_cols) > 0) {
       stop(sprintf("key_cols not found in data: %s", paste(missing_cols, collapse = ", ")))
+    }
 
     df_key <- data[, key_cols, drop = FALSE]
     if (keep == "none") {
@@ -281,20 +295,26 @@ prep_deduplicate_events <- function(data,
       is_dup <- duplicated(df_key, fromLast = (keep == "last"))
     }
     n_dup <- sum(is_dup)
-    if (n_dup > 0)
-      message(sprintf("[prep_deduplicate_events] Found %d duplicate rows (%.1f%%).",
-                      n_dup, 100 * n_dup / n_before))
+    if (n_dup > 0) {
+      message(sprintf(
+        "[prep_deduplicate_events] Found %d duplicate rows (%.1f%%).",
+        n_dup, 100 * n_dup / n_before
+      ))
+    }
     data <- data[!is_dup, ]
-    message(sprintf("Deduplication: %d rows removed (%d -> %d, %.1f%% retained)",
-                    n_before - nrow(data), n_before, nrow(data),
-                    100 * nrow(data) / n_before))
+    message(sprintf(
+      "Deduplication: %d rows removed (%d -> %d, %.1f%% retained)",
+      n_before - nrow(data), n_before, nrow(data),
+      100 * nrow(data) / n_before
+    ))
     return(data)
   }
 
   # --- Event-aware mode ---
   missing_cols <- setdiff(c(event_col, organism_col, antibiotic_col), names(data))
-  if (length(missing_cols) > 0)
+  if (length(missing_cols) > 0) {
     stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
+  }
 
   data <- data %>%
     dplyr::group_by(
@@ -328,12 +348,15 @@ prep_deduplicate_events <- function(data,
 
   data <- data %>% dplyr::select(-.dup_rank, -.is_dup)
 
-  n_after   <- nrow(data)
+  n_after <- nrow(data)
   n_removed <- n_before - n_after
-  message(sprintf("Deduplication: %d rows removed (%d -> %d, %.1f%% retained)",
-                  n_removed, n_before, n_after, 100 * n_after / n_before))
-  if (n_duplicates > 0)
+  message(sprintf(
+    "Deduplication: %d rows removed (%d -> %d, %.1f%% retained)",
+    n_removed, n_before, n_after, 100 * n_after / n_before
+  ))
+  if (n_duplicates > 0) {
     message(sprintf("  %d duplicate antibiotic tests removed", n_duplicates))
+  }
 
   return(data)
 }
@@ -368,14 +391,16 @@ prep_deduplicate_events <- function(data,
 #' @return Data frame with \code{readmission_class} column added.
 #' @export
 prep_flag_readmission <- function(data,
-                                   patient_col     = "patient_id",
-                                   admission_col   = "admission_date",
-                                   gap_linked_days = 30,
-                                   gap_new_days    = 90) {
+                                  patient_col = "patient_id",
+                                  admission_col = "admission_date",
+                                  gap_linked_days = 30,
+                                  gap_new_days = 90) {
   missing_cols <- setdiff(c(patient_col, admission_col), names(data))
   if (length(missing_cols) > 0) {
-    warning(sprintf("[prep_flag_readmission] Column(s) not found: %s. Skipping.",
-                    paste(missing_cols, collapse = ", ")))
+    warning(sprintf(
+      "[prep_flag_readmission] Column(s) not found: %s. Skipping.",
+      paste(missing_cols, collapse = ", ")
+    ))
     data$readmission_class <- NA_character_
     return(data)
   }
@@ -387,14 +412,14 @@ prep_flag_readmission <- function(data,
   data_sorted <- data_sorted %>%
     dplyr::group_by(!!rlang::sym(patient_col)) %>%
     dplyr::mutate(
-      .adm_date   = as.Date(!!rlang::sym(admission_col)),
-      .prev_adm   = dplyr::lag(.adm_date),
-      .gap_days   = as.numeric(difftime(.adm_date, .prev_adm, units = "days")),
+      .adm_date = as.Date(!!rlang::sym(admission_col)),
+      .prev_adm = dplyr::lag(.adm_date),
+      .gap_days = as.numeric(difftime(.adm_date, .prev_adm, units = "days")),
       readmission_class = dplyr::case_when(
-        dplyr::row_number() == 1        ~ "index",
-        .gap_days <= gap_linked_days    ~ "linked_readmission",
-        .gap_days <= gap_new_days       ~ "new_readmission",
-        TRUE                             ~ "late_readmission"
+        dplyr::row_number() == 1 ~ "index",
+        .gap_days <= gap_linked_days ~ "linked_readmission",
+        .gap_days <= gap_new_days ~ "new_readmission",
+        TRUE ~ "late_readmission"
       )
     ) %>%
     dplyr::ungroup() %>%
@@ -431,11 +456,11 @@ prep_classify_readmission <- function(data, readmission_col = "readmission_class
   val_up <- toupper(trimws(as.character(data[[readmission_col]])))
 
   data[[readmission_col]] <- dplyr::case_when(
-    val_up %in% c("INDEX", "FIRST", "INITIAL", "PRIMARY")                    ~ "index",
-    val_up %in% c("LINKED_READMISSION", "LINKED", "EARLY", "SAME_EPISODE")   ~ "linked_readmission",
-    val_up %in% c("NEW_READMISSION", "NEW", "READMIT")                       ~ "new_readmission",
-    val_up %in% c("LATE_READMISSION", "LATE")                                ~ "late_readmission",
-    TRUE                                                                       ~ NA_character_
+    val_up %in% c("INDEX", "FIRST", "INITIAL", "PRIMARY") ~ "index",
+    val_up %in% c("LINKED_READMISSION", "LINKED", "EARLY", "SAME_EPISODE") ~ "linked_readmission",
+    val_up %in% c("NEW_READMISSION", "NEW", "READMIT") ~ "new_readmission",
+    val_up %in% c("LATE_READMISSION", "LATE") ~ "late_readmission",
+    TRUE ~ NA_character_
   )
 
   dist <- table(data[[readmission_col]], useNA = "ifany")

@@ -29,8 +29,7 @@ daly_fit_los_rr(
   max_los = 365,
   min_n = 20L,
   min_resistant = 5L,
-  min_susceptible = 5L,
-  add_centre_fe = TRUE
+  min_susceptible = 5L
 )
 }
 \arguments{
@@ -87,10 +86,6 @@ per pathogen-class-hospital combination (hospital-specific RR).}
 \item{min_resistant}{Integer. Minimum resistant patients required.}
 
 \item{min_susceptible}{Integer. Minimum susceptible patients required.}
-
-\item{add_centre_fe}{Logical. Retained for backward compatibility; ignored
-when \code{facility_col} is provided (per-hospital fitting is used) or
-\code{NULL} (no facility information available).}
 }
 \value{
 Data frame with pathogen, antibiotic_class, hospital (NA when

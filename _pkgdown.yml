@@ -244,6 +244,21 @@ reference:
   - compute_event_profile_probabilities
   - aggregate_profiles_for_daly
   - plot_probit_diagnostics
+  - prepare_random_effects
+  - re_contribution
+  - summarize_fit_correlation_matrix
+
+- title: "Resistance profile validation"
+  desc: >
+    Observed-versus-model calibration checks (marginal, pairwise, and
+    complete-profile) and masked-AST holdout validation for fitted
+    resistance-profile models.
+  contents:
+  - validate_marginal_calibration
+  - validate_pairwise_calibration
+  - validate_complete_profile_calibration
+  - mask_and_validate_ast
+  - compute_profile_validation_status
 
 - title: "Burden estimation (YLL/YLD/DALY)"
   desc: "GBD-methodology burden calculations"

@@ -56,7 +56,6 @@ SystemRequirements: Python (>= 3.8) with the 'alethia' package for
 Suggests:
     bayesplot (>= 1.10.0),
     cmdstanr (>= 0.7.0),
-    lme4 (>= 1.1.0),
     testthat (>= 3.0.0),
     knitr,
     rmarkdown,

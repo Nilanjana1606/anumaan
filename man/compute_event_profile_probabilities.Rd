@@ -64,7 +64,7 @@ exact product of per-class Bernoulli probabilities -- no latent-variable
 simulation is used, so there is no added latent-profile-simulation noise.
 Rows carry \code{profile_generation_method = "conditional_analytic_identity"}.
 
-\strong{Correlated residual structure} (Commit 6): the missing latent
+\strong{Correlated residual structure}: the missing latent
 dimensions are sampled conditional on the observed resistance SIGNS of the
 tested classes via a Gibbs sampler on the truncated multivariate normal --
 see \code{.gibbs_conditional_profile_probs()}. This replaces the earlier

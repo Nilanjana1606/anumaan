@@ -23,31 +23,36 @@
 #'
 #' @examples
 #' df <- data.frame(center_name = c("AFMC", "SGRH", "Unknown"))
-#' m  <- c(AFMC = "Government", SGRH = "Private")
+#' m <- c(AFMC = "Government", SGRH = "Private")
 #' prep_assign_facility_type(df, mapping = m)
 #'
 #' @export
 prep_assign_facility_type <- function(data,
-                                      facility_col     = "center_name",
+                                      facility_col = "center_name",
                                       mapping,
-                                      new_col          = "facility_type",
-                                      default          = NA_character_,
+                                      new_col = "facility_type",
+                                      default = NA_character_,
                                       case_insensitive = TRUE) {
-  if (!is.data.frame(data))
+  if (!is.data.frame(data)) {
     stop("`data` must be a data frame.")
-  if (!facility_col %in% names(data))
+  }
+  if (!facility_col %in% names(data)) {
     stop(sprintf("Column '%s' not found in data.", facility_col))
-  if (missing(mapping) || is.null(names(mapping)) || length(mapping) == 0L)
+  }
+  if (missing(mapping) || is.null(names(mapping)) || length(mapping) == 0L) {
     stop("`mapping` must be a non-empty named character vector (names = facilities).")
+  }
 
   key <- as.character(data[[facility_col]])
 
   if (isTRUE(case_insensitive)) {
-    lk  <- stats::setNames(unname(as.character(mapping)),
-                           tolower(trimws(names(mapping))))
+    lk <- stats::setNames(
+      unname(as.character(mapping)),
+      tolower(trimws(names(mapping)))
+    )
     out <- unname(lk[tolower(trimws(key))])
   } else {
-    lk  <- stats::setNames(unname(as.character(mapping)), names(mapping))
+    lk <- stats::setNames(unname(as.character(mapping)), names(mapping))
     out <- unname(lk[key])
   }
 

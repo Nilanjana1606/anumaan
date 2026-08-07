@@ -1,4 +1,3 @@
-# report.R
 # Data provenance tracking and reporting for AMR preprocessing
 
 #' Generate Preprocessing Report
@@ -44,48 +43,39 @@ generate_preprocessing_report <- function(raw_data,
     )
   )
 
-  # Section 1: Raw Data Summary
   report$raw_data_summary <- summarize_raw_data(raw_data)
 
-  # Section 2: Column Mapping Details
   report$column_mapping <- summarize_column_mapping(
     raw_data,
     processed_data,
     preprocessing_log$column_mapping
   )
 
-  # Section 3: Data Transformation Summary
   report$transformations <- summarize_transformations(
     raw_data,
     processed_data,
     preprocessing_log
   )
 
-  # Section 4: Data Quality Metrics
   report$data_quality <- summarize_data_quality(
     raw_data,
     processed_data,
     include_plots = include_plots
   )
 
-  # Section 5: Configuration Used
   report$config_used <- config
 
-  # Section 6: Processing Statistics
   report$processing_stats <- compute_processing_statistics(
     raw_data,
     processed_data,
     preprocessing_log
   )
 
-  # Section 7: Warnings and Issues
   report$warnings <- preprocessing_log$warnings %||% list()
   report$errors <- preprocessing_log$errors %||% list()
 
-  # Add class
   class(report) <- c("amr_preprocessing_report", "list")
 
-  # Save to file if requested
   if (!is.null(output_file)) {
     export_report(report, output_file)
     message(sprintf("Report saved to: %s", output_file))

@@ -29,13 +29,13 @@
 #' @export
 prep_clean_ast_values <- function(data,
                                   value_col = "antibiotic_value",
-                                  strict    = FALSE) {
+                                  strict = FALSE) {
   if (!value_col %in% names(data)) {
     stop(sprintf("Column '%s' not found in data", value_col))
   }
 
-  n_before         <- nrow(data)
-  n_unique_before  <- dplyr::n_distinct(data[[value_col]], na.rm = TRUE)
+  n_before <- nrow(data)
+  n_unique_before <- dplyr::n_distinct(data[[value_col]], na.rm = TRUE)
 
   message(sprintf("Cleaning antibiotic values: %d unique values found", n_unique_before))
 
@@ -48,33 +48,28 @@ prep_clean_ast_values <- function(data,
       NA_character_
     )
   } else {
-    data[[value_col]] <- sapply(data$temp_value_clean, function(val) {
-      if (is.na(val) || val == "") return(NA_character_)
+    val_upper <- toupper(data$temp_value_clean)
+    first_char <- substr(val_upper, 1, 1)
 
-      val_upper  <- toupper(val)
-      first_char <- substr(val_upper, 1, 1)
-      if (first_char %in% c("S", "I", "R")) return(first_char)
-
-      if (grepl("^R[\\s(]|^R$", val_upper, perl = TRUE)) return("R")
-      if (grepl("^S[\\s(]|^S$", val_upper, perl = TRUE)) return("S")
-      if (grepl("^I[\\s(]|^I$", val_upper, perl = TRUE)) return("I")
-
-      if (grepl("resistant",   val_upper)) return("R")
-      if (grepl("susceptible|sensitive", val_upper)) return("S")
-      if (grepl("intermediate", val_upper)) return("I")
-
-      NA_character_
-    }, USE.NAMES = FALSE)
+    data[[value_col]] <- dplyr::case_when(
+      is.na(val_upper) | val_upper == "" ~ NA_character_,
+      first_char %in% c("S", "I", "R") ~ first_char,
+      grepl("RESISTANT", val_upper) ~ "R",
+      grepl("SUSCEPTIBLE|SENSITIVE", val_upper) ~ "S",
+      grepl("INTERMEDIATE", val_upper) ~ "I",
+      TRUE ~ NA_character_
+    )
   }
 
   data$temp_value_clean <- NULL
 
   n_unique_after <- dplyr::n_distinct(data[[value_col]], na.rm = TRUE)
-  n_na           <- sum(is.na(data[[value_col]]))
+  n_na <- sum(is.na(data[[value_col]]))
 
   message(sprintf("Cleaned: %d unique values -> %d (S/I/R)", n_unique_before, n_unique_after))
-  if (n_na > 0)
+  if (n_na > 0) {
     message(sprintf("[!] %d values could not be parsed (%.1f%%)", n_na, 100 * n_na / n_before))
+  }
 
   message("\nValue distribution:")
   print(table(data[[value_col]], useNA = "ifany"))
@@ -101,11 +96,11 @@ prep_clean_ast_values <- function(data,
 #' @export
 prep_recode_intermediate_ast <- function(data,
                                          antibiotic_col = "antibiotic_name",
-                                         value_col      = "antibiotic_value",
-                                         colistin_to_s  = TRUE,
-                                         others_to_r    = TRUE) {
+                                         value_col = "antibiotic_value",
+                                         colistin_to_s = TRUE,
+                                         others_to_r = TRUE) {
   if (!antibiotic_col %in% names(data)) stop(sprintf("Column '%s' not found", antibiotic_col))
-  if (!value_col      %in% names(data)) stop(sprintf("Column '%s' not found", value_col))
+  if (!value_col %in% names(data)) stop(sprintf("Column '%s' not found", value_col))
 
   n_intermediate_before <- sum(data[[value_col]] == "I", na.rm = TRUE)
 
@@ -114,12 +109,12 @@ prep_recode_intermediate_ast <- function(data,
     return(data)
   }
 
-  data$temp_value      <- data[[value_col]]
+  data$temp_value <- data[[value_col]]
   data$temp_antibiotic <- tolower(trimws(data[[antibiotic_col]]))
 
   if (colistin_to_s) {
     idx <- which(data$temp_value == "I" &
-                   grepl("colistin", data$temp_antibiotic, ignore.case = TRUE))
+      grepl("colistin", data$temp_antibiotic, ignore.case = TRUE))
     if (length(idx) > 0) {
       data$temp_value[idx] <- "S"
       message(sprintf("Recoded %d Colistin I -> S", length(idx)))
@@ -128,15 +123,15 @@ prep_recode_intermediate_ast <- function(data,
 
   if (others_to_r) {
     idx <- which(data$temp_value == "I" &
-                   !grepl("colistin", data$temp_antibiotic, ignore.case = TRUE))
+      !grepl("colistin", data$temp_antibiotic, ignore.case = TRUE))
     if (length(idx) > 0) {
       data$temp_value[idx] <- "R"
       message(sprintf("Recoded %d non-Colistin I -> R", length(idx)))
     }
   }
 
-  data[[value_col]]    <- data$temp_value
-  data$temp_value      <- NULL
+  data[[value_col]] <- data$temp_value
+  data$temp_value <- NULL
   data$temp_antibiotic <- NULL
 
   n_intermediate_after <- sum(data[[value_col]] == "I", na.rm = TRUE)
@@ -172,10 +167,10 @@ prep_recode_intermediate_ast <- function(data,
 #'   \code{intermediate_recoded} columns added.
 #' @export
 prep_harmonize_ast <- function(data,
-                                antibiotic_col = "antibiotic_name_std",
-                                ast_col        = "ast_value_raw",
-                                colistin_to_s  = TRUE,
-                                others_to_r    = TRUE) {
+                               antibiotic_col = "antibiotic_name_std",
+                               ast_col = "ast_value_raw",
+                               colistin_to_s = TRUE,
+                               others_to_r = TRUE) {
   if (!ast_col %in% names(data)) {
     warning(sprintf("Column '%s' not found. Skipping AST harmonization.", ast_col))
     data$ast_value_harmonized <- NA_character_
@@ -184,8 +179,9 @@ prep_harmonize_ast <- function(data,
   }
 
   # Preserve raw values
-  if (!"ast_value_raw" %in% names(data))
+  if (!"ast_value_raw" %in% names(data)) {
     data$ast_value_raw <- data[[ast_col]]
+  }
 
   work_col <- "ast_value_harmonized"
 
@@ -218,10 +214,12 @@ prep_harmonize_ast <- function(data,
   data$intermediate_recoded <- had_intermediate & !is.na(data[[work_col]]) &
     data[[work_col]] != "I"
 
-  n_harm    <- sum(!is.na(data[[work_col]]))
+  n_harm <- sum(!is.na(data[[work_col]]))
   n_recoded <- sum(data$intermediate_recoded, na.rm = TRUE)
-  message(sprintf("[prep_harmonize_ast] %d/%d rows harmonized; %d intermediate values recoded.",
-                  n_harm, nrow(data), n_recoded))
+  message(sprintf(
+    "[prep_harmonize_ast] %d/%d rows harmonized; %d intermediate values recoded.",
+    n_harm, nrow(data), n_recoded
+  ))
 
   return(data)
 }
@@ -245,14 +243,16 @@ prep_harmonize_ast <- function(data,
 #' @return Data frame with \code{is_ast_inconsistent} logical column added.
 #' @export
 prep_check_organism_ast_consistency <- function(data,
-                                                 organism_col   = "organism_normalized",
-                                                 antibiotic_col = "antibiotic_normalized") {
+                                                organism_col = "organism_normalized",
+                                                antibiotic_col = "antibiotic_normalized") {
   data$is_ast_inconsistent <- FALSE
 
   missing_cols <- setdiff(c(organism_col, antibiotic_col), names(data))
   if (length(missing_cols) > 0) {
-    warning(sprintf("[prep_check_organism_ast_consistency] Column(s) not found: %s. Skipping.",
-                    paste(missing_cols, collapse = ", ")))
+    warning(sprintf(
+      "[prep_check_organism_ast_consistency] Column(s) not found: %s. Skipping.",
+      paste(missing_cols, collapse = ", ")
+    ))
     data$is_ast_inconsistent <- NA
     return(data)
   }
@@ -291,8 +291,10 @@ prep_check_organism_ast_consistency <- function(data,
       ast_ref <- ast_ref[!is.na(ast_ref$organism_group) & !is.na(ast_ref$antibiotic_name) & nzchar(ast_ref$antibiotic_name), , drop = FALSE]
       ast_ref$expected <- TRUE
     } else {
-      warning(sprintf("Organism_AST_drugs.csv must have columns: %s. Skipping.",
-                      paste(required_cols, collapse = ", ")))
+      warning(sprintf(
+        "Organism_AST_drugs.csv must have columns: %s. Skipping.",
+        paste(required_cols, collapse = ", ")
+      ))
       data$is_ast_inconsistent <- NA
       return(data)
     }
@@ -309,8 +311,10 @@ prep_check_organism_ast_consistency <- function(data,
     n_flagged <- sum(data$is_ast_inconsistent, na.rm = TRUE)
   }
 
-  message(sprintf("[prep_check_organism_ast_consistency] %d implausible organism-AST pairs flagged.",
-                  n_flagged))
+  message(sprintf(
+    "[prep_check_organism_ast_consistency] %d implausible organism-AST pairs flagged.",
+    n_flagged
+  ))
   return(data)
 }
 
@@ -385,22 +389,24 @@ prep_flag_invalid_ast <- function(data, col = "ast_value_harmonized") {
 #' }
 #' @export
 prep_deduplicate_ast <- function(data,
-                                  mode           = c("detect", "remove"),
-                                  strategy       = c("resistant_wins", "susceptible_wins", "first"),
-                                  patient_col    = "patient_id",
-                                  organism_col   = "organism_normalized",
-                                  antibiotic_col = "antibiotic_normalized",
-                                  date_col       = "culture_date",
-                                  ast_col        = "ast_value_harmonized") {
-  mode     <- match.arg(mode)
+                                 mode = c("detect", "remove"),
+                                 strategy = c("resistant_wins", "susceptible_wins", "first"),
+                                 patient_col = "patient_id",
+                                 organism_col = "organism_normalized",
+                                 antibiotic_col = "antibiotic_normalized",
+                                 date_col = "culture_date",
+                                 ast_col = "ast_value_harmonized") {
+  mode <- match.arg(mode)
   strategy <- match.arg(strategy)
 
-  key_cols       <- c(patient_col, organism_col, antibiotic_col, date_col)
+  key_cols <- c(patient_col, organism_col, antibiotic_col, date_col)
   exact_key_cols <- c(key_cols, ast_col)
-  missing        <- setdiff(exact_key_cols, names(data))
+  missing <- setdiff(exact_key_cols, names(data))
   if (length(missing) > 0) {
-    warning(sprintf("[prep_deduplicate_ast] Column(s) not found: %s. Returning data unchanged.",
-                    paste(missing, collapse = ", ")))
+    warning(sprintf(
+      "[prep_deduplicate_ast] Column(s) not found: %s. Returning data unchanged.",
+      paste(missing, collapse = ", ")
+    ))
     return(data)
   }
 
@@ -408,17 +414,20 @@ prep_deduplicate_ast <- function(data,
   n_before_exact <- nrow(data)
   data <- dplyr::distinct(data, dplyr::across(dplyr::all_of(exact_key_cols)), .keep_all = TRUE)
   n_exact_removed <- n_before_exact - nrow(data)
-  if (n_exact_removed > 0)
-    message(sprintf("[prep_deduplicate_ast] Removed %d exact duplicate row(s) (identical key + value).",
-                    n_exact_removed))
+  if (n_exact_removed > 0) {
+    message(sprintf(
+      "[prep_deduplicate_ast] Removed %d exact duplicate row(s) (identical key + value).",
+      n_exact_removed
+    ))
+  }
 
   # --- Step 2 (always): detect conflicts (same 4-key group, different values) ---
   conflict_summary <- data %>%
     dplyr::group_by(dplyr::across(dplyr::all_of(key_cols))) %>%
     dplyr::summarise(
-      n_ast_values       = dplyr::n_distinct(.data[[ast_col]], na.rm = TRUE),
+      n_ast_values = dplyr::n_distinct(.data[[ast_col]], na.rm = TRUE),
       conflicting_values = paste(sort(unique(.data[[ast_col]])), collapse = " vs "),
-      n_rows             = dplyr::n(),
+      n_rows = dplyr::n(),
       .groups = "drop"
     ) %>%
     dplyr::filter(.data$n_ast_values > 1)
@@ -437,20 +446,27 @@ prep_deduplicate_ast <- function(data,
   if (n_groups == 0) {
     message("[prep_deduplicate_ast] No duplicate AST conflicts detected.")
   } else {
-    message(sprintf("[prep_deduplicate_ast] %d conflict group(s) found, %d rows flagged.",
-                    n_groups, n_flagged))
+    message(sprintf(
+      "[prep_deduplicate_ast] %d conflict group(s) found, %d rows flagged.",
+      n_groups, n_flagged
+    ))
     message("\nConflict summary (top 10):")
     print(utils::head(conflict_summary[, c(key_cols, "conflicting_values", "n_rows")], 10))
   }
 
-  if (mode == "detect") return(data)
+  if (mode == "detect") {
+    return(data)
+  }
 
   # --- Step 3 (remove only): resolve conflicts via strategy ---
   n_before <- nrow(data)
 
   if (strategy %in% c("resistant_wins", "susceptible_wins")) {
-    priority <- if (strategy == "resistant_wins") c("R" = 1L, "I" = 2L, "S" = 3L)
-                else                              c("S" = 1L, "I" = 2L, "R" = 3L)
+    priority <- if (strategy == "resistant_wins") {
+      c("R" = 1L, "I" = 2L, "S" = 3L)
+    } else {
+      c("S" = 1L, "I" = 2L, "R" = 3L)
+    }
     data$.ast_priority <- priority[data[[ast_col]]]
     data$.ast_priority[is.na(data$.ast_priority)] <- 99L
 
@@ -459,7 +475,6 @@ prep_deduplicate_ast <- function(data,
       dplyr::slice_min(order_by = .data$.ast_priority, n = 1, with_ties = FALSE) %>%
       dplyr::ungroup()
     data$.ast_priority <- NULL
-
   } else {
     data <- data %>%
       dplyr::group_by(dplyr::across(dplyr::all_of(key_cols))) %>%
@@ -469,8 +484,10 @@ prep_deduplicate_ast <- function(data,
 
   data$is_ast_duplicate <- NULL
 
-  message(sprintf("[prep_deduplicate_ast] Strategy '%s': removed %d duplicate row(s).",
-                  strategy, n_before - nrow(data)))
+  message(sprintf(
+    "[prep_deduplicate_ast] Strategy '%s': removed %d duplicate row(s).",
+    strategy, n_before - nrow(data)
+  ))
   return(data)
 }
 
@@ -525,14 +542,16 @@ prep_deduplicate_ast <- function(data,
 #' )
 #' }
 prep_pivot_ast_wide_to_long <- function(data,
-                                        antibiotic_cols      = NULL,
-                                        pattern              = NULL,
-                                        id_cols              = c("patient_id", "event_id",
-                                                                 "organism_name", "date_of_culture"),
-                                        antibiotic_name_col  = "antibiotic_name",
+                                        antibiotic_cols = NULL,
+                                        pattern = NULL,
+                                        id_cols = c(
+                                          "patient_id", "event_id",
+                                          "organism_name", "date_of_culture"
+                                        ),
+                                        antibiotic_name_col = "antibiotic_name",
                                         antibiotic_value_col = "antibiotic_value",
-                                        remove_missing       = TRUE,
-                                        create_event_id      = FALSE) {
+                                        remove_missing = TRUE,
+                                        create_event_id = FALSE) {
   n_before <- nrow(data)
 
   if (create_event_id && !"event_id" %in% names(data)) {
@@ -543,22 +562,27 @@ prep_pivot_ast_wide_to_long <- function(data,
   if (is.null(antibiotic_cols)) {
     if (!is.null(pattern)) {
       antibiotic_cols <- names(data)[grepl(pattern, names(data))]
-      message(sprintf("Auto-detected %d antibiotic columns using pattern '%s'",
-                      length(antibiotic_cols), pattern))
+      message(sprintf(
+        "Auto-detected %d antibiotic columns using pattern '%s'",
+        length(antibiotic_cols), pattern
+      ))
     } else {
       stop("Either antibiotic_cols or pattern must be provided")
     }
   }
 
-  if (length(antibiotic_cols) == 0)
+  if (length(antibiotic_cols) == 0) {
     stop("No antibiotic columns found")
+  }
 
   id_cols <- intersect(id_cols, names(data))
 
   missing_cols <- setdiff(antibiotic_cols, names(data))
   if (length(missing_cols) > 0) {
-    warning(sprintf("Some antibiotic columns not found: %s",
-                    paste(missing_cols, collapse = ", ")))
+    warning(sprintf(
+      "Some antibiotic columns not found: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
     antibiotic_cols <- intersect(antibiotic_cols, names(data))
   }
 
@@ -582,14 +606,17 @@ prep_pivot_ast_wide_to_long <- function(data,
         !!rlang::sym(antibiotic_value_col) != "-"
       )
     n_removed <- n_before_filter - nrow(long_data)
-    if (n_removed > 0)
+    if (n_removed > 0) {
       message(sprintf("Removed %d rows with missing/empty values", n_removed))
+    }
   }
 
-  n_unique_abx    <- dplyr::n_distinct(long_data[[antibiotic_name_col]])
+  n_unique_abx <- dplyr::n_distinct(long_data[[antibiotic_name_col]])
   n_unique_events <- dplyr::n_distinct(long_data[["event_id"]], na.rm = TRUE)
-  message(sprintf("Final long format: %d rows x %d columns (%d antibiotics, %d events)",
-                  nrow(long_data), ncol(long_data), n_unique_abx, n_unique_events))
+  message(sprintf(
+    "Final long format: %d rows x %d columns (%d antibiotics, %d events)",
+    nrow(long_data), ncol(long_data), n_unique_abx, n_unique_events
+  ))
 
   return(long_data)
 }
@@ -626,18 +653,23 @@ prep_pivot_ast_wide_to_long <- function(data,
 #' )
 #' }
 prep_create_wide_ast_matrix <- function(data,
-                                        event_col          = "event_id",
-                                        antibiotic_col     = "antibiotic_normalized",
+                                        event_col = "event_id",
+                                        antibiotic_col = "antibiotic_normalized",
                                         susceptibility_col = "antibiotic_value",
-                                        prefix             = "abx_",
-                                        keep_cols          = c("patient_id", "organism_normalized",
-                                                               "date_of_culture")) {
-  if (!event_col %in% names(data))
+                                        prefix = "abx_",
+                                        keep_cols = c(
+                                          "patient_id", "organism_normalized",
+                                          "date_of_culture"
+                                        )) {
+  if (!event_col %in% names(data)) {
     stop(sprintf("Column '%s' not found", event_col))
-  if (!antibiotic_col %in% names(data))
+  }
+  if (!antibiotic_col %in% names(data)) {
     stop(sprintf("Column '%s' not found", antibiotic_col))
-  if (!susceptibility_col %in% names(data))
+  }
+  if (!susceptibility_col %in% names(data)) {
     stop(sprintf("Column '%s' not found", susceptibility_col))
+  }
 
   keep_cols <- unique(c(event_col, intersect(keep_cols, names(data))))
   n_events_before <- dplyr::n_distinct(data[[event_col]])
@@ -645,15 +677,17 @@ prep_create_wide_ast_matrix <- function(data,
   message(sprintf("Creating wide format: pivoting '%s' column...", antibiotic_col))
 
   wide_data <- data %>%
-    dplyr::select(dplyr::all_of(keep_cols),
-                  !!rlang::sym(antibiotic_col),
-                  !!rlang::sym(susceptibility_col)) %>%
+    dplyr::select(
+      dplyr::all_of(keep_cols),
+      !!rlang::sym(antibiotic_col),
+      !!rlang::sym(susceptibility_col)
+    ) %>%
     dplyr::group_by(!!rlang::sym(event_col), !!rlang::sym(antibiotic_col)) %>%
     dplyr::slice(1) %>%
     dplyr::ungroup() %>%
     tidyr::pivot_wider(
-      id_cols     = dplyr::all_of(keep_cols),
-      names_from  = !!rlang::sym(antibiotic_col),
+      id_cols = dplyr::all_of(keep_cols),
+      names_from = !!rlang::sym(antibiotic_col),
       values_from = !!rlang::sym(susceptibility_col),
       names_prefix = prefix
     )
@@ -662,12 +696,17 @@ prep_create_wide_ast_matrix <- function(data,
   names(wide_data) <- gsub("_{2,}", "_", names(wide_data))
 
   n_antibiotics <- ncol(wide_data) - length(keep_cols)
-  message(sprintf("Created wide format: %d events x %d antibiotics",
-                  nrow(wide_data), n_antibiotics))
+  message(sprintf(
+    "Created wide format: %d events x %d antibiotics",
+    nrow(wide_data), n_antibiotics
+  ))
 
-  if (nrow(wide_data) != n_events_before)
-    warning(sprintf("[!] Row count mismatch: %d events in input, %d rows in wide format",
-                    n_events_before, nrow(wide_data)))
+  if (nrow(wide_data) != n_events_before) {
+    warning(sprintf(
+      "[!] Row count mismatch: %d events in input, %d rows in wide format",
+      n_events_before, nrow(wide_data)
+    ))
+  }
 
   return(wide_data)
 }

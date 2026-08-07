@@ -22,34 +22,44 @@
 #' @keywords internal
 .normalize_random_effects_spec <- function(random_effects) {
   if (is.character(random_effects)) {
-    if (length(random_effects) == 0L)
+    if (length(random_effects) == 0L) {
       stop("`random_effects` must be non-empty.", call. = FALSE)
-    if (anyDuplicated(random_effects))
+    }
+    if (anyDuplicated(random_effects)) {
       stop("`random_effects` column names must be unique.", call. = FALSE)
+    }
     return(lapply(random_effects, function(col) {
       list(name = col, group_col = col, terms = "intercept")
     }))
   }
 
-  if (!is.list(random_effects) || length(random_effects) == 0L)
+  if (!is.list(random_effects) || length(random_effects) == 0L) {
     stop("`random_effects` must be a non-empty character vector or a list of blocks (name/group_col/terms).",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   for (i in seq_along(random_effects)) {
     b <- random_effects[[i]]
-    if (!is.list(b))
+    if (!is.list(b)) {
       stop(sprintf("random_effects[[%d]] must be a list with name/group_col/terms.", i), call. = FALSE)
-    if (is.null(b$name) || !nzchar(b$name))
+    }
+    if (is.null(b$name) || !nzchar(b$name)) {
       stop(sprintf("random_effects[[%d]] is missing a `name`. Anonymous numbered blocks (re_1, re_2, ...) are not supported -- every block must have an explicit, meaningful name.", i),
-           call. = FALSE)
-    if (is.null(b$group_col) || !nzchar(b$group_col))
+        call. = FALSE
+      )
+    }
+    if (is.null(b$group_col) || !nzchar(b$group_col)) {
       stop(sprintf("random_effects block '%s' is missing a `group_col`.", b$name), call. = FALSE)
+    }
     terms <- b$terms %||% "intercept"
     terms_chr <- if (is.list(terms)) unlist(terms) else terms
-    if (!identical(terms_chr, "intercept"))
+    if (!identical(terms_chr, "intercept")) {
       stop(sprintf(
         "random_effects block '%s': terms = %s is not supported. Stage 1 of the generic random-effect architecture supports random-intercept-only blocks (terms: [intercept]); random slopes are deferred to a later commit.",
-        b$name, paste(terms_chr, collapse = ", ")), call. = FALSE)
+        b$name, paste(terms_chr, collapse = ", ")
+      ), call. = FALSE)
+    }
   }
   random_effects
 }
@@ -75,36 +85,45 @@
 #'   maps, per-event flattened group indices, nesting diagnostics.
 #' @export
 prepare_random_effects <- function(data, random_effects,
-                                    min_repeated_levels = NULL,
-                                    on_mostly_singleton = c("warn", "stop")) {
+                                   min_repeated_levels = NULL,
+                                   on_mostly_singleton = c("warn", "stop")) {
   on_mostly_singleton <- match.arg(on_mostly_singleton)
   blocks <- .normalize_random_effects_spec(random_effects)
 
   block_names <- vapply(blocks, function(b) b$name, character(1L))
-  if (anyDuplicated(block_names))
+  if (anyDuplicated(block_names)) {
     stop("random_effects block names must be unique: ",
-         paste(block_names[duplicated(block_names)], collapse = ", "), call. = FALSE)
+      paste(block_names[duplicated(block_names)], collapse = ", "),
+      call. = FALSE
+    )
+  }
 
   group_cols <- vapply(blocks, function(b) b$group_col, character(1L))
   missing_cols <- setdiff(group_cols, names(data))
-  if (length(missing_cols) > 0L)
+  if (length(missing_cols) > 0L) {
     stop("random_effects group_col(s) not found in data: ",
-         paste(missing_cols, collapse = ", "), call. = FALSE)
+      paste(missing_cols, collapse = ", "),
+      call. = FALSE
+    )
+  }
 
   R <- length(blocks)
   n_events <- nrow(data)
 
-  level_maps      <- vector("list", R)
-  n_levels        <- integer(R)
-  group_index     <- matrix(NA_integer_, nrow = n_events, ncol = R)   # 1-indexed, local to block
+  level_maps <- vector("list", R)
+  n_levels <- integer(R)
+  group_index <- matrix(NA_integer_, nrow = n_events, ncol = R) # 1-indexed, local to block
   n_obs_per_level <- vector("list", R)
 
   for (r in seq_len(R)) {
     v <- data[[group_cols[r]]]
     n_missing <- sum(is.na(v) | (is.character(v) & !nzchar(v)))
-    if (n_missing > 0L)
-      stop(sprintf("random_effects block '%s' (group_col '%s') has %d missing/empty group id(s).",
-                    block_names[r], group_cols[r], n_missing), call. = FALSE)
+    if (n_missing > 0L) {
+      stop(sprintf(
+        "random_effects block '%s' (group_col '%s') has %d missing/empty group id(s).",
+        block_names[r], group_cols[r], n_missing
+      ), call. = FALSE)
+    }
     lvls <- sort(unique(v))
     level_maps[[r]] <- lvls
     n_levels[r] <- length(lvls)
@@ -114,7 +133,7 @@ prepare_random_effects <- function(data, random_effects,
   }
 
   level_start <- cumsum(c(1L, n_levels))[seq_len(R)]
-  level_end   <- level_start + n_levels - 1L
+  level_end <- level_start + n_levels - 1L
   total_re_levels <- sum(n_levels)
 
   flat_group_index <- matrix(NA_integer_, nrow = n_events, ncol = R)
@@ -139,7 +158,8 @@ prepare_random_effects <- function(data, random_effects,
       n_repeated <- sum(n_obs_per_level[[r]] >= 2L)
       msg <- sprintf(
         "random_effects block '%s': %.1f%% of its %d levels are singletons (exactly 1 observation) -- this block's variance may be weakly identified.",
-        block_names[r], 100 * singleton_fraction[r], n_levels[r])
+        block_names[r], 100 * singleton_fraction[r], n_levels[r]
+      )
       if (!is.null(min_repeated_levels) && n_repeated < min_repeated_levels) {
         if (identical(on_mostly_singleton, "stop")) stop(msg, call. = FALSE) else warning(msg, call. = FALSE)
       } else {
@@ -170,8 +190,10 @@ prepare_random_effects <- function(data, random_effects,
 print.amr_random_effects <- function(x, ...) {
   cat(sprintf("<amr_random_effects> %d block(s), %d total levels\n", x$R, x$total_re_levels))
   for (r in seq_len(x$R)) {
-    cat(sprintf("  [%d] %-15s group_col=%-15s n_levels=%-6d nesting=%s\n",
-                r, x$block_names[r], x$group_cols[r], x$n_levels[r], x$nesting[r]))
+    cat(sprintf(
+      "  [%d] %-15s group_col=%-15s n_levels=%-6d nesting=%s\n",
+      r, x$block_names[r], x$group_cols[r], x$n_levels[r], x$nesting[r]
+    ))
   }
   invisible(x)
 }

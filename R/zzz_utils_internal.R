@@ -44,8 +44,6 @@ parse_age_bin_labels <- function(labels) {
 
   list(breaks = unique(breaks), labels = clean_labels)
 }
-# utils.R
-# Small utility functions used across modules
 
 #' Largest-Remainder Rounding
 #'

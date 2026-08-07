@@ -84,8 +84,10 @@ test_that("prep_create_event_ids: keep_event_culture='closest_to_admission' keep
   expect_equal(nrow(out), 2L)
   expect_true(all(as.Date(out$date_of_culture) == as.Date("2025-01-01")))
   # no temp columns may leak into output
-  expect_false(any(c(".culture_key", ".adm_dt", ".culture_distance",
-                     ".event_keep_culture", ".event_keep_date") %in% names(out)))
+  expect_false(any(c(
+    ".culture_key", ".adm_dt", ".culture_distance",
+    ".event_keep_culture", ".event_keep_date"
+  ) %in% names(out)))
 })
 
 # prep_deduplicate_events ------------------------------------------------------

@@ -103,10 +103,6 @@ default_column_mappings <- list(
 )
 
 
-# ---------------------------------------------------------------------------
-# Moved function: prep_standardize_column_names
-# ---------------------------------------------------------------------------
-
 #' Standardize Column Names to Package Convention
 #'
 #' Convenience wrapper around \code{prep_build_column_map()} +
@@ -130,10 +126,10 @@ default_column_mappings <- list(
 #' @return List: \code{data} (renamed), \code{mapping_log}, \code{unmapped}.
 #' @export
 prep_standardize_column_names <- function(data,
-                                          mapping         = default_column_mappings,
-                                          fuzzy_match     = TRUE,
+                                          mapping = default_column_mappings,
+                                          fuzzy_match = TRUE,
                                           fuzzy_threshold = 0.3,
-                                          interactive     = FALSE) {
+                                          interactive = FALSE) {
   # Build exact-match map via canonical helper
   column_map <- vapply(names(mapping), function(std_name) {
     hit <- intersect(mapping[[std_name]], names(data))
@@ -149,28 +145,34 @@ prep_standardize_column_names <- function(data,
   # Optional fuzzy extension
   if (fuzzy_match) {
     already_mapped <- names(data) %in% unname(column_map)
-    unmapped_cols  <- names(data)[!already_mapped]
-    unresolved     <- setdiff(names(mapping), names(column_map))
+    unmapped_cols <- names(data)[!already_mapped]
+    unresolved <- setdiff(names(mapping), names(column_map))
 
     for (std_name in unresolved) {
       if (length(unmapped_cols) == 0L) break
       distances <- stringdist::stringdist(tolower(std_name), tolower(unmapped_cols), method = "jw")
-      best_idx  <- which.min(distances)
+      best_idx <- which.min(distances)
       if (length(best_idx) > 0 && distances[best_idx] < fuzzy_threshold) {
         accept <- if (interactive) {
-          message(sprintf("Fuzzy: '%s' -> '%s' (dist %.2f). Accept? (y/n)",
-                          unmapped_cols[best_idx], std_name, distances[best_idx]))
+          message(sprintf(
+            "Fuzzy: '%s' -> '%s' (dist %.2f). Accept? (y/n)",
+            unmapped_cols[best_idx], std_name, distances[best_idx]
+          ))
           tolower(readline()) == "y"
         } else {
-          message(sprintf("Auto fuzzy: '%s' -> '%s' (dist %.2f)",
-                          unmapped_cols[best_idx], std_name, distances[best_idx]))
+          message(sprintf(
+            "Auto fuzzy: '%s' -> '%s' (dist %.2f)",
+            unmapped_cols[best_idx], std_name, distances[best_idx]
+          ))
           TRUE
         }
         if (accept) {
-          column_map[std_name]    <- unmapped_cols[best_idx]
-          mapping_log[[std_name]] <- list(original = unmapped_cols[best_idx],
-                                          method   = "fuzzy_match",
-                                          distance = distances[best_idx])
+          column_map[std_name] <- unmapped_cols[best_idx]
+          mapping_log[[std_name]] <- list(
+            original = unmapped_cols[best_idx],
+            method = "fuzzy_match",
+            distance = distances[best_idx]
+          )
           unmapped_cols <- unmapped_cols[-best_idx]
         }
       }
@@ -178,16 +180,12 @@ prep_standardize_column_names <- function(data,
   }
 
   # Apply via canonical helper
-  data          <- prep_apply_column_map(data, column_map)
+  data <- prep_apply_column_map(data, column_map)
   unmapped_final <- setdiff(names(data), names(mapping))
 
   list(data = data, mapping_log = mapping_log, unmapped = unmapped_final)
 }
 
-
-# ---------------------------------------------------------------------------
-# New functions (Layer 2)
-# ---------------------------------------------------------------------------
 
 #' Build and Validate a Column Map Against a Dataset
 #'
@@ -215,26 +213,31 @@ prep_build_column_map <- function(data,
   if (is.null(column_map)) {
     base_map <- vapply(names(default_column_mappings), function(std_name) {
       aliases <- default_column_mappings[[std_name]]
-      hit     <- intersect(aliases, names(data))
+      hit <- intersect(aliases, names(data))
       if (length(hit) > 0L) hit[1L] else NA_character_
     }, character(1))
     base_map <- base_map[!is.na(base_map)]
   } else {
-    if (!is.character(column_map) || is.null(names(column_map)))
+    if (!is.character(column_map) || is.null(names(column_map))) {
       stop("`column_map` must be a named character vector (standard_name = raw_name).")
+    }
     base_map <- column_map
   }
 
   if (!is.null(custom_map)) {
-    if (!is.character(custom_map) || is.null(names(custom_map)))
+    if (!is.character(custom_map) || is.null(names(custom_map))) {
       stop("`custom_map` must be a named character vector.")
+    }
     base_map[names(custom_map)] <- custom_map
   }
 
   present <- base_map %in% names(data)
-  if (any(!present))
-    message(sprintf("[prep_build_column_map] %d raw column(s) not found in data: %s",
-                    sum(!present), paste(base_map[!present], collapse = ", ")))
+  if (any(!present)) {
+    message(sprintf(
+      "[prep_build_column_map] %d raw column(s) not found in data: %s",
+      sum(!present), paste(base_map[!present], collapse = ", ")
+    ))
+  }
 
   base_map[present]
 }
@@ -251,8 +254,9 @@ prep_build_column_map <- function(data,
 #' @return Data frame with standard column names where mapping existed.
 #' @export
 prep_apply_column_map <- function(data, column_map) {
-  if (is.null(column_map) || length(column_map) == 0L)
+  if (is.null(column_map) || length(column_map) == 0L) {
     return(data)
+  }
 
   # Invert: raw_name -> standard_name
   inverted <- stats::setNames(names(column_map), column_map)
@@ -266,10 +270,13 @@ prep_apply_column_map <- function(data, column_map) {
   }
 
   unmapped <- setdiff(names(data), c(names(column_map), cols_to_rename))
-  if (length(unmapped) > 0L)
-    message(sprintf("[prep_apply_column_map] %d column(s) not in map (kept as-is): %s",
-                    length(unmapped),
-                    paste(utils::head(unmapped, 10), collapse = ", ")))
+  if (length(unmapped) > 0L) {
+    message(sprintf(
+      "[prep_apply_column_map] %d column(s) not in map (kept as-is): %s",
+      length(unmapped),
+      paste(utils::head(unmapped, 10), collapse = ", ")
+    ))
+  }
 
   data
 }
@@ -309,10 +316,6 @@ prep_assert_standard_names <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
-# New functions (Layer 2)
-# ---------------------------------------------------------------------------
-
 #' Detect Preprocessing Capabilities
 #'
 #' Inspects a data frame (after column mapping) and returns a named logical
@@ -331,22 +334,22 @@ detect_preprocessing_capabilities <- function(data) {
   cols <- names(data)
 
   c(
-    parse_dates          = any(c("admission_date", "culture_date", "outcome_date") %in% cols),
-    derive_hai           = all(c("admission_date", "culture_date") %in% cols),
-    derive_los           = all(c("admission_date", "outcome_date") %in% cols),
-    derive_age           = all(c("dob", "culture_date") %in% cols) ||
-                            "age" %in% cols,
+    parse_dates = any(c("admission_date", "culture_date", "outcome_date") %in% cols),
+    derive_hai = all(c("admission_date", "culture_date") %in% cols),
+    derive_los = all(c("admission_date", "outcome_date") %in% cols),
+    derive_age = all(c("dob", "culture_date") %in% cols) ||
+      "age" %in% cols,
     standardize_organism = "organism_name" %in% cols,
     standardize_antibiotic = "antibiotic_name" %in% cols,
     standardize_specimen = "sample_type" %in% cols,
-    harmonize_ast        = "ast_value_harmonized" %in% cols ||
-                            "antibiotic_value" %in% cols,
-    create_events        = all(c("patient_id", "culture_date", "organism_name") %in% cols),
-    flag_contaminants    = all(c("organism_name", "sample_type") %in% cols),
-    flag_polymicrobial   = all(c("patient_id", "organism_name") %in% cols),
-    classify_mdr         = "ast_value_harmonized" %in% cols &&
-                            "antibiotic_name" %in% cols,
-    build_outputs        = "patient_id" %in% cols
+    harmonize_ast = "ast_value_harmonized" %in% cols ||
+      "antibiotic_value" %in% cols,
+    create_events = all(c("patient_id", "culture_date", "organism_name") %in% cols),
+    flag_contaminants = all(c("organism_name", "sample_type") %in% cols),
+    flag_polymicrobial = all(c("patient_id", "organism_name") %in% cols),
+    classify_mdr = "ast_value_harmonized" %in% cols &&
+      "antibiotic_name" %in% cols,
+    build_outputs = "patient_id" %in% cols
   )
 }
 
@@ -364,7 +367,7 @@ detect_preprocessing_capabilities <- function(data) {
 prep_report_capabilities <- function(data) {
   caps <- if (is.logical(data)) data else detect_preprocessing_capabilities(data)
 
-  enabled  <- names(caps)[caps]
+  enabled <- names(caps)[caps]
   disabled <- names(caps)[!caps]
 
   message("=== Preprocessing Capabilities ===")
@@ -381,10 +384,6 @@ prep_report_capabilities <- function(data) {
   invisible(caps)
 }
 
-
-# ---------------------------------------------------------------------------
-# Moved function: prep_clean_optional_columns (from prep_clean_and_standardize.R)
-# ---------------------------------------------------------------------------
 
 #' Clean Optional Columns
 #'
@@ -415,21 +414,24 @@ prep_clean_optional_columns <- function(data, optional_cols = NULL) {
     return(data)
   }
 
-  message(sprintf("Grooming %d optional columns: %s",
-                  length(optional_cols),
-                  paste(optional_cols[1:min(3, length(optional_cols))], collapse = ", ")))
+  message(sprintf(
+    "Grooming %d optional columns: %s",
+    length(optional_cols),
+    paste(optional_cols[1:min(3, length(optional_cols))], collapse = ", ")
+  ))
 
   for (col in optional_cols) {
     if (is.character(data[[col]])) {
       data[[col]] <- trimws(data[[col]])
       data[[col]][data[[col]] == ""] <- NA_character_
 
-      if (!col %in% c("comorbidities", "previous_history"))
+      if (!col %in% c("comorbidities", "previous_history")) {
         data[[col]] <- tools::toTitleCase(tolower(data[[col]]))
+      }
 
       if (col == "infection_type") {
         data[[col]] <- dplyr::case_when(
-          grepl("^comm|^cai",         tolower(data[[col]])) ~ "CAI",
+          grepl("^comm|^cai", tolower(data[[col]])) ~ "CAI",
           grepl("^hosp|^hai|^nosoco", tolower(data[[col]])) ~ "HAI",
           TRUE ~ data[[col]]
         )
@@ -438,22 +440,25 @@ prep_clean_optional_columns <- function(data, optional_cols = NULL) {
       if (col == "unit_type") {
         data[[col]] <- dplyr::case_when(
           grepl("icu|intensive|critical", tolower(data[[col]])) ~ "ICU",
-          grepl("ward|general",           tolower(data[[col]])) ~ "Ward",
-          grepl("er|emergency",           tolower(data[[col]])) ~ "Emergency",
+          grepl("ward|general", tolower(data[[col]])) ~ "Ward",
+          grepl("er|emergency", tolower(data[[col]])) ~ "Emergency",
           TRUE ~ data[[col]]
         )
       }
     }
   }
 
-  completeness <- sapply(optional_cols, function(col)
-    sum(!is.na(data[[col]])) / nrow(data) * 100)
+  completeness <- sapply(optional_cols, function(col) {
+    sum(!is.na(data[[col]])) / nrow(data) * 100
+  })
 
   message("\nOptional column completeness:")
-  print(data.frame(column          = names(completeness),
-                   completeness_pct = as.numeric(completeness),
-                   stringsAsFactors = FALSE) %>%
-          dplyr::arrange(dplyr::desc(completeness_pct)))
+  print(data.frame(
+    column = names(completeness),
+    completeness_pct = as.numeric(completeness),
+    stringsAsFactors = FALSE
+  ) %>%
+    dplyr::arrange(dplyr::desc(completeness_pct)))
 
   return(data)
 }

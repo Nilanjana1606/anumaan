@@ -88,10 +88,7 @@ run_preprocess <- function(data,
 
   # Store original data summary
   original_summary <- summarize_raw_data(data)
-
-  # ========================================
   # PRE-VALIDATION
-  # ========================================
   if (validate && verbose) {
     message("\n--- Pre-Processing Validation ---")
   }
@@ -103,20 +100,17 @@ run_preprocess <- function(data,
       min_rows = 1,
       max_missing_pct = 90,
       required_cols = character(0), # Don't require any columns yet
-      stop_on_failure = FALSE
+      stop_on_failure = config$strict_validation
     )
 
     log$validation$pre_quality <- quality
 
     # Remove exact duplicates
     n_before_dedup <- nrow(data)
-    data <- prep_deduplicate_events(data)
+    data <- dplyr::distinct(data)
     log$validation$duplicates_removed <- n_before_dedup - nrow(data)
   }
-
-  # ========================================
   # PHASE 1: STANDARDIZATION
-  # ========================================
   if ("standardize" %in% phases) {
     if (verbose) {
       message("\n=======================================================")
@@ -142,7 +136,7 @@ run_preprocess <- function(data,
 
     # Step 1.2: Parse and coerce dates, then validate logic
     if (verbose) message("\n[1.2] Parsing dates...")
-    data <- prep_coerce_dates(data, table_label = "pipeline")
+    data <- prep_coerce_dates(data, cols = config$date_columns, table_label = "pipeline")
     data <- prep_validate_date_logic(
       data,
       admission_col = "date_of_admission",
@@ -158,10 +152,17 @@ run_preprocess <- function(data,
       data <- prep_standardize_sex(data)
     }
     if ("final_outcome" %in% names(data)) {
-      data <- prep_standardize_outcome(data)
+      data <- prep_standardize_final_outcome(data)
     }
     if ("antibiotic_value" %in% names(data)) {
       data <- prep_clean_ast_values(data)
+      if (all(c("antibiotic_name", "antibiotic_value") %in% names(data))) {
+        data <- prep_recode_intermediate_ast(
+          data,
+          colistin_to_s = TRUE,
+          others_to_r   = config$intermediate_as_resistant
+        )
+      }
     }
 
     # Step 1.4: Normalize organisms and antibiotics
@@ -179,10 +180,7 @@ run_preprocess <- function(data,
       data <- prep_standardize_specimens(data, specimen_col = "specimen_type")
     }
   }
-
-  # ========================================
   # PHASE 2: ENRICHMENT
-  # ========================================
   if ("enrich" %in% phases) {
     if (verbose) {
       message("\n=======================================================")
@@ -212,10 +210,7 @@ run_preprocess <- function(data,
     if (verbose) message("\n[2.5] Grooming optional columns...")
     data <- prep_clean_optional_columns(data)
   }
-
-  # ========================================
   # PHASE 3: DERIVATION
-  # ========================================
   if ("derive" %in% phases) {
     if (verbose) {
       message("\n=======================================================")
@@ -229,13 +224,17 @@ run_preprocess <- function(data,
       data <- prep_assign_age_bins(data, bins = config$age_bins)
     }
 
-    # Step 3.2: Calculate Length of Stay (if not already done)
-    if (all(c("date_of_admission", "date_of_final_outcome") %in% names(data))) {
+    # Step 3.2: Calculate Length of Stay (fallback for partial-phase runs
+    # that skipped Phase 2; already derived above when "enrich" ran)
+    if (!("enrich" %in% phases) &&
+      all(c("date_of_admission", "date_of_final_outcome") %in% names(data))) {
       if (verbose) message("\n[3.2] Calculating Length of Stay...")
       data <- prep_derive_los_from_dates(data)
     }
 
-    # Step 3.3: Extract organism taxonomy
+    # Step 3.3: Extract organism taxonomy. org_group (MDR/XDR, resistance
+    # profiles) is distinct from organism_group (contaminant/fungal filtering,
+    # Step 1.4) -- not a duplicate.
     if ("organism_normalized" %in% names(data)) {
       if (verbose) message("\n[3.3] Extracting organism taxonomy...")
       data <- prep_extract_genus(data)
@@ -243,12 +242,10 @@ run_preprocess <- function(data,
       data <- prep_assign_organism_group(data)
     }
 
-    # Step 3.4: Classify antibiotic classes
-    if ("antibiotic_normalized" %in% names(data)) {
-      if (verbose) message("\n[3.4] Classifying antibiotic classes...")
-      data <- prep_classify_antibiotic_class(data)
-      data <- prep_classify_aware(data)
-    }
+    # Step 3.4: antibiotic_class and aware_category are already populated by
+    # prep_standardize_antibiotics() in Step 1.4; re-running
+    # prep_classify_antibiotic_class()/prep_classify_aware() here without a
+    # who_table would overwrite those columns with NA.
 
     # Step 3.5: Create event IDs (patient -> isolate level)
     if (all(c("patient_id", "date_of_culture", "organism_normalized") %in% names(data))) {
@@ -260,9 +257,10 @@ run_preprocess <- function(data,
     if (all(c("event_id", "organism_normalized", "antibiotic_normalized") %in% names(data))) {
       if (verbose) message("\n[3.5b] Deduplicating events...")
       data <- prep_deduplicate_events(data,
-                                      event_col      = "event_id",
-                                      organism_col   = "organism_normalized",
-                                      antibiotic_col = "antibiotic_normalized")
+        event_col      = "event_id",
+        organism_col   = "organism_normalized",
+        antibiotic_col = "antibiotic_normalized"
+      )
     }
 
     # Step 3.6: Flag contaminants
@@ -281,28 +279,30 @@ run_preprocess <- function(data,
       )
     }
 
-    # Step 3.8: Polymicrobial identification and weighting
+    # Step 3.8-3.9: Polymicrobial identification and weighting
     poly_required_cols <- c("patient_id", "organism_normalized")
     if (all(poly_required_cols %in% names(data))) {
       if (verbose) message("\n[3.8] Identifying polymicrobial infections...")
-      data <- flag_polymicrobial(data,
-                                 patient_col  = "patient_id",
-                                 organism_col = "organism_normalized")
+      data <- prep_flag_polymicrobial(data,
+        patient_col  = "patient_id",
+        organism_col = "organism_normalized"
+      )
 
       if (verbose) message("\n[3.9] Computing polymicrobial weights...")
       if ("event_id" %in% names(data)) {
-        data <- compute_polymicrobial_weight(data,
-                                             episode_col = "event_id",
-                                             method      = "monomicrobial_proportion")
+        data <- prep_compute_poly_weights(data,
+          episode_col = "event_id",
+          method      = "monomicrobial_proportion"
+        )
       }
     }
 
-    # Step 3.9: Apply death weights (placeholder -- not yet implemented)
+    # Step 3.10: Apply death weights (placeholder -- not yet implemented)
     if ("mortality_infection" %in% names(data)) {
       if (verbose) message("\n[3.10] Death weights: skipped (not yet implemented)")
     }
 
-    # Step 3.10: MDR/XDR classification
+    # Step 3.11-3.12: MDR/XDR classification
     # Requires class-level collapse first; results are joined back to main data.
     mdr_required_cols <- c("event_id", "organism_normalized", "antibiotic_class", "antibiotic_value")
     if (all(mdr_required_cols %in% names(data))) {
@@ -321,23 +321,22 @@ run_preprocess <- function(data,
       data_class <- prep_classify_mdr_xdr(data_class, definition = config$mdr_definition)
 
       mdr_join_cols <- intersect(
-        c("event_id", "mdr", "mdr_confidence", "mdr_method",
+        c(
+          "event_id", "mdr", "mdr_confidence", "mdr_method",
           "n_resistant_categories", "resistant_categories",
-          "xdr", "xdr_confidence", "xdr_method"),
+          "xdr", "xdr_confidence", "xdr_method"
+        ),
         names(data_class)
       )
       mdr_summary <- dplyr::distinct(data_class[, mdr_join_cols])
       data <- dplyr::left_join(data, mdr_summary, by = "event_id")
     }
 
-    # Step 3.11: Map to RR pathogens and classes (if enabled)
-    if (verbose) message("\n[3.12] Mapping to RR categories...")
+    # Step 3.13: Map to RR pathogens and classes (if enabled)
+    if (verbose) message("\n[3.13] Mapping to RR categories...")
     data <- daly_add_rr_mappings(data)
   }
-
-  # ========================================
   # PHASE 4: OUTPUTS
-  # ========================================
   if ("derive" %in% phases) {
     if (verbose) {
       message("\n=======================================================")
@@ -353,10 +352,7 @@ run_preprocess <- function(data,
       prep_validate_analysis_ready(data, stop_on_failure = FALSE)
     }
   }
-
-  # ========================================
   # POST-VALIDATION
-  # ========================================
   if (validate && verbose) {
     message("\n--- Post-Processing Validation ---")
   }
@@ -376,10 +372,7 @@ run_preprocess <- function(data,
     )
     log$validation$post_quality <- final_quality
   }
-
-  # ========================================
   # GENERATE REPORT
-  # ========================================
   report <- NULL
   if (generate_report) {
     if (verbose) message("\n--- Generating Preprocessing Report ---")
@@ -390,10 +383,7 @@ run_preprocess <- function(data,
       config = config
     )
   }
-
-  # ========================================
   # FINALIZE
-  # ========================================
   end_time <- Sys.time()
   elapsed <- as.numeric(difftime(end_time, start_time, units = "secs"))
 

@@ -59,9 +59,9 @@ test_that("prep_assign_age_bins: edge cases - compound columns", {
     age_months_col = "age_months",
     age_days_col   = "age_days"
   )
-  expect_equal(as.character(out$Age_bin[1]), "<0.02")      # 3 days
-  expect_equal(as.character(out$Age_bin[2]), "0.02-0.08")  # 15 days
-  expect_equal(as.character(out$Age_bin[3]), "0.08-0.25")  # 1 month
+  expect_equal(as.character(out$Age_bin[1]), "<0.02") # 3 days
+  expect_equal(as.character(out$Age_bin[2]), "0.02-0.08") # 15 days
+  expect_equal(as.character(out$Age_bin[3]), "0.08-0.25") # 1 month
 })
 
 test_that("prep_assign_age_bins: missingness", {
@@ -121,8 +121,8 @@ test_that("prep_assign_age_bins: age-years edge values from shared fixture", {
     fallback_months_col = "months",
     fallback_days_col = "age_days"
   )
-  expect_equal(as.character(out$Age_bin[1]), "0.02-0.08")  # recovered from 0y 0m 10d
-  expect_equal(as.character(out$Age_bin[2]), "0.25-1")     # recovered from 0y 3m 0d
+  expect_equal(as.character(out$Age_bin[1]), "0.02-0.08") # recovered from 0y 0m 10d
+  expect_equal(as.character(out$Age_bin[2]), "0.25-1") # recovered from 0y 3m 0d
   expect_equal(as.character(out$Age_bin[3]), "0.08-0.25") # 0.2 years
   expect_equal(as.character(out$Age_bin[4]), "0.02-0.08") # 0.04 years
   expect_equal(as.character(out$Age_bin[5]), "0.02-0.08") # 0.02 years

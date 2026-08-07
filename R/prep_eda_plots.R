@@ -26,17 +26,20 @@ eda_theme <- function(base_size = 14, legend_position = "top") {
 
   base_theme +
     ggplot2::theme(
-      strip.text       = ggplot2::element_text(face = "bold"),
-      strip.background = ggplot2::element_rect(fill = "grey92", color = "black",
-                                               linewidth = 0.8),
-      panel.border     = ggplot2::element_rect(color = "black", fill = NA,
-                                               linewidth = 0.8),
-      panel.spacing    = ggplot2::unit(1.2, "lines"),
-      legend.position  = legend_position,
-      plot.title       = ggplot2::element_text(face = "bold", hjust = 0.5)
+      strip.text = ggplot2::element_text(face = "bold"),
+      strip.background = ggplot2::element_rect(
+        fill = "grey92", color = "black",
+        linewidth = 0.8
+      ),
+      panel.border = ggplot2::element_rect(
+        color = "black", fill = NA,
+        linewidth = 0.8
+      ),
+      panel.spacing = ggplot2::unit(1.2, "lines"),
+      legend.position = legend_position,
+      plot.title = ggplot2::element_text(face = "bold", hjust = 0.5)
     )
 }
-
 
 
 # TOP PATHOGENS
@@ -93,23 +96,22 @@ eda_theme <- function(base_size = 14, legend_position = "top") {
 #'
 
 plot_top_organisms <- function(data,
-                               n             = 5,
-                               mode          = c("faceted", "overall", "single"),
-                               center        = NULL,
-                               patient_col   = "PatientInformation_id",
-                               organism_col  = "organism_name",
-                               center_col    = "center_name",
-                               fill_colour   = "steelblue",
-                               ncol          = 2,
-                               base_size     = 14,
-                               title         = NULL,
-                               syndrome_col  = NULL,
+                               n = 5,
+                               mode = c("faceted", "overall", "single"),
+                               center = NULL,
+                               patient_col = "PatientInformation_id",
+                               organism_col = "organism_name",
+                               center_col = "center_name",
+                               fill_colour = "steelblue",
+                               ncol = 2,
+                               base_size = 14,
+                               title = NULL,
+                               syndrome_col = NULL,
                                syndrome_name = NULL) {
-
-  # -- 0. match mode argument ------------------------------------------------
+  # 0. match mode argument
   mode <- match.arg(mode)
 
-  # -- 1. validate required columns -----------------------------------------
+  # 1. validate required columns
   required_cols <- c(patient_col, organism_col)
   if (mode != "overall") required_cols <- c(required_cols, center_col)
 
@@ -135,42 +137,43 @@ plot_top_organisms <- function(data,
     }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter ---------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
   }
 
-  # -- 2. tidy-eval symbols --------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   org_sym <- rlang::sym(organism_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. cleaning -- remove blank / NA organism names -----------------------
+  # 3. cleaning -- remove blank / NA organism names
   org_data <- data %>%
     dplyr::filter(
       !is.na(!!org_sym),
       trimws(as.character(!!org_sym)) != ""
     )
 
-  # -- 4. optional: filter to a single centre -------------------------------
+  # 4. optional: filter to a single centre
   if (mode == "single") {
     org_data <- org_data %>%
       dplyr::filter(!!ctr_sym == center)
   }
 
-  # -- 5. branch by mode -----------------------------------------------------
-
-  # -- 5a. OVERALL -----------------------------------------------------------
+  # 5. branch by mode
+  # 5a. OVERALL
   if (mode == "overall") {
-
     total_patients <- dplyr::n_distinct(org_data[[patient_col]])
 
     top_org <- org_data %>%
@@ -182,7 +185,7 @@ plot_top_organisms <- function(data,
       dplyr::slice_max(patients, n = n) %>%
       dplyr::mutate(
         percent = 100 * patients / total_patients,
-        label   = paste0(patients, " (", round(percent, 1), "%)"),
+        label = paste0(patients, " (", round(percent, 1), "%)"),
         !!organism_col := stats::reorder(!!org_sym, patients)
       )
 
@@ -198,9 +201,9 @@ plot_top_organisms <- function(data,
       ggplot2::geom_col(fill = fill_colour, width = 0.7) +
       ggplot2::geom_text(
         ggplot2::aes(label = label),
-        hjust     = -0.1,
-        size      = 3.8,
-        fontface  = "bold"
+        hjust = -0.1,
+        size = 3.8,
+        fontface = "bold"
       ) +
       ggplot2::coord_flip(clip = "off") +
       ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.02, 0.18))) +
@@ -214,8 +217,7 @@ plot_top_organisms <- function(data,
     return(p)
   }
 
-  # -- 5b. FACETED or SINGLE (share the same per-centre logic) --------------
-
+  # 5b. FACETED or SINGLE (share the same per-centre logic)
   # Centre summary for facet strip labels
   center_summary <- org_data %>%
     dplyr::group_by(!!ctr_sym) %>%
@@ -227,7 +229,7 @@ plot_top_organisms <- function(data,
     dplyr::mutate(
       facet_label = paste0(
         !!ctr_sym,
-        "\nPatients: ",  unique_patients,
+        "\nPatients: ", unique_patients,
         " | Organisms: ", unique_organisms
       )
     )
@@ -260,9 +262,8 @@ plot_top_organisms <- function(data,
       by = center_col
     )
 
-  # -- 5c. SINGLE: drop facet_wrap, use just the centre name in the title ----
+  # 5c. SINGLE: drop facet_wrap, use just the centre name in the title
   if (mode == "single") {
-
     auto_title <- title %||% sprintf(
       "Top %d Organisms by Unique Patients \u2014 %s", n, center
     )
@@ -282,8 +283,8 @@ plot_top_organisms <- function(data,
       ggplot2::geom_col(fill = fill_colour, width = 0.7) +
       ggplot2::geom_text(
         ggplot2::aes(label = label),
-        hjust    = -0.1,
-        size     = 3.8,
+        hjust = -0.1,
+        size = 3.8,
         fontface = "bold"
       ) +
       ggplot2::coord_flip(clip = "off") +
@@ -298,8 +299,7 @@ plot_top_organisms <- function(data,
     return(p)
   }
 
-  # -- 5d. FACETED -----------------------------------------------------------
-
+  # 5d. FACETED
   auto_title <- title %||% sprintf(
     "Top %d Organisms by Unique Patients \u2014 All Centres", n
   )
@@ -314,8 +314,8 @@ plot_top_organisms <- function(data,
     ggplot2::geom_col(fill = fill_colour, width = 0.7) +
     ggplot2::geom_text(
       ggplot2::aes(label = label),
-      hjust    = -0.1,
-      size     = 3.8,
+      hjust = -0.1,
+      size = 3.8,
       fontface = "bold"
     ) +
     ggplot2::coord_flip(clip = "off") +
@@ -331,7 +331,6 @@ plot_top_organisms <- function(data,
 
   return(p)
 }
-
 
 
 # ANTIBIOTIC SUSCEPTIBILITY PATTERN
@@ -397,25 +396,24 @@ plot_top_organisms <- function(data,
 #'
 
 plot_abx_susceptibility <- function(data,
-                                    n              = 5,
-                                    mode           = c("faceted", "overall", "single"),
-                                    center         = NULL,
-                                    patient_col    = "PatientInformation_id",
+                                    n = 5,
+                                    mode = c("faceted", "overall", "single"),
+                                    center = NULL,
+                                    patient_col = "PatientInformation_id",
                                     antibiotic_col = "antibiotic_name",
-                                    value_col      = "antibiotic_value",
-                                    organism_col   = "organism_name",
-                                    center_col     = "center_name",
-                                    colours        = c("R" = "#D73027", "S" = "#1A9850"),
-                                    ncol           = 2,
-                                    base_size      = 14,
-                                    title          = NULL,
-                                    syndrome_col   = NULL,
-                                    syndrome_name  = NULL) {
-
-  # -- 0. match mode ---------------------------------------------------------
+                                    value_col = "antibiotic_value",
+                                    organism_col = "organism_name",
+                                    center_col = "center_name",
+                                    colours = c("R" = "#D73027", "S" = "#1A9850"),
+                                    ncol = 2,
+                                    base_size = 14,
+                                    title = NULL,
+                                    syndrome_col = NULL,
+                                    syndrome_name = NULL) {
+  # 0. match mode
   mode <- match.arg(mode)
 
-  # -- 1. validate columns ---------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, antibiotic_col, value_col, organism_col)
   if (mode != "overall") required_cols <- c(required_cols, center_col)
 
@@ -441,44 +439,47 @@ plot_abx_susceptibility <- function(data,
     }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter ---------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
   }
 
-  # -- 2. tidy-eval symbols --------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   abx_sym <- rlang::sym(antibiotic_col)
   val_sym <- rlang::sym(value_col)
   org_sym <- rlang::sym(organism_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. clean: keep only valid R/S rows, drop blank names -----------------
+  # 3. clean: keep only valid R/S rows, drop blank names
   abx_clean <- data %>%
     dplyr::filter(
       !!val_sym %in% c("R", "S"),
       !is.na(!!abx_sym), trimws(as.character(!!abx_sym)) != "",
-      !is.na(!!org_sym),  trimws(as.character(!!org_sym))  != ""
+      !is.na(!!org_sym), trimws(as.character(!!org_sym)) != ""
     ) %>%
     dplyr::distinct(
       !!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym, !!val_sym
     )
 
-  # -- 4. optional: filter to a single centre -------------------------------
+  # 4. optional: filter to a single centre
   if (mode == "single") {
     abx_clean <- abx_clean %>%
       dplyr::filter(!!ctr_sym == center)
   }
 
-  # -- 5. worst-phenotype rule -----------------------------------------------
+  # 5. worst-phenotype rule
   # Per patient x organism x antibiotic: any R -> episode = R
   if (mode == "overall") {
     abx_episode <- abx_clean %>%
@@ -496,9 +497,8 @@ plot_abx_susceptibility <- function(data,
       )
   }
 
-  # -- 6. summarise: count unique patients per antibiotic x R/S -------------
+  # 6. summarise: count unique patients per antibiotic x R/S
   if (mode == "overall") {
-
     abx_summary <- abx_episode %>%
       dplyr::group_by(!!abx_sym, final_abx) %>%
       dplyr::summarise(
@@ -540,8 +540,8 @@ plot_abx_susceptibility <- function(data,
       ggplot2::geom_text(
         ggplot2::aes(label = label),
         position = ggplot2::position_stack(vjust = 0.5),
-        color    = "white",
-        size     = 4,
+        color = "white",
+        size = 4,
         fontface = "bold"
       ) +
       ggplot2::coord_flip() +
@@ -560,7 +560,7 @@ plot_abx_susceptibility <- function(data,
     return(p)
   }
 
-  # -- 7. per-centre summary (faceted + single) ------------------------------
+  # 7. per-centre summary (faceted + single)
   abx_summary <- abx_episode %>%
     dplyr::group_by(!!ctr_sym, !!abx_sym, final_abx) %>%
     dplyr::summarise(
@@ -585,9 +585,8 @@ plot_abx_susceptibility <- function(data,
   abx_summary <- abx_summary %>%
     dplyr::inner_join(top_abx, by = c(center_col, antibiotic_col, "total_tested"))
 
-  # -- 8. SINGLE: no facet ---------------------------------------------------
+  # 8. SINGLE: no facet
   if (mode == "single") {
-
     auto_title <- title %||% sprintf(
       "Antibiotic Susceptibility Pattern (Top %d) \u2014 %s", n, center
     )
@@ -609,8 +608,8 @@ plot_abx_susceptibility <- function(data,
       ggplot2::geom_text(
         ggplot2::aes(label = label),
         position = ggplot2::position_stack(vjust = 0.5),
-        color    = "white",
-        size     = 4,
+        color = "white",
+        size = 4,
         fontface = "bold"
       ) +
       ggplot2::coord_flip() +
@@ -629,7 +628,7 @@ plot_abx_susceptibility <- function(data,
     return(p)
   }
 
-  # -- 9. FACETED ------------------------------------------------------------
+  # 9. FACETED
   auto_title <- title %||% sprintf(
     "Antibiotic Susceptibility Pattern (Top %d) \u2014 All Centres", n
   )
@@ -646,8 +645,8 @@ plot_abx_susceptibility <- function(data,
     ggplot2::geom_text(
       ggplot2::aes(label = label),
       position = ggplot2::position_stack(vjust = 0.5),
-      color    = "white",
-      size     = 4,
+      color = "white",
+      size = 4,
       fontface = "bold"
     ) +
     ggplot2::coord_flip() +
@@ -667,7 +666,6 @@ plot_abx_susceptibility <- function(data,
 
   return(p)
 }
-
 
 
 # ANTIBIOTIC RESISTANCE HEATMAP
@@ -742,30 +740,31 @@ plot_abx_susceptibility <- function(data,
 #'
 
 plot_abx_heatmap <- function(data,
-                             n              = NULL,
-                             mode           = c("all", "single"),
-                             center         = NULL,
-                             patient_col    = "PatientInformation_id",
+                             n = NULL,
+                             mode = c("all", "single"),
+                             center = NULL,
+                             patient_col = "PatientInformation_id",
                              antibiotic_col = "antibiotic_name",
-                             value_col      = "antibiotic_value",
-                             organism_col   = "organism_name",
-                             center_col     = "center_name",
-                             show_values    = TRUE,
-                             midpoint       = 0.5,
-                             low_colour     = "#1a9850",
-                             mid_colour     = "#fee08b",
-                             high_colour    = "#d73027",
-                             base_size      = 14,
-                             title          = NULL,
-                             syndrome_col   = NULL,
-                             syndrome_name  = NULL) {
-
-  # -- 0. match mode ---------------------------------------------------------
+                             value_col = "antibiotic_value",
+                             organism_col = "organism_name",
+                             center_col = "center_name",
+                             show_values = TRUE,
+                             midpoint = 0.5,
+                             low_colour = "#1a9850",
+                             mid_colour = "#fee08b",
+                             high_colour = "#d73027",
+                             base_size = 14,
+                             title = NULL,
+                             syndrome_col = NULL,
+                             syndrome_name = NULL) {
+  # 0. match mode
   mode <- match.arg(mode)
 
-  # -- 1. validate columns ---------------------------------------------------
-  required_cols <- c(patient_col, antibiotic_col, value_col,
-                     organism_col, center_col)
+  # 1. validate columns
+  required_cols <- c(
+    patient_col, antibiotic_col, value_col,
+    organism_col, center_col
+  )
 
   missing_cols <- setdiff(required_cols, names(data))
   if (length(missing_cols) > 0) {
@@ -789,44 +788,47 @@ plot_abx_heatmap <- function(data,
     }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter ---------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
   }
 
-  # -- 2. tidy-eval symbols --------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   abx_sym <- rlang::sym(antibiotic_col)
   val_sym <- rlang::sym(value_col)
   org_sym <- rlang::sym(organism_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. clean: keep only valid R/S rows, drop blank names -----------------
+  # 3. clean: keep only valid R/S rows, drop blank names
   abx_clean <- data %>%
     dplyr::filter(
       !!val_sym %in% c("R", "S"),
       !is.na(!!abx_sym), trimws(as.character(!!abx_sym)) != "",
-      !is.na(!!org_sym),  trimws(as.character(!!org_sym))  != ""
+      !is.na(!!org_sym), trimws(as.character(!!org_sym)) != ""
     ) %>%
     dplyr::distinct(
       !!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym, !!val_sym
     )
 
-  # -- 4. optional: filter to a single centre -------------------------------
+  # 4. optional: filter to a single centre
   if (mode == "single") {
     abx_clean <- abx_clean %>%
       dplyr::filter(!!ctr_sym == center)
   }
 
-  # -- 5. worst-phenotype rule -----------------------------------------------
+  # 5. worst-phenotype rule
   abx_episode <- abx_clean %>%
     dplyr::group_by(!!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym) %>%
     dplyr::summarise(
@@ -834,7 +836,7 @@ plot_abx_heatmap <- function(data,
       .groups   = "drop"
     )
 
-  # -- 6. resistance proportion per centre x antibiotic ---------------------
+  # 6. resistance proportion per centre x antibiotic
   # Count R and total, then compute proportion R
   abx_counts <- abx_episode %>%
     dplyr::group_by(!!ctr_sym, !!abx_sym, final_abx) %>%
@@ -854,7 +856,7 @@ plot_abx_heatmap <- function(data,
       value_label = sprintf("%.2f", proportion)
     )
 
-  # -- 7. optional: keep top n antibiotics by total patients tested ----------
+  # 7. optional: keep top n antibiotics by total patients tested
   if (!is.null(n)) {
     if (!is.numeric(n) || n < 1) {
       stop("'n' must be a positive integer or NULL.")
@@ -870,7 +872,7 @@ plot_abx_heatmap <- function(data,
       dplyr::filter(!!abx_sym %in% top_abx)
   }
 
-  # -- 8. order antibiotics by total patients tested (most tested = left) ----
+  # 8. order antibiotics by total patients tested (most tested = left)
   abx_order <- abx_counts %>%
     dplyr::group_by(!!abx_sym) %>%
     dplyr::summarise(grand_total = sum(total_tested), .groups = "drop") %>%
@@ -885,7 +887,7 @@ plot_abx_heatmap <- function(data,
       !!antibiotic_col := factor(!!abx_sym, levels = abx_order)
     )
 
-  # -- 9. build title --------------------------------------------------------
+  # 9. build title
   if (mode == "single") {
     auto_title <- title %||% sprintf(
       "Antibiotic Resistance Proportions \u2014 %s", center
@@ -894,7 +896,7 @@ plot_abx_heatmap <- function(data,
     auto_title <- title %||% "Antibiotic Resistance Proportions Across Centres"
   }
 
-  # -- 10. build plot --------------------------------------------------------
+  # 10. build plot
   p <- ggplot2::ggplot(
     heat_data,
     ggplot2::aes(
@@ -926,20 +928,19 @@ plot_abx_heatmap <- function(data,
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
     )
 
-  # -- 11. optional: value labels inside tiles -------------------------------
+  # 11. optional: value labels inside tiles
   if (show_values) {
     p <- p +
       ggplot2::geom_text(
         ggplot2::aes(label = value_label),
-        size     = 3.2,
+        size = 3.2,
         fontface = "bold",
-        color    = "white"
+        color = "white"
       )
   }
 
   return(p)
 }
-
 
 
 # FINAL OUTCOME DISTRIBUTION
@@ -1003,30 +1004,29 @@ plot_abx_heatmap <- function(data,
 #'
 
 plot_outcome_distribution <- function(data,
-                                      mode           = c("faceted", "overall", "single"),
-                                      center         = NULL,
-                                      patient_col    = "PatientInformation_id",
-                                      outcome_col    = "final_outcome",
-                                      center_col     = "center_name",
+                                      mode = c("faceted", "overall", "single"),
+                                      center = NULL,
+                                      patient_col = "PatientInformation_id",
+                                      outcome_col = "final_outcome",
+                                      center_col = "center_name",
                                       merge_referred = TRUE,
-                                      palette        = c(
-                                        "Death"                        = "#E74C3C",
-                                        "Died"                         = "#E74C3C",
-                                        "Discharged"                   = "#2ECC71",
-                                        "LAMA"                         = "#95A5A6",
-                                        "Referred"                     = "#3498DB",
-                                        "Transferred to other hospital"= "#3498DB"
+                                      palette = c(
+                                        "Death" = "#E74C3C",
+                                        "Died" = "#E74C3C",
+                                        "Discharged" = "#2ECC71",
+                                        "LAMA" = "#95A5A6",
+                                        "Referred" = "#3498DB",
+                                        "Transferred to other hospital" = "#3498DB"
                                       ),
-                                      ncol           = 2,
-                                      base_size      = 14,
-                                      title          = NULL,
-                                      syndrome_col   = NULL,
-                                      syndrome_name  = NULL) {
-
-  # -- 0. match mode ---------------------------------------------------------
+                                      ncol = 2,
+                                      base_size = 14,
+                                      title = NULL,
+                                      syndrome_col = NULL,
+                                      syndrome_name = NULL) {
+  # 0. match mode
   mode <- match.arg(mode)
 
-  # -- 1. validate columns ---------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, outcome_col)
   if (mode != "overall") required_cols <- c(required_cols, center_col)
 
@@ -1052,32 +1052,35 @@ plot_outcome_distribution <- function(data,
     }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter ---------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
   }
 
-  # -- 2. tidy-eval symbols --------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   out_sym <- rlang::sym(outcome_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. clean: drop missing outcomes --------------------------------------
+  # 3. clean: drop missing outcomes
   clean <- data %>%
     dplyr::filter(
       !is.na(!!out_sym),
       trimws(as.character(!!out_sym)) != ""
     )
 
-  # -- 4. optionally merge referred categories -------------------------------
+  # 4. optionally merge referred categories
   if (merge_referred) {
     clean <- clean %>%
       dplyr::mutate(
@@ -1090,13 +1093,13 @@ plot_outcome_distribution <- function(data,
     out_sym <- rlang::sym(outcome_col)
   }
 
-  # -- 5. optional: filter to one centre ------------------------------------
+  # 5. optional: filter to one centre
   if (mode == "single") {
     clean <- clean %>%
       dplyr::filter(!!ctr_sym == center)
   }
 
-  # -- 6. deduplicate: one outcome per patient (per centre) -----------------
+  # 6. deduplicate: one outcome per patient (per centre)
   # Takes the first recorded outcome to handle long-format duplicates
   if (mode == "overall") {
     outcome_unique <- clean %>%
@@ -1114,16 +1117,15 @@ plot_outcome_distribution <- function(data,
       )
   }
 
-  # -- 7. summarise counts and percentages ----------------------------------
+  # 7. summarise counts and percentages
   if (mode == "overall") {
-
     summary_out <- outcome_unique %>%
       dplyr::group_by(!!out_sym) %>%
       dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
       dplyr::mutate(
-        total   = sum(n),
+        total = sum(n),
         percent = 100 * n / total,
-        label   = paste0(n, " (", round(percent, 1), "%)"),
+        label = paste0(n, " (", round(percent, 1), "%)"),
         !!outcome_col := stats::reorder(!!out_sym, n)
       )
 
@@ -1137,8 +1139,8 @@ plot_outcome_distribution <- function(data,
       ggplot2::geom_col(width = 0.7, color = "black") +
       ggplot2::geom_text(
         ggplot2::aes(label = label),
-        vjust    = -0.3,
-        size     = 3.6,
+        vjust = -0.3,
+        size = 3.6,
         fontface = "bold"
       ) +
       ggplot2::scale_y_continuous(
@@ -1155,7 +1157,7 @@ plot_outcome_distribution <- function(data,
     return(p)
   }
 
-  # -- 8. per-centre summary (faceted + single) ------------------------------
+  # 8. per-centre summary (faceted + single)
   summary_out <- outcome_unique %>%
     dplyr::group_by(!!ctr_sym, !!out_sym) %>%
     dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
@@ -1167,9 +1169,8 @@ plot_outcome_distribution <- function(data,
     ) %>%
     dplyr::ungroup()
 
-  # -- 9. SINGLE -------------------------------------------------------------
+  # 9. SINGLE
   if (mode == "single") {
-
     auto_title <- title %||% sprintf(
       "Distribution of Final Outcomes \u2014 %s", center
     )
@@ -1186,8 +1187,8 @@ plot_outcome_distribution <- function(data,
       ggplot2::geom_col(width = 0.7, color = "black") +
       ggplot2::geom_text(
         ggplot2::aes(label = label),
-        vjust    = -0.3,
-        size     = 3.6,
+        vjust = -0.3,
+        size = 3.6,
         fontface = "bold"
       ) +
       ggplot2::scale_y_continuous(
@@ -1204,7 +1205,7 @@ plot_outcome_distribution <- function(data,
     return(p)
   }
 
-  # -- 10. FACETED -----------------------------------------------------------
+  # 10. FACETED
   auto_title <- title %||%
     "Distribution of Final Outcomes \u2014 All Centres"
 
@@ -1219,8 +1220,8 @@ plot_outcome_distribution <- function(data,
     ggplot2::geom_col(width = 0.7, color = "black") +
     ggplot2::geom_text(
       ggplot2::aes(label = label),
-      vjust    = -0.3,
-      size     = 3.6,
+      vjust = -0.3,
+      size = 3.6,
       fontface = "bold"
     ) +
     ggplot2::scale_y_continuous(
@@ -1247,7 +1248,6 @@ plot_outcome_distribution <- function(data,
 
   return(p)
 }
-
 
 
 # FINAL OUTCOME PROPORTIONS BY RESISTANCE STATUS
@@ -1325,18 +1325,18 @@ plot_outcome_distribution <- function(data,
 #'
 
 plot_outcome_by_organism <- function(data,
-                                     n                 = 5,
+                                     n = 5,
                                      resistance_filter = c("R", "S"),
-                                     mode              = c("faceted", "overall", "single"),
-                                     center            = NULL,
-                                     patient_col       = "PatientInformation_id",
-                                     organism_col      = "organism_name",
-                                     antibiotic_col    = "antibiotic_name",
-                                     value_col         = "antibiotic_value",
-                                     outcome_col       = "final_outcome",
-                                     center_col        = "center_name",
-                                     merge_referred    = TRUE,
-                                     palette           = c(
+                                     mode = c("faceted", "overall", "single"),
+                                     center = NULL,
+                                     patient_col = "PatientInformation_id",
+                                     organism_col = "organism_name",
+                                     antibiotic_col = "antibiotic_name",
+                                     value_col = "antibiotic_value",
+                                     outcome_col = "final_outcome",
+                                     center_col = "center_name",
+                                     merge_referred = TRUE,
+                                     palette = c(
                                        "Death"                         = "#E74C3C",
                                        "Died"                          = "#E74C3C",
                                        "Discharged"                    = "#2ECC71",
@@ -1344,19 +1344,20 @@ plot_outcome_by_organism <- function(data,
                                        "Referred"                      = "#3498DB",
                                        "Transferred to other hospital" = "#3498DB"
                                      ),
-                                     ncol              = 2,
-                                     base_size         = 14,
-                                     title             = NULL,
-                                     syndrome_col      = NULL,
-                                     syndrome_name     = NULL) {
-
-  # -- 0. match args ---------------------------------------------------------
+                                     ncol = 2,
+                                     base_size = 14,
+                                     title = NULL,
+                                     syndrome_col = NULL,
+                                     syndrome_name = NULL) {
+  # 0. match args
   resistance_filter <- match.arg(resistance_filter)
-  mode              <- match.arg(mode)
+  mode <- match.arg(mode)
 
-  # -- 1. validate columns ---------------------------------------------------
-  required_cols <- c(patient_col, organism_col, antibiotic_col,
-                     value_col, outcome_col)
+  # 1. validate columns
+  required_cols <- c(
+    patient_col, organism_col, antibiotic_col,
+    value_col, outcome_col
+  )
   if (mode != "overall") required_cols <- c(required_cols, center_col)
 
   missing_cols <- setdiff(required_cols, names(data))
@@ -1381,35 +1382,38 @@ plot_outcome_by_organism <- function(data,
     }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter ---------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
   }
 
-  # -- 2. tidy-eval symbols --------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   org_sym <- rlang::sym(organism_col)
   abx_sym <- rlang::sym(antibiotic_col)
   val_sym <- rlang::sym(value_col)
   out_sym <- rlang::sym(outcome_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. clean: drop blank organisms and outcomes ---------------------------
+  # 3. clean: drop blank organisms and outcomes
   clean <- data %>%
     dplyr::filter(
       !is.na(!!org_sym), trimws(as.character(!!org_sym)) != "",
       !is.na(!!out_sym), trimws(as.character(!!out_sym)) != ""
     )
 
-  # -- 4. merge referred categories -----------------------------------------
+  # 4. merge referred categories
   if (merge_referred) {
     clean <- clean %>%
       dplyr::mutate(
@@ -1421,12 +1425,12 @@ plot_outcome_by_organism <- function(data,
     out_sym <- rlang::sym(outcome_col)
   }
 
-  # -- 5. filter to one centre if single mode --------------------------------
+  # 5. filter to one centre if single mode
   if (mode == "single") {
     clean <- clean %>% dplyr::filter(!!ctr_sym == center)
   }
 
-  # -- 6. identify top N organisms (before R/S split) -----------------------
+  # 6. identify top N organisms (before R/S split)
   # Ranked by total unique patients so both R and S plots show the same organisms
   if (mode == "overall") {
     top_org <- clean %>%
@@ -1450,7 +1454,7 @@ plot_outcome_by_organism <- function(data,
       dplyr::ungroup()
   }
 
-  # -- 7. filter to top N organisms + valid R/S rows -------------------------
+  # 7. filter to top N organisms + valid R/S rows
   join_cols <- if (mode == "overall") organism_col else c(center_col, organism_col)
 
   df_filtered <- clean %>%
@@ -1464,7 +1468,7 @@ plot_outcome_by_organism <- function(data,
       !!abx_sym, !!val_sym, !!out_sym
     )
 
-  # -- 8. summarise: unique patients per organism x R/S x outcome -----------
+  # 8. summarise: unique patients per organism x R/S x outcome
   if (mode == "overall") {
     summary_data <- df_filtered %>%
       dplyr::group_by(!!org_sym, !!val_sym, !!out_sym) %>%
@@ -1483,7 +1487,6 @@ plot_outcome_by_organism <- function(data,
 
     label_data <- summary_data %>%
       dplyr::distinct(!!org_sym, !!val_sym, total_patients)
-
   } else {
     summary_data <- df_filtered %>%
       dplyr::group_by(!!ctr_sym, !!org_sym, !!val_sym, !!out_sym) %>%
@@ -1504,9 +1507,9 @@ plot_outcome_by_organism <- function(data,
       dplyr::distinct(!!ctr_sym, !!org_sym, !!val_sym, total_patients)
   }
 
-  # -- 9. filter both tables to the chosen resistance group ------------------
-  plot_data  <- summary_data %>% dplyr::filter(!!val_sym == resistance_filter)
-  label_data <- label_data   %>% dplyr::filter(!!val_sym == resistance_filter)
+  # 9. filter both tables to the chosen resistance group
+  plot_data <- summary_data %>% dplyr::filter(!!val_sym == resistance_filter)
+  label_data <- label_data %>% dplyr::filter(!!val_sym == resistance_filter)
 
   if (nrow(plot_data) == 0) {
     stop(sprintf(
@@ -1515,7 +1518,7 @@ plot_outcome_by_organism <- function(data,
     ))
   }
 
-  # -- 10. build auto title --------------------------------------------------
+  # 10. build auto title
   rs_label <- if (resistance_filter == "R") "Resistant" else "Susceptible"
 
   if (mode == "overall") {
@@ -1535,10 +1538,9 @@ plot_outcome_by_organism <- function(data,
     )
   }
 
-  # -- 11. OVERALL plot ------------------------------------------------------
+  # 11. OVERALL plot
   if (mode == "overall") {
-
-    plot_data  <- plot_data  %>% dplyr::mutate(!!organism_col := stats::reorder(!!org_sym, total_patients))
+    plot_data <- plot_data %>% dplyr::mutate(!!organism_col := stats::reorder(!!org_sym, total_patients))
     label_data <- label_data %>% dplyr::mutate(!!organism_col := stats::reorder(!!org_sym, total_patients))
 
     p <- ggplot2::ggplot(
@@ -1553,8 +1555,10 @@ plot_outcome_by_organism <- function(data,
       ) +
       ggplot2::geom_text(
         data = label_data,
-        ggplot2::aes(x = !!org_sym, y = 1.05,
-                     label = paste0("n=", total_patients)),
+        ggplot2::aes(
+          x = !!org_sym, y = 1.05,
+          label = paste0("n=", total_patients)
+        ),
         inherit.aes = FALSE, size = 3.4, fontface = "bold"
       ) +
       ggplot2::scale_y_continuous(
@@ -1572,7 +1576,7 @@ plot_outcome_by_organism <- function(data,
     return(p)
   }
 
-  # -- 12. FACETED + SINGLE share reorder_within logic ----------------------
+  # 12. FACETED + SINGLE share reorder_within logic
   plot_data <- plot_data %>%
     dplyr::mutate(
       org_ordered = tidytext::reorder_within(!!org_sym, total_patients, !!ctr_sym)
@@ -1595,8 +1599,10 @@ plot_outcome_by_organism <- function(data,
     ) +
     ggplot2::geom_text(
       data = label_data,
-      ggplot2::aes(x = org_ordered, y = 1.05,
-                   label = paste0("n=", total_patients)),
+      ggplot2::aes(
+        x = org_ordered, y = 1.05,
+        label = paste0("n=", total_patients)
+      ),
       inherit.aes = FALSE, size = 3.4, fontface = "bold"
     ) +
     ggplot2::scale_y_continuous(
@@ -1623,7 +1629,6 @@ plot_outcome_by_organism <- function(data,
 
   return(p)
 }
-
 
 
 # DEATH VS DISCHARGED -- SIDE-BY-SIDE BAR CHART
@@ -1708,30 +1713,29 @@ plot_outcome_by_organism <- function(data,
 #'
 
 plot_death_discharged <- function(data,
-                                  n                = 5,
-                                  mode             = c("faceted", "overall", "single"),
-                                  center           = NULL,
+                                  n = 5,
+                                  mode = c("faceted", "overall", "single"),
+                                  center = NULL,
                                   resistance_filter = NULL,
-                                  patient_col      = "PatientInformation_id",
-                                  organism_col     = "organism_name",
-                                  outcome_col      = "final_outcome",
-                                  center_col       = "center_name",
-                                  antibiotic_col   = "antibiotic_name",
-                                  value_col        = "antibiotic_value",
-                                  death_label      = "Death",
+                                  patient_col = "PatientInformation_id",
+                                  organism_col = "organism_name",
+                                  outcome_col = "final_outcome",
+                                  center_col = "center_name",
+                                  antibiotic_col = "antibiotic_name",
+                                  value_col = "antibiotic_value",
+                                  death_label = "Death",
                                   discharged_label = "Discharged",
-                                  colours          = NULL,
-                                  bar_width        = 0.65,
-                                  ncol             = 2,
-                                  base_size        = 14,
-                                  title            = NULL,
-                                  syndrome_col     = NULL,
-                                  syndrome_name    = NULL) {
-
-  # -- 0. match mode ---------------------------------------------------------
+                                  colours = NULL,
+                                  bar_width = 0.65,
+                                  ncol = 2,
+                                  base_size = 14,
+                                  title = NULL,
+                                  syndrome_col = NULL,
+                                  syndrome_name = NULL) {
+  # 0. match mode
   mode <- match.arg(mode)
 
-  # -- 1. validate columns ---------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, organism_col, outcome_col)
   if (mode != "overall") required_cols <- c(required_cols, center_col)
 
@@ -1767,20 +1771,23 @@ plot_death_discharged <- function(data,
     }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter ---------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
   }
 
-  # -- 2. resolve colours ----------------------------------------------------
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. resolve colours
   if (is.null(colours)) {
     colours <- stats::setNames(
       c("#E74C3C", "#2ECC71"),
@@ -1788,15 +1795,15 @@ plot_death_discharged <- function(data,
     )
   }
 
-  # -- 3. tidy-eval symbols --------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # 3. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   org_sym <- rlang::sym(organism_col)
   out_sym <- rlang::sym(outcome_col)
   ctr_sym <- rlang::sym(center_col)
   abx_sym <- rlang::sym(antibiotic_col)
   val_sym <- rlang::sym(value_col)
 
-  # -- 4. keep only Death and Discharged, drop blank organisms --------------
+  # 4. keep only Death and Discharged, drop blank organisms
   clean <- data %>%
     dplyr::filter(
       !!out_sym %in% c(death_label, discharged_label),
@@ -1810,7 +1817,7 @@ plot_death_discharged <- function(data,
     ))
   }
 
-  # -- 4b. resistance pre-filter (worst-phenotype at organism level) ---------
+  # 4b. resistance pre-filter (worst-phenotype at organism level)
   # Classify each patient x organism as R (any R result) or S (all S results)
   # from the FULL dataset, then keep only the desired group.
   if (!is.null(resistance_filter)) {
@@ -1841,12 +1848,12 @@ plot_death_discharged <- function(data,
     }
   }
 
-  # -- 5. filter to one centre if single mode --------------------------------
+  # 5. filter to one centre if single mode
   if (mode == "single") {
     clean <- clean %>% dplyr::filter(!!ctr_sym == center)
   }
 
-  # -- 6. deduplicate: one row per patient x organism x outcome (x centre) --
+  # 6. deduplicate: one row per patient x organism x outcome (x centre)
   if (mode == "overall") {
     clean <- clean %>%
       dplyr::distinct(!!pt_sym, !!org_sym, !!out_sym)
@@ -1855,7 +1862,7 @@ plot_death_discharged <- function(data,
       dplyr::distinct(!!ctr_sym, !!pt_sym, !!org_sym, !!out_sym)
   }
 
-  # -- 7. identify top N organisms by total known-outcome patients -----------
+  # 7. identify top N organisms by total known-outcome patients
   if (mode == "overall") {
     top_org <- clean %>%
       dplyr::group_by(!!org_sym) %>%
@@ -1881,7 +1888,7 @@ plot_death_discharged <- function(data,
   clean <- clean %>%
     dplyr::semi_join(top_org, by = join_cols)
 
-  # -- 8. count unique patients per organism x outcome (x centre) -----------
+  # 8. count unique patients per organism x outcome (x centre)
   if (mode == "overall") {
     summary_data <- clean %>%
       dplyr::group_by(!!org_sym, !!out_sym) %>%
@@ -1915,10 +1922,12 @@ plot_death_discharged <- function(data,
       dplyr::ungroup()
   }
 
-  # -- 9. build auto title ---------------------------------------------------
+  # 9. build auto title
   rs_tag <- if (!is.null(resistance_filter)) {
     if (resistance_filter == "R") " (Resistant Patients)" else " (Susceptible Patients)"
-  } else ""
+  } else {
+    ""
+  }
 
   if (mode == "overall") {
     auto_title <- title %||% sprintf(
@@ -1937,9 +1946,8 @@ plot_death_discharged <- function(data,
     )
   }
 
-  # -- 10. OVERALL plot ------------------------------------------------------
+  # 10. OVERALL plot
   if (mode == "overall") {
-
     p <- ggplot2::ggplot(
       summary_data,
       ggplot2::aes(
@@ -1956,11 +1964,11 @@ plot_death_discharged <- function(data,
       ggplot2::geom_text(
         ggplot2::aes(label = label),
         position = ggplot2::position_dodge(width = bar_width + 0.05),
-        vjust    = 0.5,
-        hjust    = 1.1,
-        size     = 2.8,
+        vjust = 0.5,
+        hjust = 1.1,
+        size = 2.8,
         fontface = "bold",
-        color    = "white"
+        color = "white"
       ) +
       ggplot2::scale_y_continuous(
         expand = ggplot2::expansion(mult = c(0, 0.05))
@@ -1978,7 +1986,7 @@ plot_death_discharged <- function(data,
     return(p)
   }
 
-  # -- 11. FACETED + SINGLE share reorder_within -----------------------------
+  # 11. FACETED + SINGLE share reorder_within
   summary_data <- summary_data %>%
     dplyr::mutate(
       org_ordered = tidytext::reorder_within(!!org_sym, total, !!ctr_sym)
@@ -2000,11 +2008,11 @@ plot_death_discharged <- function(data,
     ggplot2::geom_text(
       ggplot2::aes(label = label),
       position = ggplot2::position_dodge(width = bar_width + 0.05),
-      vjust    = 0.5,
-      hjust    = 1.1,
-      size     = 2.8,
+      vjust = 0.5,
+      hjust = 1.1,
+      size = 2.8,
       fontface = "bold",
-      color    = "white"
+      color = "white"
     ) +
     ggplot2::scale_y_continuous(
       expand = ggplot2::expansion(mult = c(0, 0.05))
@@ -2031,7 +2039,6 @@ plot_death_discharged <- function(data,
 
   return(p)
 }
-
 
 
 # ANTIBIOTIC RESISTANCE DISTRIBUTION ACROSS SAMPLE TYPES
@@ -2105,27 +2112,28 @@ plot_death_discharged <- function(data,
 #'
 
 plot_resistance_by_sample <- function(data,
-                                      n              = 10,
-                                      mode           = c("faceted", "overall", "single"),
-                                      center         = NULL,
-                                      patient_col    = "PatientInformation_id",
-                                      sample_col     = "sample_type",
-                                      organism_col   = "organism_name",
+                                      n = 10,
+                                      mode = c("faceted", "overall", "single"),
+                                      center = NULL,
+                                      patient_col = "PatientInformation_id",
+                                      sample_col = "sample_type",
+                                      organism_col = "organism_name",
                                       antibiotic_col = "antibiotic_name",
-                                      value_col      = "antibiotic_value",
-                                      center_col     = "center_name",
-                                      colours        = c("R" = "#D73027",
-                                                         "S" = "#1A9850"),
-                                      ncol           = 2,
-                                      base_size      = 14,
-                                      title          = NULL,
-                                      syndrome_col   = NULL,
-                                      syndrome_name  = NULL) {
-
-  # -- 0. match mode ---------------------------------------------------------
+                                      value_col = "antibiotic_value",
+                                      center_col = "center_name",
+                                      colours = c(
+                                        "R" = "#D73027",
+                                        "S" = "#1A9850"
+                                      ),
+                                      ncol = 2,
+                                      base_size = 14,
+                                      title = NULL,
+                                      syndrome_col = NULL,
+                                      syndrome_name = NULL) {
+  # 0. match mode
   mode <- match.arg(mode)
 
-  # -- 1. validate columns ---------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, sample_col, organism_col, antibiotic_col, value_col)
   if (mode != "overall") required_cols <- c(required_cols, center_col)
 
@@ -2151,20 +2159,23 @@ plot_resistance_by_sample <- function(data,
     }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter ---------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
   }
 
-  # -- 2. tidy-eval symbols --------------------------------------------------
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. tidy-eval symbols
   pat_sym <- rlang::sym(patient_col)
   smp_sym <- rlang::sym(sample_col)
   org_sym <- rlang::sym(organism_col)
@@ -2172,7 +2183,7 @@ plot_resistance_by_sample <- function(data,
   val_sym <- rlang::sym(value_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. clean: valid R/S rows, drop blank sample types and antibiotics -----
+  # 3. clean: valid R/S rows, drop blank sample types and antibiotics
   clean <- data %>%
     dplyr::filter(
       !!val_sym %in% c("R", "S"),
@@ -2180,13 +2191,13 @@ plot_resistance_by_sample <- function(data,
       !is.na(!!abx_sym), trimws(as.character(!!abx_sym)) != ""
     )
 
-  # -- 4. filter to one centre if single mode --------------------------------
+  # 4. filter to one centre if single mode
   if (mode == "single") {
     clean <- clean %>% dplyr::filter(!!ctr_sym == center)
   }
 
-  # -- 5. deduplicate: worst-phenotype per patient x centre x sample x
-  #       organism x antibiotic -- collapses duplicate/conflicting rows -------
+  # 5. deduplicate: worst-phenotype per patient x centre x sample x organism x
+  #    antibiotic, collapsing duplicate/conflicting rows
   dedup_cols <- c(center_col, patient_col, sample_col, organism_col, antibiotic_col)
   if (mode == "overall") dedup_cols <- setdiff(dedup_cols, center_col)
 
@@ -2197,7 +2208,7 @@ plot_resistance_by_sample <- function(data,
       .groups = "drop"
     )
 
-  # -- 6. identify top N sample types (by deduplicated test count) ----------
+  # 6. identify top N sample types (by deduplicated test count)
   if (mode == "overall") {
     top_smp <- clean %>%
       dplyr::group_by(!!smp_sym) %>%
@@ -2215,7 +2226,7 @@ plot_resistance_by_sample <- function(data,
   join_cols <- if (mode == "overall") sample_col else c(center_col, sample_col)
   clean <- clean %>% dplyr::semi_join(top_smp, by = join_cols)
 
-  # -- 7. summarise: deduplicated counts per sample type x R/S (x centre) ----
+  # 7. summarise: deduplicated counts per sample type x R/S (x centre)
   if (mode == "overall") {
     summary_data <- clean %>%
       dplyr::group_by(!!smp_sym, !!val_sym) %>%
@@ -2263,7 +2274,7 @@ plot_resistance_by_sample <- function(data,
     return(p)
   }
 
-  # -- 8. per-centre summary (faceted + single) ------------------------------
+  # 8. per-centre summary (faceted + single)
   summary_data <- clean %>%
     dplyr::group_by(!!ctr_sym, !!smp_sym, !!val_sym) %>%
     dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
@@ -2283,9 +2294,10 @@ plot_resistance_by_sample <- function(data,
 
   summary_data <- summary_data %>%
     dplyr::inner_join(top_smp_with_total,
-                      by = c(center_col, sample_col, "total_tests"))
+      by = c(center_col, sample_col, "total_tests")
+    )
 
-  # -- 9. SINGLE -------------------------------------------------------------
+  # 9. SINGLE
   if (mode == "single") {
     auto_title <- title %||% sprintf(
       "Antibiotic Resistance by Sample Type (Top %d) \u2014 %s", n, center
@@ -2324,7 +2336,7 @@ plot_resistance_by_sample <- function(data,
     return(p)
   }
 
-  # -- 10. FACETED -----------------------------------------------------------
+  # 10. FACETED
   auto_title <- title %||% sprintf(
     "Antibiotic Resistance by Sample Type (Top %d) \u2014 All Centres", n
   )
@@ -2369,7 +2381,6 @@ plot_resistance_by_sample <- function(data,
 
   return(p)
 }
-
 
 
 # FINAL OUTCOME BY AGE BIN
@@ -2434,15 +2445,15 @@ plot_resistance_by_sample <- function(data,
 #'
 
 plot_outcome_by_agebin <- function(data,
-                                   mode           = c("faceted", "overall", "single"),
-                                   center         = NULL,
-                                   patient_col    = "PatientInformation_id",
-                                   agebin_col     = "Age_bin",
-                                   outcome_col    = "final_outcome",
-                                   center_col     = "center_name",
+                                   mode = c("faceted", "overall", "single"),
+                                   center = NULL,
+                                   patient_col = "PatientInformation_id",
+                                   agebin_col = "Age_bin",
+                                   outcome_col = "final_outcome",
+                                   center_col = "center_name",
                                    merge_referred = TRUE,
-                                   age_levels     = NULL,
-                                   palette        = c(
+                                   age_levels = NULL,
+                                   palette = c(
                                      "Death"                         = "#E74C3C",
                                      "Died"                          = "#E74C3C",
                                      "Discharged"                    = "#2ECC71",
@@ -2450,16 +2461,15 @@ plot_outcome_by_agebin <- function(data,
                                      "Referred"                      = "#3498DB",
                                      "Transferred to other hospital" = "#3498DB"
                                    ),
-                                   ncol           = 2,
-                                   base_size      = 14,
-                                   title          = NULL,
-                                   syndrome_col   = NULL,
-                                   syndrome_name  = NULL) {
-
-  # -- 0. match mode ---------------------------------------------------------
+                                   ncol = 2,
+                                   base_size = 14,
+                                   title = NULL,
+                                   syndrome_col = NULL,
+                                   syndrome_name = NULL) {
+  # 0. match mode
   mode <- match.arg(mode)
 
-  # -- 1. validate columns ---------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, agebin_col, outcome_col)
   if (mode != "overall") required_cols <- c(required_cols, center_col)
 
@@ -2472,43 +2482,48 @@ plot_outcome_by_agebin <- function(data,
   }
 
   if (mode == "single") {
-    if (is.null(center))
+    if (is.null(center)) {
       stop("'center' must be provided when mode = 'single'.")
+    }
     available <- unique(data[[center_col]])
-    if (!center %in% available)
+    if (!center %in% available) {
       stop(sprintf(
         "'%s' not found in column '%s'. Available values: %s",
         center, center_col, paste(sort(available), collapse = ", ")
       ))
+    }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
 
-  # -- syndrome pre-filter ---------------------------------------------------
+  # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
   }
 
-  # -- 2. tidy-eval symbols --------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   age_sym <- rlang::sym(agebin_col)
   out_sym <- rlang::sym(outcome_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. clean: drop missing age bins and outcomes --------------------------
+  # 3. clean: drop missing age bins and outcomes
   clean <- data %>%
     dplyr::filter(
       !is.na(!!age_sym), trimws(as.character(!!age_sym)) != "",
       !is.na(!!out_sym), trimws(as.character(!!out_sym)) != ""
     )
 
-  # -- 4. merge referred categories -----------------------------------------
+  # 4. merge referred categories
   if (merge_referred) {
     clean <- clean %>%
       dplyr::mutate(
@@ -2520,17 +2535,17 @@ plot_outcome_by_agebin <- function(data,
     out_sym <- rlang::sym(outcome_col)
   }
 
-  # -- 5. filter to single centre --------------------------------------------
+  # 5. filter to single centre
   if (mode == "single") {
     clean <- clean %>% dplyr::filter(!!ctr_sym == center)
   }
 
-  # -- 6. deduplicate: one row per patient (x centre) -----------------------
+  # 6. deduplicate: one row per patient (x centre)
   if (mode == "overall") {
     clean <- clean %>%
       dplyr::group_by(!!pt_sym) %>%
       dplyr::summarise(
-        !!agebin_col  := dplyr::first(!!age_sym),
+        !!agebin_col := dplyr::first(!!age_sym),
         !!outcome_col := dplyr::first(!!out_sym),
         .groups = "drop"
       )
@@ -2538,7 +2553,7 @@ plot_outcome_by_agebin <- function(data,
     clean <- clean %>%
       dplyr::group_by(!!ctr_sym, !!pt_sym) %>%
       dplyr::summarise(
-        !!agebin_col  := dplyr::first(!!age_sym),
+        !!agebin_col := dplyr::first(!!age_sym),
         !!outcome_col := dplyr::first(!!out_sym),
         .groups = "drop"
       )
@@ -2546,15 +2561,15 @@ plot_outcome_by_agebin <- function(data,
     out_sym <- rlang::sym(outcome_col)
   }
 
-  # -- 7. order age bins -----------------------------------------------------
+  # 7. order age bins
   if (!is.null(age_levels)) {
     lvls <- age_levels
   } else {
     all_bins <- unique(clean[[agebin_col]])
-    lt_bins   <- all_bins[grepl("^<", all_bins)]
+    lt_bins <- all_bins[grepl("^<", all_bins)]
     plus_bins <- all_bins[grepl("\\+$", all_bins)]
     range_bins <- setdiff(all_bins, c(lt_bins, plus_bins))
-    lower_num  <- suppressWarnings(as.numeric(sub("[--].*", "", range_bins)))
+    lower_num <- suppressWarnings(as.numeric(sub("[--].*", "", range_bins)))
     range_bins <- range_bins[order(lower_num)]
     lvls <- c(sort(lt_bins), range_bins, sort(plus_bins))
   }
@@ -2562,7 +2577,7 @@ plot_outcome_by_agebin <- function(data,
   clean <- clean %>%
     dplyr::mutate(!!agebin_col := factor(!!age_sym, levels = lvls))
 
-  # -- 8. summarise proportions ----------------------------------------------
+  # 8. summarise proportions
   if (mode == "overall") {
     summary_data <- clean %>%
       dplyr::group_by(!!age_sym, !!out_sym) %>%
@@ -2577,7 +2592,6 @@ plot_outcome_by_agebin <- function(data,
 
     n_labels <- summary_data %>%
       dplyr::distinct(!!age_sym, total)
-
   } else {
     summary_data <- clean %>%
       dplyr::group_by(!!ctr_sym, !!age_sym, !!out_sym) %>%
@@ -2594,7 +2608,7 @@ plot_outcome_by_agebin <- function(data,
       dplyr::distinct(!!ctr_sym, !!age_sym, total)
   }
 
-  # -- 9. build fill colours -------------------------------------------------
+  # 9. build fill colours
   outcomes_in_data <- unique(as.character(summary_data[[outcome_col]]))
   fill_vals <- ifelse(
     outcomes_in_data %in% names(palette),
@@ -2603,7 +2617,7 @@ plot_outcome_by_agebin <- function(data,
   )
   names(fill_vals) <- outcomes_in_data
 
-  # -- 10. OVERALL -----------------------------------------------------------
+  # 10. OVERALL
   if (mode == "overall") {
     auto_title <- title %||%
       "Proportion of Final Outcomes by Age Bin \u2014 All Centres Pooled"
@@ -2620,8 +2634,10 @@ plot_outcome_by_agebin <- function(data,
       ) +
       ggplot2::geom_text(
         data = n_labels,
-        ggplot2::aes(x = !!age_sym, y = 1.05,
-                     label = paste0("n=", total)),
+        ggplot2::aes(
+          x = !!age_sym, y = 1.05,
+          label = paste0("n=", total)
+        ),
         inherit.aes = FALSE,
         size = 3.4, fontface = "bold"
       ) +
@@ -2642,7 +2658,7 @@ plot_outcome_by_agebin <- function(data,
     return(p)
   }
 
-  # -- 11. SINGLE ------------------------------------------------------------
+  # 11. SINGLE
   if (mode == "single") {
     auto_title <- title %||% sprintf(
       "Proportion of Final Outcomes by Age Bin \u2014 %s", center
@@ -2660,8 +2676,10 @@ plot_outcome_by_agebin <- function(data,
       ) +
       ggplot2::geom_text(
         data = n_labels,
-        ggplot2::aes(x = !!age_sym, y = 1.05,
-                     label = paste0("n=", total)),
+        ggplot2::aes(
+          x = !!age_sym, y = 1.05,
+          label = paste0("n=", total)
+        ),
         inherit.aes = FALSE,
         size = 3.4, fontface = "bold"
       ) +
@@ -2682,7 +2700,7 @@ plot_outcome_by_agebin <- function(data,
     return(p)
   }
 
-  # -- 12. FACETED -----------------------------------------------------------
+  # 12. FACETED
   auto_title <- title %||%
     "Proportion of Final Outcomes by Age Bin \u2014 All Centres"
 
@@ -2698,8 +2716,10 @@ plot_outcome_by_agebin <- function(data,
     ) +
     ggplot2::geom_text(
       data = n_labels,
-      ggplot2::aes(x = !!age_sym, y = 1.05,
-                   label = paste0("n=", total)),
+      ggplot2::aes(
+        x = !!age_sym, y = 1.05,
+        label = paste0("n=", total)
+      ),
       inherit.aes = FALSE,
       size = 3.4, fontface = "bold"
     ) +
@@ -2725,7 +2745,6 @@ plot_outcome_by_agebin <- function(data,
 
   return(p)
 }
-
 
 
 # MONO VS POLYMICROBIAL BY FACILITY
@@ -2775,60 +2794,66 @@ plot_outcome_by_agebin <- function(data,
 #' @return A \code{ggplot} object.
 #' @export
 plot_mono_poly_by_facility <- function(data,
-                                       patient_col  = "PatientInformation_id",
-                                       poly_col     = "is_polymicrobial",
-                                       center_col   = "center_name",
-                                       mono_label   = "Monomicrobial",
-                                       poly_label   = "Polymicrobial",
-                                       colours      = NULL,
-                                       bar_width    = 0.68,
-                                       base_size    = 14,
-                                       title        = NULL,
-                                       syndrome_col  = NULL,
+                                       patient_col = "PatientInformation_id",
+                                       poly_col = "is_polymicrobial",
+                                       center_col = "center_name",
+                                       mono_label = "Monomicrobial",
+                                       poly_label = "Polymicrobial",
+                                       colours = NULL,
+                                       bar_width = 0.68,
+                                       base_size = 14,
+                                       title = NULL,
+                                       syndrome_col = NULL,
                                        syndrome_name = NULL) {
-
-  # -- 1. validate columns ---------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, poly_col, center_col)
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Column(s) not found in data: %s",
-                 paste(missing_cols, collapse = ", ")))
-
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
-    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
-    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter ---------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "Column(s) not found in data: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
   }
 
-  # -- 2. tidy-eval symbols --------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
+
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   pol_sym <- rlang::sym(poly_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. recode 0/1 -> infection_type factor --------------------------------
+  # 3. recode 0/1 -> infection_type factor
   clean <- data %>%
     dplyr::filter(!is.na(!!pol_sym)) %>%
     dplyr::mutate(
       infection_type = factor(
         dplyr::if_else(!!pol_sym == 1L | !!pol_sym == TRUE,
-                       poly_label, mono_label),
+          poly_label, mono_label
+        ),
         levels = c(mono_label, poly_label)
       )
     )
 
-  # -- 4. deduplicate: one row per patient x centre x infection type ---------
+  # 4. deduplicate: one row per patient x centre x infection type
   plot_data <- clean %>%
     dplyr::distinct(!!pt_sym, !!ctr_sym, infection_type) %>%
     dplyr::count(!!ctr_sym, infection_type, name = "n_patients")
 
-  # -- 5. resolve colours ----------------------------------------------------
+  # 5. resolve colours
   if (is.null(colours)) {
     colours <- stats::setNames(
       c("#2196F3", "#F44336"),
@@ -2836,7 +2861,7 @@ plot_mono_poly_by_facility <- function(data,
     )
   }
 
-  # -- 6. build plot ---------------------------------------------------------
+  # 6. build plot
   auto_title <- title %||%
     "Mono vs Polymicrobial Infections by Facility"
 
@@ -2851,10 +2876,10 @@ plot_mono_poly_by_facility <- function(data,
     ) +
     ggplot2::geom_text(
       ggplot2::aes(label = n_patients),
-      position  = ggplot2::position_dodge(width = bar_width + 0.04),
-      vjust     = -0.45,
-      size      = 3.4,
-      fontface  = "bold"
+      position = ggplot2::position_dodge(width = bar_width + 0.04),
+      vjust = -0.45,
+      size = 3.4,
+      fontface = "bold"
     ) +
     ggplot2::scale_fill_manual(values = colours) +
     ggplot2::scale_y_continuous(
@@ -2868,14 +2893,15 @@ plot_mono_poly_by_facility <- function(data,
     ) +
     eda_theme(base_size = base_size) +
     ggplot2::theme(
-      axis.text.x        = ggplot2::element_text(angle = 30, hjust = 1,
-                                                  face = "bold"),
+      axis.text.x = ggplot2::element_text(
+        angle = 30, hjust = 1,
+        face = "bold"
+      ),
       panel.grid.major.x = ggplot2::element_blank()
     )
 
   return(p)
 }
-
 
 
 # HAI vs CAI BY FACILITY
@@ -2927,46 +2953,51 @@ plot_mono_poly_by_facility <- function(data,
 #' @return A \code{ggplot} object.
 #' @export
 plot_hai_cai_by_facility <- function(data,
-                                     patient_col         = "PatientInformation_id",
-                                     center_col          = "center_name",
-                                     admission_col       = "admission_date",
-                                     culture_col         = "culture_date",
+                                     patient_col = "PatientInformation_id",
+                                     center_col = "center_name",
+                                     admission_col = "admission_date",
+                                     culture_col = "culture_date",
                                      hai_threshold_hours = 48,
-                                     hai_label           = "HAI",
-                                     cai_label           = "CAI",
-                                     colours             = NULL,
-                                     base_size           = 14,
-                                     title               = NULL,
-                                     syndrome_col        = NULL,
-                                     syndrome_name       = NULL) {
-
-  # -- 1. validate columns ---------------------------------------------------
+                                     hai_label = "HAI",
+                                     cai_label = "CAI",
+                                     colours = NULL,
+                                     base_size = 14,
+                                     title = NULL,
+                                     syndrome_col = NULL,
+                                     syndrome_name = NULL) {
+  # 1. validate columns
   required_cols <- c(patient_col, center_col, admission_col, culture_col)
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Column(s) not found in data: %s",
-                 paste(missing_cols, collapse = ", ")))
-
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
-    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
-    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter ---------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "Column(s) not found in data: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
   }
 
-  # -- 2. tidy-eval symbols --------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
+
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   ctr_sym <- rlang::sym(center_col)
   adm_sym <- rlang::sym(admission_col)
   cul_sym <- rlang::sym(culture_col)
 
-  # -- 3. classify HAI / CAI -- one row per patient x centre -----------------
+  # 3. classify HAI / CAI -- one row per patient x centre
   classified <- data %>%
     dplyr::filter(!is.na(!!adm_sym), !is.na(!!cul_sym)) %>%
     dplyr::group_by(!!pt_sym, !!ctr_sym) %>%
@@ -2983,7 +3014,7 @@ plot_hai_cai_by_facility <- function(data,
       )
     )
 
-  # -- 4. count unique patients per centre x infection type -----------------
+  # 4. count unique patients per centre x infection type
   plot_data <- classified %>%
     dplyr::count(!!ctr_sym, infection_type_derived, name = "n_patients") %>%
     dplyr::group_by(!!ctr_sym) %>%
@@ -2997,7 +3028,7 @@ plot_hai_cai_by_facility <- function(data,
   n_labels <- plot_data %>%
     dplyr::distinct(!!ctr_sym, total)
 
-  # -- 5. resolve colours ----------------------------------------------------
+  # 5. resolve colours
   if (is.null(colours)) {
     colours <- stats::setNames(
       c("#2ECC71", "#E74C3C"),
@@ -3005,7 +3036,7 @@ plot_hai_cai_by_facility <- function(data,
     )
   }
 
-  # -- 6. build plot ---------------------------------------------------------
+  # 6. build plot
   auto_title <- title %||% sprintf(
     "HAI vs CAI by Facility (threshold \u2265 %d h from admission)",
     hai_threshold_hours
@@ -3019,18 +3050,20 @@ plot_hai_cai_by_facility <- function(data,
     ggplot2::geom_text(
       ggplot2::aes(label = label),
       position = ggplot2::position_stack(vjust = 0.5),
-      size     = 3.2,
-      color    = "white",
+      size = 3.2,
+      color = "white",
       fontface = "bold",
       lineheight = 0.9
     ) +
     ggplot2::geom_text(
       data = n_labels,
-      ggplot2::aes(x = !!ctr_sym, y = total,
-                   label = paste0("n=", total)),
+      ggplot2::aes(
+        x = !!ctr_sym, y = total,
+        label = paste0("n=", total)
+      ),
       inherit.aes = FALSE,
-      vjust    = -0.45,
-      size     = 3.4,
+      vjust = -0.45,
+      size = 3.4,
       fontface = "bold"
     ) +
     ggplot2::scale_fill_manual(values = colours) +
@@ -3045,14 +3078,15 @@ plot_hai_cai_by_facility <- function(data,
     ) +
     eda_theme(base_size = base_size) +
     ggplot2::theme(
-      axis.text.x        = ggplot2::element_text(angle = 30, hjust = 1,
-                                                  face = "bold"),
+      axis.text.x = ggplot2::element_text(
+        angle = 30, hjust = 1,
+        face = "bold"
+      ),
       panel.grid.major.x = ggplot2::element_blank()
     )
 
   return(p)
 }
-
 
 
 # PATIENT DISTRIBUTION BY LOCATION TYPE ACROSS FACILITIES
@@ -3111,65 +3145,71 @@ plot_hai_cai_by_facility <- function(data,
 #' @return A \code{ggplot} object.
 #' @export
 plot_location_by_facility <- function(data,
-                                      patient_col   = "PatientInformation_id",
-                                      location_col  = "location",
-                                      center_col    = "center_name",
-                                      icu_pattern   = "icu",
-                                      ward_pattern  = "ward",
-                                      icu_label     = "ICU",
-                                      ward_label    = "Ward",
-                                      other_label   = "Other",
-                                      colours       = NULL,
-                                      bar_width     = 0.68,
-                                      base_size     = 14,
-                                      title         = NULL,
-                                      syndrome_col  = NULL,
+                                      patient_col = "PatientInformation_id",
+                                      location_col = "location",
+                                      center_col = "center_name",
+                                      icu_pattern = "icu",
+                                      ward_pattern = "ward",
+                                      icu_label = "ICU",
+                                      ward_label = "Ward",
+                                      other_label = "Other",
+                                      colours = NULL,
+                                      bar_width = 0.68,
+                                      base_size = 14,
+                                      title = NULL,
+                                      syndrome_col = NULL,
                                       syndrome_name = NULL) {
-
-  # -- 1. validate columns ---------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, location_col, center_col)
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Column(s) not found in data: %s",
-                 paste(missing_cols, collapse = ", ")))
-
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
-    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
-    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter ---------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "Column(s) not found in data: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
   }
 
-  # -- 2. tidy-eval symbols --------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
+
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   loc_sym <- rlang::sym(location_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. normalise location -> ICU / Ward / Other ---------------------------
+  # 3. normalise location -> ICU / Ward / Other
   clean <- data %>%
     dplyr::filter(!is.na(!!loc_sym)) %>%
     dplyr::mutate(
       location_type = dplyr::case_when(
-        grepl(icu_pattern,  tolower(as.character(!!loc_sym))) ~ icu_label,
+        grepl(icu_pattern, tolower(as.character(!!loc_sym))) ~ icu_label,
         grepl(ward_pattern, tolower(as.character(!!loc_sym))) ~ ward_label,
-        TRUE                                                  ~ other_label
+        TRUE ~ other_label
       ),
       location_type = factor(location_type,
-                             levels = c(icu_label, ward_label, other_label))
+        levels = c(icu_label, ward_label, other_label)
+      )
     )
 
-  # -- 4. deduplicate: one row per patient x centre x location type ----------
+  # 4. deduplicate: one row per patient x centre x location type
   plot_data <- clean %>%
     dplyr::distinct(!!pt_sym, !!ctr_sym, location_type) %>%
     dplyr::count(!!ctr_sym, location_type, name = "n_patients")
 
-  # -- 5. resolve colours ----------------------------------------------------
+  # 5. resolve colours
   if (is.null(colours)) {
     colours <- stats::setNames(
       c("#E91E63", "#4CAF50", "#9E9E9E"),
@@ -3177,7 +3217,7 @@ plot_location_by_facility <- function(data,
     )
   }
 
-  # -- 6. build plot ---------------------------------------------------------
+  # 6. build plot
   auto_title <- title %||% "Patient Distribution by Location Type across Facilities"
 
   p <- ggplot2::ggplot(
@@ -3192,8 +3232,8 @@ plot_location_by_facility <- function(data,
     ggplot2::geom_text(
       ggplot2::aes(label = n_patients),
       position = ggplot2::position_dodge(width = bar_width + 0.04),
-      vjust    = -0.45,
-      size     = 3.4,
+      vjust = -0.45,
+      size = 3.4,
       fontface = "bold"
     ) +
     ggplot2::scale_fill_manual(values = colours) +
@@ -3208,14 +3248,15 @@ plot_location_by_facility <- function(data,
     ) +
     eda_theme(base_size = base_size) +
     ggplot2::theme(
-      axis.text.x        = ggplot2::element_text(angle = 30, hjust = 1,
-                                                  face = "bold"),
+      axis.text.x = ggplot2::element_text(
+        angle = 30, hjust = 1,
+        face = "bold"
+      ),
       panel.grid.major.x = ggplot2::element_blank()
     )
 
   return(p)
 }
-
 
 
 # LOS RIDGE PLOT
@@ -3271,68 +3312,75 @@ plot_location_by_facility <- function(data,
 #'
 #' @export
 plot_los_ridge <- function(
-    data,
-    mode              = c("all", "single"),
-    center            = NULL,
-    patient_col       = "patient_id",
-    center_col        = "center_name",
-    admission_col     = "admission_date",
-    discharge_col     = "final_outcome_date",
-    filter_outcome    = NULL,
-    outcome_col       = "final_outcome",
-    min_los           = 1,
-    max_los           = 365,
-    colours           = NULL,
-    scale             = 1.2,
-    alpha             = 0.7,
-    base_size         = 14,
-    title             = NULL,
-    syndrome_col      = NULL,
-    syndrome_name     = NULL
+  data,
+  mode = c("all", "single"),
+  center = NULL,
+  patient_col = "patient_id",
+  center_col = "center_name",
+  admission_col = "admission_date",
+  discharge_col = "final_outcome_date",
+  filter_outcome = NULL,
+  outcome_col = "final_outcome",
+  min_los = 1,
+  max_los = 365,
+  colours = NULL,
+  scale = 1.2,
+  alpha = 0.7,
+  base_size = 14,
+  title = NULL,
+  syndrome_col = NULL,
+  syndrome_name = NULL
 ) {
-
-  # -- step 0: validate arguments -----------------------------------------------
+  # step 0: validate arguments
   mode <- match.arg(mode)
-  if (mode == "single" && is.null(center))
+  if (mode == "single" && is.null(center)) {
     stop("'center' must be provided when mode = 'single'.")
+  }
 
-  # -- step 1: column validation ------------------------------------------------
+  # step 1: column validation
   required_cols <- c(patient_col, center_col, admission_col, discharge_col)
   if (!is.null(filter_outcome)) required_cols <- c(required_cols, outcome_col)
   missing_cols <- required_cols[!required_cols %in% names(data)]
-  if (length(missing_cols) > 0)
-    stop("The following required columns are missing from data: ",
-         paste(missing_cols, collapse = ", "))
-
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
-    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
-    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter -------------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+  if (length(missing_cols) > 0) {
+    stop(
+      "The following required columns are missing from data: ",
+      paste(missing_cols, collapse = ", ")
+    )
   }
 
-  # -- step 2: tidy-eval symbols -------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
+
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # step 2: tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   ctr_sym <- rlang::sym(center_col)
   adm_sym <- rlang::sym(admission_col)
   dis_sym <- rlang::sym(discharge_col)
 
-  # -- step 3: optional outcome filter ------------------------------------------
+  # step 3: optional outcome filter
   if (!is.null(filter_outcome)) {
     out_sym <- rlang::sym(outcome_col)
     data <- data %>%
       dplyr::filter(!is.na(!!out_sym), !!out_sym == filter_outcome)
-    if (nrow(data) == 0)
+    if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", outcome_col, filter_outcome))
+    }
   }
 
-  # -- step 4: compute LOS -------------------------------------------------------
+  # step 4: compute LOS
   clean <- data %>%
     dplyr::filter(!is.na(!!adm_sym), !is.na(!!dis_sym)) %>%
     dplyr::distinct(!!pt_sym, !!ctr_sym, !!adm_sym, !!dis_sym) %>%
@@ -3341,15 +3389,15 @@ plot_los_ridge <- function(
     ) %>%
     dplyr::filter(LOS_days >= min_los, LOS_days <= max_los)
 
-  if (nrow(clean) == 0)
+  if (nrow(clean) == 0) {
     stop("No valid LOS values remain after filtering.")
+  }
 
-  # -- step 5: mode-specific prep ------------------------------------------------
+  # step 5: mode-specific prep
   x_breaks <- c(1, 7, 14, 30, 60, 90, 180, 365)
   x_labels <- c("1", "7", "14", "30", "60", "90", "180", "365")
 
   if (mode == "all") {
-
     # Order centres by median LOS (ascending)
     center_order <- clean %>%
       dplyr::group_by(!!ctr_sym) %>%
@@ -3373,8 +3421,10 @@ plot_los_ridge <- function(
     }
 
     auto_title <- title %||%
-      sprintf("Distribution of Length of Stay by Centre (n = %s patients)",
-              scales::comma(dplyr::n_distinct(clean[[patient_col]])))
+      sprintf(
+        "Distribution of Length of Stay by Centre (n = %s patients)",
+        scales::comma(dplyr::n_distinct(clean[[patient_col]]))
+      )
 
     p <- ggplot2::ggplot(
       clean,
@@ -3408,19 +3458,21 @@ plot_los_ridge <- function(
           colour = "grey85", linetype = "dashed"
         )
       )
-
-  } else {  # mode == "single"
+  } else { # mode == "single"
 
     clean_single <- clean %>%
       dplyr::filter(!!ctr_sym == center)
 
-    if (nrow(clean_single) == 0)
+    if (nrow(clean_single) == 0) {
       stop(sprintf("No data found for centre '%s'.", center))
+    }
 
     auto_title <- title %||%
-      sprintf("Length of Stay Distribution -- %s (n = %s patients)",
-              center,
-              scales::comma(dplyr::n_distinct(clean_single[[patient_col]])))
+      sprintf(
+        "Length of Stay Distribution -- %s (n = %s patients)",
+        center,
+        scales::comma(dplyr::n_distinct(clean_single[[patient_col]]))
+      )
 
     fill_col <- if (!is.null(colours) && center %in% names(colours)) {
       colours[[center]]
@@ -3433,7 +3485,7 @@ plot_los_ridge <- function(
       ggplot2::aes(x = LOS_days)
     ) +
       ggplot2::geom_density(
-        fill  = fill_col,
+        fill = fill_col,
         colour = "grey30",
         alpha = alpha
       ) +
@@ -3457,7 +3509,6 @@ plot_los_ridge <- function(
 
   return(p)
 }
-
 
 
 # AGE RIDGE PLOT
@@ -3501,54 +3552,60 @@ plot_los_ridge <- function(
 #'
 #' @export
 plot_age_ridge <- function(
-    data,
-    mode          = c("all", "single"),
-    center        = NULL,
-    patient_col   = "PatientInformation_id",
-    age_col       = "age_years",
-    center_col    = "center_name",
-    min_age       = 0,
-    max_age       = 120,
-    colours       = NULL,
-    scale         = 1.2,
-    alpha         = 0.7,
-    base_size     = 14,
-    title         = NULL,
-    syndrome_col  = NULL,
-    syndrome_name = NULL
+  data,
+  mode = c("all", "single"),
+  center = NULL,
+  patient_col = "PatientInformation_id",
+  age_col = "age_years",
+  center_col = "center_name",
+  min_age = 0,
+  max_age = 120,
+  colours = NULL,
+  scale = 1.2,
+  alpha = 0.7,
+  base_size = 14,
+  title = NULL,
+  syndrome_col = NULL,
+  syndrome_name = NULL
 ) {
-
-  # -- step 0: validate arguments -----------------------------------------------
+  # step 0: validate arguments
   mode <- match.arg(mode)
-  if (mode == "single" && is.null(center))
+  if (mode == "single" && is.null(center)) {
     stop("'center' must be provided when mode = 'single'.")
-
-  # -- step 1: column validation ------------------------------------------------
-  required_cols <- c(patient_col, age_col, center_col)
-  missing_cols  <- required_cols[!required_cols %in% names(data)]
-  if (length(missing_cols) > 0)
-    stop("The following required columns are missing from data: ",
-         paste(missing_cols, collapse = ", "))
-
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
-    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
-    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter -------------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
   }
 
-  # -- step 2: tidy-eval symbols -------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # step 1: column validation
+  required_cols <- c(patient_col, age_col, center_col)
+  missing_cols <- required_cols[!required_cols %in% names(data)]
+  if (length(missing_cols) > 0) {
+    stop(
+      "The following required columns are missing from data: ",
+      paste(missing_cols, collapse = ", ")
+    )
+  }
+
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
+
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # step 2: tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   age_sym <- rlang::sym(age_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- step 3: deduplicate and filter -------------------------------------------
+  # step 3: deduplicate and filter
   clean <- data %>%
     dplyr::filter(!is.na(!!age_sym)) %>%
     dplyr::mutate(!!age_col := suppressWarnings(as.numeric(!!age_sym))) %>%
@@ -3556,12 +3613,12 @@ plot_age_ridge <- function(
     dplyr::distinct(!!pt_sym, !!ctr_sym, .keep_all = TRUE) %>%
     dplyr::filter(!!age_sym >= min_age, !!age_sym <= max_age)
 
-  if (nrow(clean) == 0)
+  if (nrow(clean) == 0) {
     stop("No valid age values remain after filtering.")
+  }
 
-  # -- step 4: mode-specific prep ------------------------------------------------
+  # step 4: mode-specific prep
   if (mode == "all") {
-
     # order centres by median age ascending
     center_order <- clean %>%
       dplyr::group_by(!!ctr_sym) %>%
@@ -3583,8 +3640,10 @@ plot_age_ridge <- function(
     }
 
     auto_title <- title %||%
-      sprintf("Age Distribution by Centre (n = %s patients)",
-              scales::comma(dplyr::n_distinct(clean[[patient_col]])))
+      sprintf(
+        "Age Distribution by Centre (n = %s patients)",
+        scales::comma(dplyr::n_distinct(clean[[patient_col]]))
+      )
 
     p <- ggplot2::ggplot(
       clean,
@@ -3617,19 +3676,21 @@ plot_age_ridge <- function(
           colour = "grey85", linetype = "dashed"
         )
       )
-
-  } else {  # mode == "single"
+  } else { # mode == "single"
 
     clean_single <- clean %>%
       dplyr::filter(!!ctr_sym == center)
 
-    if (nrow(clean_single) == 0)
+    if (nrow(clean_single) == 0) {
       stop(sprintf("No data found for centre '%s'.", center))
+    }
 
     auto_title <- title %||%
-      sprintf("Age Distribution -- %s (n = %s patients)",
-              center,
-              scales::comma(dplyr::n_distinct(clean_single[[patient_col]])))
+      sprintf(
+        "Age Distribution -- %s (n = %s patients)",
+        center,
+        scales::comma(dplyr::n_distinct(clean_single[[patient_col]]))
+      )
 
     fill_col <- if (!is.null(colours) && center %in% names(colours)) {
       colours[[center]]
@@ -3665,7 +3726,6 @@ plot_age_ridge <- function(
 
   return(p)
 }
-
 
 
 # LOS BY AGE GROUP BOXPLOT
@@ -3739,71 +3799,78 @@ plot_age_ridge <- function(
 #'
 #' @export
 plot_los_by_agebin <- function(
-    data,
-    mode           = c("faceted", "overall", "single"),
-    center         = NULL,
-    patient_col    = "PatientInformation_id",
-    agebin_col     = "Age_bin",
-    age_col        = "age_years",
-    age_breaks     = NULL,
-    age_labels     = NULL,
-    center_col     = "center_name",
-    admission_col  = "admission_date",
-    discharge_col  = "final_outcome_date",
-    min_los        = 1,
-    max_los        = 365,
-    age_levels     = NULL,
-    fill_colour    = "#2C7FB8",
-    fill_alpha     = 0.7,
-    outlier_alpha  = 0.25,
-    box_width      = 0.6,
-    ncol           = 3,
-    base_size      = 14,
-    title          = NULL,
-    subtitle       = NULL,
-    syndrome_col   = NULL,
-    syndrome_name  = NULL
+  data,
+  mode = c("faceted", "overall", "single"),
+  center = NULL,
+  patient_col = "PatientInformation_id",
+  agebin_col = "Age_bin",
+  age_col = "age_years",
+  age_breaks = NULL,
+  age_labels = NULL,
+  center_col = "center_name",
+  admission_col = "admission_date",
+  discharge_col = "final_outcome_date",
+  min_los = 1,
+  max_los = 365,
+  age_levels = NULL,
+  fill_colour = "#2C7FB8",
+  fill_alpha = 0.7,
+  outlier_alpha = 0.25,
+  box_width = 0.6,
+  ncol = 3,
+  base_size = 14,
+  title = NULL,
+  subtitle = NULL,
+  syndrome_col = NULL,
+  syndrome_name = NULL
 ) {
-
-  # -- step 0: validate arguments -----------------------------------------------
+  # step 0: validate arguments
   mode <- match.arg(mode)
-  if (mode == "single" && is.null(center))
+  if (mode == "single" && is.null(center)) {
     stop("'center' must be provided when mode = 'single'.")
+  }
 
-  # -- step 1: column validation ------------------------------------------------
+  # step 1: column validation
   # Determine which age column to validate against
   age_source <- if (!is.null(age_breaks)) age_col else agebin_col
   required_cols <- c(patient_col, age_source, center_col, admission_col, discharge_col)
-  missing_cols  <- required_cols[!required_cols %in% names(data)]
-  if (length(missing_cols) > 0)
-    stop("The following required columns are missing from data: ",
-         paste(missing_cols, collapse = ", "))
-
-  if (!is.null(age_breaks) && !is.null(age_labels) &&
-      length(age_labels) != length(age_breaks) - 1)
-    stop("'age_labels' must have length(age_breaks) - 1 elements.")
-
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
-    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
-    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter -------------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+  missing_cols <- required_cols[!required_cols %in% names(data)]
+  if (length(missing_cols) > 0) {
+    stop(
+      "The following required columns are missing from data: ",
+      paste(missing_cols, collapse = ", ")
+    )
   }
 
-  # -- step 2: tidy-eval symbols -------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  if (!is.null(age_breaks) && !is.null(age_labels) &&
+    length(age_labels) != length(age_breaks) - 1) {
+    stop("'age_labels' must have length(age_breaks) - 1 elements.")
+  }
+
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
+
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # step 2: tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   ctr_sym <- rlang::sym(center_col)
   adm_sym <- rlang::sym(admission_col)
   dis_sym <- rlang::sym(discharge_col)
 
-  # -- step 3: derive age bins if age_breaks supplied ---------------------------
-  bin_col <- ".__age_bin__"   # internal working column name
+  # step 3: derive age bins if age_breaks supplied
+  bin_col <- ".__age_bin__" # internal working column name
 
   if (!is.null(age_breaks)) {
     age_sym <- rlang::sym(age_col)
@@ -3814,12 +3881,13 @@ plot_los_by_agebin <- function(
       age_labels <- vapply(seq_len(n_breaks - 1), function(i) {
         lo <- age_breaks[i]
         hi <- age_breaks[i + 1]
-        if (lo == 0 || lo == -Inf)
+        if (lo == 0 || lo == -Inf) {
           sprintf("<%g", hi)
-        else if (hi == Inf)
+        } else if (hi == Inf) {
           sprintf("%g+", lo)
-        else
-          sprintf("%g\u2013%g", lo, hi - 1)   # e.g. "5-14"
+        } else {
+          sprintf("%g\u2013%g", lo, hi - 1)
+        } # e.g. "5-14"
       }, character(1))
     }
 
@@ -3834,7 +3902,6 @@ plot_los_by_agebin <- function(
         )
       )
     lvls <- age_labels
-
   } else {
     # use pre-existing agebin_col, copy to working column
     ab_sym <- rlang::sym(agebin_col)
@@ -3844,12 +3911,12 @@ plot_los_by_agebin <- function(
     if (!is.null(age_levels)) {
       lvls <- age_levels
     } else {
-      all_bins   <- unique(data[[bin_col]])
-      all_bins   <- all_bins[!is.na(all_bins)]
-      lt_bins    <- all_bins[grepl("^<", all_bins)]
-      plus_bins  <- all_bins[grepl("\\+$", all_bins)]
+      all_bins <- unique(data[[bin_col]])
+      all_bins <- all_bins[!is.na(all_bins)]
+      lt_bins <- all_bins[grepl("^<", all_bins)]
+      plus_bins <- all_bins[grepl("\\+$", all_bins)]
       range_bins <- setdiff(all_bins, c(lt_bins, plus_bins))
-      lower_num  <- suppressWarnings(as.numeric(sub("[-\u2013].*", "", range_bins)))
+      lower_num <- suppressWarnings(as.numeric(sub("[-\u2013].*", "", range_bins)))
       range_bins <- range_bins[order(lower_num)]
       lvls <- c(sort(lt_bins), range_bins, sort(plus_bins))
     }
@@ -3857,37 +3924,38 @@ plot_los_by_agebin <- function(
 
   bin_sym <- rlang::sym(bin_col)
 
-  # -- step 4: compute LOS, deduplicate, filter ---------------------------------
+  # step 4: compute LOS, deduplicate, filter
   clean <- data %>%
     dplyr::filter(!is.na(!!adm_sym), !is.na(!!dis_sym), !is.na(!!bin_sym)) %>%
     dplyr::distinct(!!pt_sym, !!ctr_sym, !!bin_sym, !!adm_sym, !!dis_sym) %>%
     dplyr::mutate(
       LOS_days    = as.numeric(difftime(!!dis_sym, !!adm_sym, units = "days")),
-      !!bin_col  := factor(!!bin_sym, levels = lvls)
+      !!bin_col := factor(!!bin_sym, levels = lvls)
     ) %>%
     dplyr::filter(LOS_days >= min_los, LOS_days <= max_los)
 
-  if (nrow(clean) == 0)
+  if (nrow(clean) == 0) {
     stop("No valid LOS values remain after filtering.")
-
-  # -- step 5: mode filter -------------------------------------------------------
-  if (mode == "single") {
-    clean <- clean %>% dplyr::filter(!!ctr_sym == center)
-    if (nrow(clean) == 0)
-      stop(sprintf("No data found for centre '%s'.", center))
   }
 
-  # -- step 6: y-axis breaks (include 3 to match original) ---------------------
+  # step 5: mode filter
+  if (mode == "single") {
+    clean <- clean %>% dplyr::filter(!!ctr_sym == center)
+    if (nrow(clean) == 0) {
+      stop(sprintf("No data found for centre '%s'.", center))
+    }
+  }
+
+  # step 6: y-axis breaks (include 3 to match original)
   y_breaks <- c(1, 3, 7, 14, 30, 60, 90, 180, 365)
   y_labels <- as.character(y_breaks)
 
-  # -- step 7: build plot -------------------------------------------------------
+  # step 7: build plot
   n_pts <- dplyr::n_distinct(clean[[patient_col]])
 
-  auto_title <- title %||% switch(
-    mode,
+  auto_title <- title %||% switch(mode,
     "overall" = sprintf("LOS by Age Group \u2014 All Centres (n = %s)", scales::comma(n_pts)),
-    "single"  = sprintf("LOS by Age Group \u2014 %s (n = %s)", center, scales::comma(n_pts)),
+    "single" = sprintf("LOS by Age Group \u2014 %s (n = %s)", center, scales::comma(n_pts)),
     sprintf("LOS by Age Group (n = %s)", scales::comma(n_pts))
   )
 
@@ -3916,9 +3984,11 @@ plot_los_by_agebin <- function(
     ) +
     eda_theme(base_size = base_size) +
     ggplot2::theme(
-      axis.text.x        = ggplot2::element_text(angle = 20, hjust = 1),
-      panel.grid.major.y = ggplot2::element_line(colour = "grey85",
-                                                  linetype = "dashed"),
+      axis.text.x = ggplot2::element_text(angle = 20, hjust = 1),
+      panel.grid.major.y = ggplot2::element_line(
+        colour = "grey85",
+        linetype = "dashed"
+      ),
       panel.grid.major.x = ggplot2::element_blank()
     )
 
@@ -3932,7 +4002,6 @@ plot_los_by_agebin <- function(
 
   return(p)
 }
-
 
 
 # FINAL OUTCOME BY YEAR
@@ -3989,14 +4058,14 @@ plot_los_by_agebin <- function(
 #' @export
 #'
 plot_outcome_by_year <- function(data,
-                                 mode           = c("faceted", "overall", "single"),
-                                 center         = NULL,
-                                 patient_col    = "PatientInformation_id",
-                                 outcome_col    = "final_outcome",
-                                 date_col       = "final_outcome_date",
-                                 center_col     = "center_name",
+                                 mode = c("faceted", "overall", "single"),
+                                 center = NULL,
+                                 patient_col = "PatientInformation_id",
+                                 outcome_col = "final_outcome",
+                                 date_col = "final_outcome_date",
+                                 center_col = "center_name",
                                  merge_referred = TRUE,
-                                 palette        = c(
+                                 palette = c(
                                    "Death"                         = "#E74C3C",
                                    "Died"                          = "#E74C3C",
                                    "Discharged"                    = "#2ECC71",
@@ -4004,61 +4073,70 @@ plot_outcome_by_year <- function(data,
                                    "Referred"                      = "#3498DB",
                                    "Transferred to other hospital" = "#3498DB"
                                  ),
-                                 ncol           = 2,
-                                 base_size      = 14,
-                                 title          = NULL,
-                                 syndrome_col   = NULL,
-                                 syndrome_name  = NULL) {
-
-  # -- 0. match mode -----------------------------------------------------------
+                                 ncol = 2,
+                                 base_size = 14,
+                                 title = NULL,
+                                 syndrome_col = NULL,
+                                 syndrome_name = NULL) {
+  # 0. match mode
   mode <- match.arg(mode)
 
-  # -- 1. validate columns -----------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, outcome_col, date_col)
   if (mode != "overall") required_cols <- c(required_cols, center_col)
 
   missing_cols <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Column(s) not found in data: %s",
-                 paste(missing_cols, collapse = ", ")))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "Column(s) not found in data: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
 
   if (mode == "single") {
-    if (is.null(center))
+    if (is.null(center)) {
       stop("'center' must be provided when mode = 'single'.")
+    }
     available <- unique(data[[center_col]])
-    if (!center %in% available)
-      stop(sprintf("'%s' not found in column '%s'. Available values: %s",
-                   center, center_col,
-                   paste(sort(available), collapse = ", ")))
+    if (!center %in% available) {
+      stop(sprintf(
+        "'%s' not found in column '%s'. Available values: %s",
+        center, center_col,
+        paste(sort(available), collapse = ", ")
+      ))
+    }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
 
-  # -- syndrome pre-filter -----------------------------------------------------
+  # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
   }
 
-  # -- 2. tidy-eval symbols ----------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   out_sym <- rlang::sym(outcome_col)
-  dt_sym  <- rlang::sym(date_col)
+  dt_sym <- rlang::sym(date_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. clean: drop missing outcome or date ----------------------------------
+  # 3. clean: drop missing outcome or date
   clean <- data %>%
     dplyr::filter(
       !is.na(!!out_sym), trimws(as.character(!!out_sym)) != "",
       !is.na(!!dt_sym)
     )
 
-  # -- 4. optionally recode referred -------------------------------------------
+  # 4. optionally recode referred
   if (merge_referred) {
     clean <- clean %>%
       dplyr::mutate(
@@ -4070,17 +4148,18 @@ plot_outcome_by_year <- function(data,
     out_sym <- rlang::sym(outcome_col)
   }
 
-  # -- 5. optional: filter to single centre ------------------------------------
-  if (mode == "single")
+  # 5. optional: filter to single centre
+  if (mode == "single") {
     clean <- clean %>% dplyr::filter(!!ctr_sym == center)
+  }
 
-  # -- 6. deduplicate: one outcome + date per patient (per centre) -------------
+  # 6. deduplicate: one outcome + date per patient (per centre)
   if (mode == "overall") {
     deduped <- clean %>%
       dplyr::group_by(!!pt_sym) %>%
       dplyr::summarise(
         !!outcome_col := dplyr::first(!!out_sym),
-        !!date_col    := dplyr::first(!!dt_sym),
+        !!date_col := dplyr::first(!!dt_sym),
         .groups = "drop"
       )
   } else {
@@ -4088,17 +4167,17 @@ plot_outcome_by_year <- function(data,
       dplyr::group_by(!!ctr_sym, !!pt_sym) %>%
       dplyr::summarise(
         !!outcome_col := dplyr::first(!!out_sym),
-        !!date_col    := dplyr::first(!!dt_sym),
+        !!date_col := dplyr::first(!!dt_sym),
         .groups = "drop"
       )
   }
 
-  # -- 7. extract year ---------------------------------------------------------
+  # 7. extract year
   deduped <- deduped %>%
     dplyr::mutate(year = as.integer(format(!!dt_sym, "%Y"))) %>%
     dplyr::filter(!is.na(year))
 
-  # -- 8. summarise: counts per year x outcome (x centre) ---------------------
+  # 8. summarise: counts per year x outcome (x centre)
   if (mode == "overall") {
     summary_yr <- deduped %>%
       dplyr::group_by(year, !!out_sym) %>%
@@ -4106,14 +4185,15 @@ plot_outcome_by_year <- function(data,
       dplyr::group_by(year) %>%
       dplyr::mutate(
         total_year = sum(unique_patients),
-        label      = paste0(unique_patients, " (",
-                            round(100 * unique_patients / total_year, 1), "%)")
+        label = paste0(
+          unique_patients, " (",
+          round(100 * unique_patients / total_year, 1), "%)"
+        )
       ) %>%
       dplyr::ungroup()
 
     year_n <- summary_yr %>%
       dplyr::distinct(year, total_year)
-
   } else {
     summary_yr <- deduped %>%
       dplyr::group_by(!!ctr_sym, year, !!out_sym) %>%
@@ -4121,8 +4201,10 @@ plot_outcome_by_year <- function(data,
       dplyr::group_by(!!ctr_sym, year) %>%
       dplyr::mutate(
         total_year = sum(unique_patients),
-        label      = paste0(unique_patients, " (",
-                            round(100 * unique_patients / total_year, 1), "%)")
+        label = paste0(
+          unique_patients, " (",
+          round(100 * unique_patients / total_year, 1), "%)"
+        )
       ) %>%
       dplyr::ungroup()
 
@@ -4130,7 +4212,7 @@ plot_outcome_by_year <- function(data,
       dplyr::distinct(!!ctr_sym, year, total_year)
   }
 
-  # -- 9. build plot -----------------------------------------------------------
+  # 9. build plot
   if (mode == "overall") {
     auto_title <- title %||%
       "Distribution of Final Outcomes by Year \u2014 All Centres Pooled"
@@ -4147,8 +4229,10 @@ plot_outcome_by_year <- function(data,
       ) +
       ggplot2::geom_text(
         data = year_n,
-        ggplot2::aes(x = factor(year), y = total_year,
-                     label = paste0("n=", total_year)),
+        ggplot2::aes(
+          x = factor(year), y = total_year,
+          label = paste0("n=", total_year)
+        ),
         inherit.aes = FALSE,
         vjust = -0.4, size = 3.8, fontface = "bold"
       ) +
@@ -4189,8 +4273,10 @@ plot_outcome_by_year <- function(data,
     ) +
     ggplot2::geom_text(
       data = year_n,
-      ggplot2::aes(x = factor(year), y = total_year,
-                   label = paste0("n=", total_year)),
+      ggplot2::aes(
+        x = factor(year), y = total_year,
+        label = paste0("n=", total_year)
+      ),
       inherit.aes = FALSE,
       vjust = -0.4, size = 3.8, fontface = "bold"
     ) +
@@ -4247,40 +4333,45 @@ plot_outcome_by_year <- function(data,
 #' @return A \code{ggplot} object.
 #' @export
 plot_patients_by_hospital <- function(data,
-                                      patient_col   = "PatientInformation_id",
-                                      center_col    = "center_name",
-                                      colour        = "#4393C3",
-                                      bar_width     = 0.68,
-                                      base_size     = 14,
-                                      title         = NULL,
-                                      syndrome_col  = NULL,
+                                      patient_col = "PatientInformation_id",
+                                      center_col = "center_name",
+                                      colour = "#4393C3",
+                                      bar_width = 0.68,
+                                      base_size = 14,
+                                      title = NULL,
+                                      syndrome_col = NULL,
                                       syndrome_name = NULL) {
-
-  # -- 1. validate columns -----------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, center_col)
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Column(s) not found in data: %s",
-                 paste(missing_cols, collapse = ", ")))
-
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
-    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
-    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
-
-  # -- syndrome pre-filter -----------------------------------------------------
-  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) &
-                   data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0)
-      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "Column(s) not found in data: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
   }
 
-  # -- 2. tidy-eval symbols ----------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
+    stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
+    stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
+
+  # syndrome pre-filter
+  if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
+    data <- data[!is.na(data[[syndrome_col]]) &
+      data[[syndrome_col]] == syndrome_name, ]
+    if (nrow(data) == 0) {
+      stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
+  }
+
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. count unique patients per hospital -----------------------------------
+  # 3. count unique patients per hospital
   plot_df <- data %>%
     dplyr::distinct(!!ctr_sym, !!pt_sym) %>%
     dplyr::count(!!ctr_sym, name = "unique_patients")
@@ -4292,7 +4383,7 @@ plot_patients_by_hospital <- function(data,
   plot_df <- plot_df %>%
     dplyr::mutate(!!center_col := factor(!!ctr_sym, levels = ordered_levels))
 
-  # -- 4. build plot -----------------------------------------------------------
+  # 4. build plot
   auto_title <- title %||% "Unique Patients by Hospital"
 
   p <- ggplot2::ggplot(
@@ -4306,8 +4397,8 @@ plot_patients_by_hospital <- function(data,
     ) +
     ggplot2::geom_text(
       ggplot2::aes(label = unique_patients),
-      vjust    = -0.45,
-      size     = 3.4,
+      vjust = -0.45,
+      size = 3.4,
       fontface = "bold"
     ) +
     ggplot2::scale_y_continuous(
@@ -4320,8 +4411,10 @@ plot_patients_by_hospital <- function(data,
     ) +
     eda_theme(base_size = base_size) +
     ggplot2::theme(
-      axis.text.x        = ggplot2::element_text(angle = 30, hjust = 1,
-                                                  face = "bold"),
+      axis.text.x = ggplot2::element_text(
+        angle = 30, hjust = 1,
+        face = "bold"
+      ),
       panel.grid.major.x = ggplot2::element_blank()
     )
 
@@ -4363,53 +4456,62 @@ plot_patients_by_hospital <- function(data,
 #' @return A \code{ggplot} object.
 #' @export
 plot_syndrome_distribution <- function(data,
-                                       mode        = c("overall", "faceted", "single"),
-                                       center      = NULL,
+                                       mode = c("overall", "faceted", "single"),
+                                       center = NULL,
                                        patient_col = "PatientInformation_id",
                                        syndrome_col = "infectious_syndrome",
-                                       center_col  = "center_name",
-                                       colour      = "#4393C3",
-                                       ncol        = 2,
-                                       base_size   = 14,
-                                       title       = NULL) {
-
-  # -- 0. match mode -----------------------------------------------------------
+                                       center_col = "center_name",
+                                       colour = "#4393C3",
+                                       ncol = 2,
+                                       base_size = 14,
+                                       title = NULL) {
+  # 0. match mode
   mode <- match.arg(mode)
 
-  # -- 1. validate columns -----------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, syndrome_col)
   if (mode != "overall") required_cols <- c(required_cols, center_col)
 
   missing_cols <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
-    stop(sprintf("Column(s) not found in data: %s",
-                 paste(missing_cols, collapse = ", ")))
-
-  if (mode == "single") {
-    if (is.null(center))
-      stop("'center' must be provided when mode = 'single'.")
-    available <- unique(data[[center_col]])
-    if (!center %in% available)
-      stop(sprintf("'%s' not found in column '%s'. Available values: %s",
-                   center, center_col,
-                   paste(sort(available), collapse = ", ")))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "Column(s) not found in data: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
   }
 
-  # -- 2. tidy-eval symbols ----------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  if (mode == "single") {
+    if (is.null(center)) {
+      stop("'center' must be provided when mode = 'single'.")
+    }
+    available <- unique(data[[center_col]])
+    if (!center %in% available) {
+      stop(sprintf(
+        "'%s' not found in column '%s'. Available values: %s",
+        center, center_col,
+        paste(sort(available), collapse = ", ")
+      ))
+    }
+  }
+
+  # 2. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   syn_sym <- rlang::sym(syndrome_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 3. drop missing syndromes -----------------------------------------------
+  # 3. drop missing syndromes
   clean <- data %>%
-    dplyr::filter(!is.na(!!syn_sym),
-                  trimws(as.character(!!syn_sym)) != "")
+    dplyr::filter(
+      !is.na(!!syn_sym),
+      trimws(as.character(!!syn_sym)) != ""
+    )
 
-  # -- 4. filter to one centre if single ---------------------------------------
-  if (mode == "single")
+  # 4. filter to one centre if single
+  if (mode == "single") {
     clean <- clean %>% dplyr::filter(!!ctr_sym == center)
+  }
 
-  # -- 5. deduplicate and count ------------------------------------------------
+  # 5. deduplicate and count
   if (mode == "overall") {
     plot_df <- clean %>%
       dplyr::distinct(!!pt_sym, !!syn_sym) %>%
@@ -4424,9 +4526,8 @@ plot_syndrome_distribution <- function(data,
       dplyr::ungroup()
   }
 
-  # -- 6. build plot -----------------------------------------------------------
-  auto_title <- title %||% switch(
-    mode,
+  # 6. build plot
+  auto_title <- title %||% switch(mode,
     overall = "Syndrome Distribution -- All Centres Pooled",
     faceted = "Syndrome Distribution by Facility",
     single  = sprintf("Syndrome Distribution -- %s", center)
@@ -4443,8 +4544,8 @@ plot_syndrome_distribution <- function(data,
     ) +
     ggplot2::geom_text(
       ggplot2::aes(label = n),
-      vjust    = -0.45,
-      size     = 3.4,
+      vjust = -0.45,
+      size = 3.4,
       fontface = "bold"
     ) +
     ggplot2::scale_y_continuous(
@@ -4461,12 +4562,13 @@ plot_syndrome_distribution <- function(data,
       panel.grid.major.x = ggplot2::element_blank()
     )
 
-  if (mode == "faceted")
+  if (mode == "faceted") {
     p <- p + ggplot2::facet_wrap(
       stats::as.formula(paste("~", center_col)),
       ncol   = ncol,
       scales = "free_y"
     )
+  }
 
   return(p)
 }
@@ -4497,98 +4599,114 @@ plot_syndrome_distribution <- function(data,
 #' @param syndrome_name  Optional value of \code{syndrome_col} to keep.
 #' @export
 plot_resistance_by_agebin <- function(
-    data,
-    mode           = c("faceted", "overall", "single"),
-    center         = NULL,
-    patient_col    = "patient_id",
-    organism_col   = "organism_normalized",
-    antibiotic_col = "antibiotic_name",
-    value_col      = "result",
-    agebin_col     = "Age_bin",
-    center_col     = "center_name",
-    colours        = NULL,
-    base_size      = 11,
-    ncol           = 3,
-    title          = NULL,
-    syndrome_col   = NULL,
-    syndrome_name  = NULL
+  data,
+  mode = c("faceted", "overall", "single"),
+  center = NULL,
+  patient_col = "patient_id",
+  organism_col = "organism_normalized",
+  antibiotic_col = "antibiotic_name",
+  value_col = "result",
+  agebin_col = "Age_bin",
+  center_col = "center_name",
+  colours = NULL,
+  base_size = 11,
+  ncol = 3,
+  title = NULL,
+  syndrome_col = NULL,
+  syndrome_name = NULL
 ) {
   mode <- match.arg(mode)
 
-  # -- 1. validate columns -------------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, organism_col, antibiotic_col, value_col, agebin_col)
   if (mode != "overall") required_cols <- c(required_cols, center_col)
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0L)
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0L) {
     stop(sprintf("Column(s) not found in data: %s", paste(missing_cols, collapse = ", ")))
+  }
 
   if (mode == "single") {
-    if (is.null(center))
+    if (is.null(center)) {
       stop("'center' must be provided when mode = 'single'.")
+    }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
 
-  # -- 2. syndrome pre-filter ---------------------------------------------------
+  # 2. syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0L)
+    if (nrow(data) == 0L) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
   }
 
-  # -- 3. default colours -------------------------------------------------------
-  if (is.null(colours))
+  # 3. default colours
+  if (is.null(colours)) {
     colours <- c("R" = "#E74C3C", "S" = "#2ECC71")
+  }
 
-  # -- 4. tidy-eval symbols -----------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # 4. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   org_sym <- rlang::sym(organism_col)
   abx_sym <- rlang::sym(antibiotic_col)
   val_sym <- rlang::sym(value_col)
   age_sym <- rlang::sym(agebin_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 5. keep only R/S rows; drop blank age bins --------------------------------
+  # 5. keep only R/S rows; drop blank age bins
   clean <- data %>%
     dplyr::filter(
       !!val_sym %in% c("R", "S"),
       !is.na(!!age_sym), trimws(as.character(!!age_sym)) != ""
     )
 
-  if (nrow(clean) == 0L)
+  if (nrow(clean) == 0L) {
     stop("No R/S result rows found after filtering.")
+  }
 
-  # -- 6. single-centre filter --------------------------------------------------
-  if (mode == "single")
+  # 6. single-centre filter
+  if (mode == "single") {
     clean <- clean %>% dplyr::filter(!!ctr_sym == center)
+  }
 
-  # -- 7. worst-phenotype dedup -> one resistance call per patient ---------------
+  # 7. worst-phenotype dedup -> one resistance call per patient
   # Step A: (patient, organism, antibiotic) -> any R = R, else S
   # Step B: (patient) -> any R across all organisms/antibiotics = patient is R
   if (mode == "overall") {
     resist <- clean %>%
       dplyr::distinct(!!pt_sym, !!org_sym, !!abx_sym, !!val_sym) %>%
       dplyr::group_by(!!pt_sym, !!org_sym, !!abx_sym) %>%
-      dplyr::summarise(abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
-                       .groups = "drop") %>%
+      dplyr::summarise(
+        abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
+        .groups = "drop"
+      ) %>%
       dplyr::group_by(!!pt_sym) %>%
-      dplyr::summarise(resistance = ifelse(any(abx_call == "R"), "R", "S"),
-                       .groups = "drop")
+      dplyr::summarise(
+        resistance = ifelse(any(abx_call == "R"), "R", "S"),
+        .groups = "drop"
+      )
   } else {
     resist <- clean %>%
       dplyr::distinct(!!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym, !!val_sym) %>%
       dplyr::group_by(!!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym) %>%
-      dplyr::summarise(abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
-                       .groups = "drop") %>%
+      dplyr::summarise(
+        abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
+        .groups = "drop"
+      ) %>%
       dplyr::group_by(!!ctr_sym, !!pt_sym) %>%
-      dplyr::summarise(resistance = ifelse(any(abx_call == "R"), "R", "S"),
-                       .groups = "drop")
+      dplyr::summarise(
+        resistance = ifelse(any(abx_call == "R"), "R", "S"),
+        .groups = "drop"
+      )
   }
 
-  # -- 8. join age bin back (one agebin per patient; take first non-NA) ---------
+  # 8. join age bin back (one agebin per patient; take first non-NA)
   if (mode == "overall") {
     agebin_map <- clean %>%
       dplyr::distinct(!!pt_sym, !!age_sym) %>%
@@ -4629,18 +4747,18 @@ plot_resistance_by_agebin <- function(
       dplyr::mutate(resistance = factor(resistance, levels = c("S", "R")))
   }
 
-  if (nrow(plot_df) == 0L)
+  if (nrow(plot_df) == 0L) {
     stop("No data to plot after joining age bins to resistance status.")
+  }
 
-  # -- 9. auto title ------------------------------------------------------------
-  auto_title <- title %||% switch(
-    mode,
+  # 9. auto title
+  auto_title <- title %||% switch(mode,
     overall = "Resistance Proportion by Age Group \u2014 All Centres Pooled",
     faceted = "Resistance Proportion by Age Group",
     single  = sprintf("Resistance Proportion by Age Group \u2014 %s", center)
   )
 
-  # -- 10. shared plot body -----------------------------------------------------
+  # 10. shared plot body
   p <- ggplot2::ggplot(
     plot_df,
     ggplot2::aes(x = !!age_sym, y = pct, fill = resistance)
@@ -4649,9 +4767,9 @@ plot_resistance_by_agebin <- function(
     ggplot2::geom_text(
       ggplot2::aes(label = label),
       position = ggplot2::position_stack(vjust = 0.5),
-      size     = 3.2,
+      size = 3.2,
       fontface = "bold",
-      color    = "white"
+      color = "white"
     ) +
     ggplot2::scale_y_continuous(
       labels = function(x) paste0(x, "%"),
@@ -4668,12 +4786,13 @@ plot_resistance_by_agebin <- function(
     ) +
     eda_theme(base_size = base_size)
 
-  if (mode == "faceted")
+  if (mode == "faceted") {
     p <- p + ggplot2::facet_wrap(
       stats::as.formula(paste("~", center_col)),
       ncol   = ncol,
       scales = "free_y"
     )
+  }
 
   return(p)
 }
@@ -4703,97 +4822,113 @@ plot_resistance_by_agebin <- function(
 #' @param syndrome_name  Optional value of \code{syndrome_col} to keep.
 #' @export
 plot_resistance_by_organism <- function(
-    data,
-    n              = 5,
-    mode           = c("faceted", "overall", "single"),
-    center         = NULL,
-    patient_col    = "patient_id",
-    organism_col   = "organism_normalized",
-    antibiotic_col = "antibiotic_name",
-    value_col      = "result",
-    center_col     = "center_name",
-    colours        = NULL,
-    base_size      = 11,
-    ncol           = 3,
-    title          = NULL,
-    syndrome_col   = NULL,
-    syndrome_name  = NULL
+  data,
+  n = 5,
+  mode = c("faceted", "overall", "single"),
+  center = NULL,
+  patient_col = "patient_id",
+  organism_col = "organism_normalized",
+  antibiotic_col = "antibiotic_name",
+  value_col = "result",
+  center_col = "center_name",
+  colours = NULL,
+  base_size = 11,
+  ncol = 3,
+  title = NULL,
+  syndrome_col = NULL,
+  syndrome_name = NULL
 ) {
   mode <- match.arg(mode)
 
-  # -- 1. validate columns -------------------------------------------------------
+  # 1. validate columns
   required_cols <- c(patient_col, organism_col, antibiotic_col, value_col)
   if (mode != "overall") required_cols <- c(required_cols, center_col)
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0L)
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0L) {
     stop(sprintf("Column(s) not found in data: %s", paste(missing_cols, collapse = ", ")))
+  }
 
   if (mode == "single") {
-    if (is.null(center))
+    if (is.null(center)) {
       stop("'center' must be provided when mode = 'single'.")
+    }
   }
 
-  if (!is.null(syndrome_name) && is.null(syndrome_col))
+  if (!is.null(syndrome_name) && is.null(syndrome_col)) {
     stop("'syndrome_col' must be provided when 'syndrome_name' is set.")
-  if (!is.null(syndrome_col) && !syndrome_col %in% names(data))
+  }
+  if (!is.null(syndrome_col) && !syndrome_col %in% names(data)) {
     stop(sprintf("syndrome_col '%s' not found in data.", syndrome_col))
+  }
 
-  # -- 2. syndrome pre-filter ---------------------------------------------------
+  # 2. syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
-    if (nrow(data) == 0L)
+    if (nrow(data) == 0L) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
+    }
   }
 
-  # -- 3. default colours -------------------------------------------------------
-  if (is.null(colours))
+  # 3. default colours
+  if (is.null(colours)) {
     colours <- c("R" = "#E74C3C", "S" = "#2ECC71")
+  }
 
-  # -- 4. tidy-eval symbols -----------------------------------------------------
-  pt_sym  <- rlang::sym(patient_col)
+  # 4. tidy-eval symbols
+  pt_sym <- rlang::sym(patient_col)
   org_sym <- rlang::sym(organism_col)
   abx_sym <- rlang::sym(antibiotic_col)
   val_sym <- rlang::sym(value_col)
   ctr_sym <- rlang::sym(center_col)
 
-  # -- 5. keep only R/S rows; drop blank organisms ------------------------------
+  # 5. keep only R/S rows; drop blank organisms
   clean <- data %>%
     dplyr::filter(
       !!val_sym %in% c("R", "S"),
       !is.na(!!org_sym), trimws(as.character(!!org_sym)) != ""
     )
 
-  if (nrow(clean) == 0L)
+  if (nrow(clean) == 0L) {
     stop("No R/S result rows found after filtering.")
+  }
 
-  # -- 6. single-centre filter --------------------------------------------------
-  if (mode == "single")
+  # 6. single-centre filter
+  if (mode == "single") {
     clean <- clean %>% dplyr::filter(!!ctr_sym == center)
+  }
 
-  # -- 7. worst-phenotype dedup -> one resistance call per (patient, organism) ---
+  # 7. worst-phenotype dedup -> one resistance call per (patient, organism)
   # Step A: (patient, organism, antibiotic) -> any R = R, else S
   # Step B: (patient, organism) -> any antibiotic call is R -> organism call is R
   if (mode == "overall") {
     resist <- clean %>%
       dplyr::distinct(!!pt_sym, !!org_sym, !!abx_sym, !!val_sym) %>%
       dplyr::group_by(!!pt_sym, !!org_sym, !!abx_sym) %>%
-      dplyr::summarise(abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
-                       .groups = "drop") %>%
+      dplyr::summarise(
+        abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
+        .groups = "drop"
+      ) %>%
       dplyr::group_by(!!pt_sym, !!org_sym) %>%
-      dplyr::summarise(resistance = ifelse(any(abx_call == "R"), "R", "S"),
-                       .groups = "drop")
+      dplyr::summarise(
+        resistance = ifelse(any(abx_call == "R"), "R", "S"),
+        .groups = "drop"
+      )
   } else {
     resist <- clean %>%
       dplyr::distinct(!!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym, !!val_sym) %>%
       dplyr::group_by(!!ctr_sym, !!pt_sym, !!org_sym, !!abx_sym) %>%
-      dplyr::summarise(abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
-                       .groups = "drop") %>%
+      dplyr::summarise(
+        abx_call = ifelse(any(!!val_sym == "R"), "R", "S"),
+        .groups = "drop"
+      ) %>%
       dplyr::group_by(!!ctr_sym, !!pt_sym, !!org_sym) %>%
-      dplyr::summarise(resistance = ifelse(any(abx_call == "R"), "R", "S"),
-                       .groups = "drop")
+      dplyr::summarise(
+        resistance = ifelse(any(abx_call == "R"), "R", "S"),
+        .groups = "drop"
+      )
   }
 
-  # -- 8. identify top N organisms by distinct patient count --------------------
+  # 8. identify top N organisms by distinct patient count
   if (mode == "overall") {
     top_orgs <- resist %>%
       dplyr::count(!!org_sym, name = "pt_count") %>%
@@ -4811,7 +4946,7 @@ plot_resistance_by_organism <- function(
 
   resist <- resist %>% dplyr::filter(!!org_sym %in% top_orgs)
 
-  # -- 9. count and compute proportions per (organism, resistance) --------------
+  # 9. count and compute proportions per (organism, resistance)
   if (mode == "overall") {
     plot_df <- resist %>%
       dplyr::count(!!org_sym, resistance, name = "n") %>%
@@ -4824,7 +4959,7 @@ plot_resistance_by_organism <- function(
       dplyr::ungroup() %>%
       dplyr::mutate(
         !!organism_col := stats::reorder(!!org_sym, total),
-        resistance     = factor(resistance, levels = c("S", "R"))
+        resistance = factor(resistance, levels = c("S", "R"))
       )
   } else {
     plot_df <- resist %>%
@@ -4842,18 +4977,18 @@ plot_resistance_by_organism <- function(
       )
   }
 
-  if (nrow(plot_df) == 0L)
+  if (nrow(plot_df) == 0L) {
     stop("No data to plot after filtering to top organisms.")
+  }
 
-  # -- 10. auto title -----------------------------------------------------------
-  auto_title <- title %||% switch(
-    mode,
+  # 10. auto title
+  auto_title <- title %||% switch(mode,
     overall = sprintf("Resistance Proportion \u2014 Top %d Organisms, All Centres Pooled", n),
     faceted = sprintf("Resistance Proportion \u2014 Top %d Organisms", n),
     single  = sprintf("Resistance Proportion \u2014 Top %d Organisms, %s", n, center)
   )
 
-  # -- 11. OVERALL plot ---------------------------------------------------------
+  # 11. OVERALL plot
   if (mode == "overall") {
     p <- ggplot2::ggplot(
       plot_df,
@@ -4863,9 +4998,9 @@ plot_resistance_by_organism <- function(
       ggplot2::geom_text(
         ggplot2::aes(label = label),
         position = ggplot2::position_stack(vjust = 0.5),
-        size     = 3.2,
+        size = 3.2,
         fontface = "bold",
-        color    = "white"
+        color = "white"
       ) +
       ggplot2::scale_y_continuous(
         labels = function(x) paste0(x, "%"),
@@ -4885,7 +5020,7 @@ plot_resistance_by_organism <- function(
     return(p)
   }
 
-  # -- 12. FACETED + SINGLE (reorder_within for per-facet ordering) -------------
+  # 12. FACETED + SINGLE (reorder_within for per-facet ordering)
   p <- ggplot2::ggplot(
     plot_df,
     ggplot2::aes(x = org_ordered, y = pct, fill = resistance)
@@ -4894,9 +5029,9 @@ plot_resistance_by_organism <- function(
     ggplot2::geom_text(
       ggplot2::aes(label = label),
       position = ggplot2::position_stack(vjust = 0.5),
-      size     = 3.2,
+      size = 3.2,
       fontface = "bold",
-      color    = "white"
+      color = "white"
     ) +
     ggplot2::scale_y_continuous(
       labels = function(x) paste0(x, "%"),
@@ -4914,12 +5049,13 @@ plot_resistance_by_organism <- function(
     ) +
     eda_theme(base_size = base_size)
 
-  if (mode == "faceted")
+  if (mode == "faceted") {
     p <- p + ggplot2::facet_wrap(
       stats::as.formula(paste("~", center_col)),
       ncol   = ncol,
       scales = "free_y"
     )
+  }
 
   return(p)
 }
@@ -4964,25 +5100,25 @@ plot_resistance_by_organism <- function(
 #' @return A \code{ggplot} object (one panel per centre).
 #' @export
 plot_infection_type_by_location <- function(data,
-                                            patient_col      = "PatientInformation_id",
-                                            center_col       = "center_name",
-                                            location_col     = "location",
-                                            infection_col    = "infection_type",
-                                            location_levels  = c("ICU", "Ward"),
+                                            patient_col = "PatientInformation_id",
+                                            center_col = "center_name",
+                                            location_col = "location",
+                                            infection_col = "infection_type",
+                                            location_levels = c("ICU", "Ward"),
                                             infection_levels = c("HAI", "CAI"),
-                                            style            = c("bar", "heatmap"),
-                                            colours          = NULL,
-                                            ncol             = 5,
-                                            base_size        = 12,
-                                            show_counts      = TRUE,
-                                            title            = NULL) {
-
+                                            style = c("bar", "heatmap"),
+                                            colours = NULL,
+                                            ncol = 5,
+                                            base_size = 12,
+                                            show_counts = TRUE,
+                                            title = NULL) {
   style <- match.arg(style)
 
   required_cols <- c(patient_col, center_col, location_col, infection_col)
-  missing_cols  <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0)
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
     stop(sprintf("Column(s) not found in data: %s", paste(missing_cols, collapse = ", ")))
+  }
 
   if (is.null(colours)) {
     pal <- c("#d73027", "#4575b4", "#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3")
@@ -4995,29 +5131,35 @@ plot_infection_type_by_location <- function(data,
 
   df <- data.frame(
     center = as.character(data[[center_col]])[keep],
-    pid    = data[[patient_col]][keep],
-    loc    = loc[keep],
-    inf    = inf[keep],
-    stringsAsFactors = FALSE)
-  if (nrow(df) == 0L)
+    pid = data[[patient_col]][keep],
+    loc = loc[keep],
+    inf = inf[keep],
+    stringsAsFactors = FALSE
+  )
+  if (nrow(df) == 0L) {
     stop("No rows after filtering to the requested location_levels / infection_levels.")
+  }
 
-  df <- unique(df)  # one row per patient x centre x location x infection type
+  df <- unique(df) # one row per patient x centre x location x infection type
 
-  agg <- stats::aggregate(pid ~ center + loc + inf, data = df,
-                          FUN = function(x) length(unique(x)))
+  agg <- stats::aggregate(pid ~ center + loc + inf,
+    data = df,
+    FUN = function(x) length(unique(x))
+  )
   names(agg)[names(agg) == "pid"] <- "n"
 
   if (style == "heatmap") {
     # fill the full centre x location x infection grid so every cell is drawn
-    grid <- expand.grid(center = unique(agg$center), loc = location_levels,
-                        inf = infection_levels, stringsAsFactors = FALSE)
+    grid <- expand.grid(
+      center = unique(agg$center), loc = location_levels,
+      inf = infection_levels, stringsAsFactors = FALSE
+    )
     agg <- merge(grid, agg, by = c("center", "loc", "inf"), all.x = TRUE)
     agg$n[is.na(agg$n)] <- 0L
-    tot <- stats::aggregate(n ~ center, data = agg, FUN = sum)   # within-hospital (joint)
+    tot <- stats::aggregate(n ~ center, data = agg, FUN = sum) # within-hospital (joint)
     by_cols <- "center"
   } else {
-    tot <- stats::aggregate(n ~ center + loc, data = agg, FUN = sum)  # within-location
+    tot <- stats::aggregate(n ~ center + loc, data = agg, FUN = sum) # within-location
     by_cols <- c("center", "loc")
   }
   names(tot)[names(tot) == "n"] <- "total"
@@ -5030,37 +5172,48 @@ plot_infection_type_by_location <- function(data,
   if (style == "heatmap") {
     p <- ggplot2::ggplot(agg, ggplot2::aes(x = .data$loc, y = .data$inf, fill = .data$prop)) +
       ggplot2::geom_tile(colour = "white", linewidth = 0.4) +
-      ggplot2::facet_wrap(~ center, ncol = ncol) +
-      ggplot2::scale_fill_viridis_c(labels = scales::percent_format(),
-                                    name = "Within-hospital %", na.value = "grey90") +
+      ggplot2::facet_wrap(~center, ncol = ncol) +
+      ggplot2::scale_fill_viridis_c(
+        labels = scales::percent_format(),
+        name = "Within-hospital %", na.value = "grey90"
+      ) +
       ggplot2::labs(
         x = "Location", y = "Infection type",
-        title = title %||% "Infection type \u00d7 location, per hospital") +
+        title = title %||% "Infection type \u00d7 location, per hospital"
+      ) +
       eda_theme(base_size = base_size) +
-      ggplot2::theme(panel.grid = ggplot2::element_blank(),
-                     axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-    if (isTRUE(show_counts))
+      ggplot2::theme(
+        panel.grid = ggplot2::element_blank(),
+        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
+      )
+    if (isTRUE(show_counts)) {
       p <- p + ggplot2::geom_text(ggplot2::aes(label = .data$n), size = 2.4)
+    }
   } else {
     p <- ggplot2::ggplot(agg, ggplot2::aes(x = .data$loc, y = .data$prop, fill = .data$inf)) +
       ggplot2::geom_col(width = 0.7, colour = "white", linewidth = 0.2) +
-      ggplot2::facet_wrap(~ center, ncol = ncol) +
-      ggplot2::scale_y_continuous(labels = scales::percent_format(),
-                                  expand = ggplot2::expansion(mult = c(0, 0.02))) +
+      ggplot2::facet_wrap(~center, ncol = ncol) +
+      ggplot2::scale_y_continuous(
+        labels = scales::percent_format(),
+        expand = ggplot2::expansion(mult = c(0, 0.02))
+      ) +
       ggplot2::scale_fill_manual(values = colours) +
       ggplot2::labs(
         x = "Location", y = "% of patients (within location)", fill = "Infection type",
-        title = title %||% "Infection type by location, per hospital") +
+        title = title %||% "Infection type by location, per hospital"
+      ) +
       eda_theme(base_size = base_size) +
       ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-    if (isTRUE(show_counts))
+    if (isTRUE(show_counts)) {
       p <- p + ggplot2::geom_text(ggplot2::aes(label = .data$n),
-                                  position = ggplot2::position_stack(vjust = 0.5), size = 2.4)
+        position = ggplot2::position_stack(vjust = 0.5), size = 2.4
+      )
+    }
   }
 
   p
 }
 
-# -- NULL coalescing operator (internal) --------------------------------------
+# NULL coalescing operator (internal)
 # Used as: title %||% "default title"
 `%||%` <- function(x, y) if (!is.null(x)) x else y

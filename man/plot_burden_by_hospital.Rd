@@ -7,7 +7,8 @@
 plot_burden_by_hospital(
   data,
   metric = c("YLL", "YLD"),
-  center_col = "center_name",
+  facility_col = "center_name",
+  center_col = NULL,
   assoc_col = NULL,
   attr_col = NULL,
   syndrome_col = NULL,
@@ -23,15 +24,17 @@ plot_burden_by_hospital(
 \arguments{
 \item{data}{Data frame. One row per hospital (or one row per
 hospital x syndrome). Must contain the columns named by
-\code{center_col}, \code{assoc_col}, and \code{attr_col}.}
+\code{facility_col}, \code{assoc_col}, and \code{attr_col}.}
 
 \item{metric}{Character. \code{"YLL"} or \code{"YLD"}. Controls
 which default column names and axis labels are used. Ignored when
 \code{assoc_col} and \code{attr_col} are supplied explicitly.
 Default \code{"YLL"}.}
 
-\item{center_col}{Character. Column containing hospital / centre names.
-Default \code{"center_name"}.}
+\item{facility_col}{Character. Column containing hospital / facility
+names. Default \code{"center_name"}.}
+
+\item{center_col}{Deprecated alias for \code{facility_col}.}
 
 \item{assoc_col}{Character or \code{NULL}. Column for the associated
 per-1 000 value. If \code{NULL} (default), auto-set to

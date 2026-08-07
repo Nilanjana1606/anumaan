@@ -44,7 +44,7 @@ facility names, so any dataset can be classified by passing an appropriate
 }
 \examples{
 df <- data.frame(center_name = c("AFMC", "SGRH", "Unknown"))
-m  <- c(AFMC = "Government", SGRH = "Private")
+m <- c(AFMC = "Government", SGRH = "Private")
 prep_assign_facility_type(df, mapping = m)
 
 }

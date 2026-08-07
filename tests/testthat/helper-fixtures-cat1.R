@@ -42,7 +42,7 @@ cat1_base_data <- function() {
   isolate_df$age_years <- isolate_df$age
   isolate_df$age_months <- c(
     rep(0, 8),
-    2,  # 0.2 years-ish pediatric example when interpreted as months/day components
+    2, # 0.2 years-ish pediatric example when interpreted as months/day components
     rep(0, 6)
   )
   isolate_df$age_days <- c(
@@ -155,10 +155,10 @@ cat1_with_invalid_dates <- function() {
   out$dob <- format(out$dob, "%Y%m%d")
 
   # Mix of encoded / serial / swapped-digit styles for parser tests.
-  out$culture_date[1] <- "43831"                 # Excel serial
-  out$culture_date[2] <- "1577923200000"         # Unix timestamp (ms)
-  out$culture_date[3] <- "20201301"              # reversed YYYYDDMM
-  out$culture_date[4] <- "323032302d30312d3034"  # encoded-like undecodable string
+  out$culture_date[1] <- "43831" # Excel serial
+  out$culture_date[2] <- "1577923200000" # Unix timestamp (ms)
+  out$culture_date[3] <- "20201301" # reversed YYYYDDMM
+  out$culture_date[4] <- "323032302d30312d3034" # encoded-like undecodable string
 
   out
 }
@@ -196,32 +196,32 @@ cat1_age_from_dob_only <- function() {
 
   # Mixed DOB/date formats including coded/faulty values.
   out$dob[1:8] <- c(
-    "19880501",         # compact ymd
-    "12-03-1975",       # dmy
-    "1988/05/01",       # slash format
-    "19750312",         # compact ymd
-    "19881301",         # reversed YYYYDDMM-style
+    "19880501", # compact ymd
+    "12-03-1975", # dmy
+    "1988/05/01", # slash format
+    "19750312", # compact ymd
+    "19881301", # reversed YYYYDDMM-style
     "313938382d30352d3031", # encoded-like invalid
     NA_character_,
     ""
   )
   out$culture_date[1:8] <- c(
-    "43831",            # Excel serial
-    "1577923200000",    # Unix ms
-    "2020-01-03",       # ISO
-    "202-10-13",        # malformed year format
-    "20201301",         # reversed YYYYDDMM
+    "43831", # Excel serial
+    "1577923200000", # Unix ms
+    "2020-01-03", # ISO
+    "202-10-13", # malformed year format
+    "20201301", # reversed YYYYDDMM
     "323032302d30312d3034", # encoded-like invalid
     "N/A",
     "NULL"
   )
   out$admission_date[1:8] <- c(
-    "2020-01-01",       # ISO
-    "01-02-2020",       # mdy
-    "20200103",         # compact ymd
-    "43830",            # Excel serial
-    "1577836800000",    # Unix ms
-    "202-10-13",        # malformed year format
+    "2020-01-01", # ISO
+    "01-02-2020", # mdy
+    "20200103", # compact ymd
+    "43830", # Excel serial
+    "1577836800000", # Unix ms
+    "202-10-13", # malformed year format
     "N/A",
     "NULL"
   )
@@ -260,7 +260,7 @@ cat1_age_from_components <- function() {
 
 cat1_min_age <- function() {
   data.frame(
-    Age        = c(0.5, 5, 10, 40, 90, NA),
+    Age = c(0.5, 5, 10, 40, 90, NA),
     stringsAsFactors = FALSE
   )
 }
@@ -268,9 +268,9 @@ cat1_min_age <- function() {
 # Compound age columns: years + months + days (for neonatal / fine-grained testing)
 cat1_compound_age <- function() {
   data.frame(
-    age_years  = c(0,  0,  0,  1,  30, NA),
-    age_months = c(0,  0,  3,  6,  0,  NA),
-    age_days   = c(3,  15, 0,  0,  0,  0),
+    age_years = c(0, 0, 0, 1, 30, NA),
+    age_months = c(0, 0, 3, 6, 0, NA),
+    age_days = c(3, 15, 0, 0, 0, 0),
     stringsAsFactors = FALSE
   )
 }
