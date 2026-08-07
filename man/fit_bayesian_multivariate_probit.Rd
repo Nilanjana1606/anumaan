@@ -105,7 +105,7 @@ retain the full per-parameter table for debugging.}
 \value{
 Named list with elements: \code{draws}, \code{diagnostics},
   \code{diagnostics_detail}, \code{fit}, \code{data_long}, \code{index_maps},
-  \code{X_design}, \code{X_event}, \code{event_re_idx}, \code{class_cols},
+  \code{X_event}, \code{event_re_idx}, \code{class_cols},
   \code{event_metadata}, \code{n_re_levels}, \code{upper_re_col},
   \code{middle_re_col}, \code{lower_re_col}, \code{patient_key_col},
   \code{admission_key_col}, \code{pathogen_col}, \code{pathogen_fitted},

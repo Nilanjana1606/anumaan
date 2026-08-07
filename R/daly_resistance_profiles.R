@@ -4234,11 +4234,10 @@ data {
 
   matrix[N_events, K] X_event;
 
-  array[N_events, D] int<lower=0,upper=1> obs_mask;
-  array[N_events, D] int<lower=0,upper=1> y_mat;
-
   array[N] int<lower=1,upper=N_events> ev_idx;
   array[N] int<lower=1,upper=D> d_idx;
+  array[N] real<lower=-1,upper=1> sign_obs; // +1 resistant, -1 susceptible
+  array[N] int<lower=1,upper=N_events*D> obs_idx; // matches to_vector()'s column-major order
 
   real<lower=0> prior_beta_sd;
   real<lower=0> prior_tau_sd;
@@ -4259,24 +4258,6 @@ transformed parameters {
     int hi = level_start[r] + n_levels[r] - 1;
     re_effect[, lo:hi] = diag_pre_multiply(tau_re[r], L_corr_re[r]) * z_re[, lo:hi];
   }
-
-  matrix[N_events, D] z_aug;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      if (obs_mask[e, d] == 1) {
-        z_aug[e, d] = (y_mat[e, d] == 1) ? exp(z_free[e, d]) : -exp(z_free[e, d]);
-      } else {
-        z_aug[e, d] = z_free[e, d];
-      }
-    }
-  }
-
-  matrix[N_events, D] mu_mat = X_event * beta;
-  for (e in 1:N_events) {
-    for (r in 1:R) {
-      mu_mat[e] += re_effect[, re_idx[e, r]]';
-    }
-  }
 }
 model {
   to_vector(beta) ~ normal(0, prior_beta_sd);
@@ -4289,12 +4270,30 @@ model {
   }
   L_Omega ~ lkj_corr_cholesky(lkj_eta);
 
-  for (e in 1:N_events) {
-    target += multi_normal_cholesky_lpdf(z_aug[e]' | mu_mat[e]', L_Omega);
+  {
+    // exp() only at the N observed cells -- masking after exp() risks 0 * Inf = NaN.
+    matrix[N_events, D] z_aug = z_free;
+    for (n in 1:N) {
+      z_aug[ev_idx[n], d_idx[n]] = sign_obs[n] * exp(z_free[ev_idx[n], d_idx[n]]);
+    }
+
+    matrix[N_events, D] mu_mat = X_event * beta;
+    for (e in 1:N_events) {
+      for (r in 1:R) {
+        mu_mat[e] += re_effect[, re_idx[e, r]]';
+      }
+    }
+
+    // Batch events under the shared L_Omega. Keep these local to exclude them from CmdStan output.
+    array[N_events] vector[D] z_aug_arr;
+    array[N_events] vector[D] mu_arr;
+    for (e in 1:N_events) {
+      z_aug_arr[e] = z_aug[e]';
+      mu_arr[e] = mu_mat[e]';
+    }
+    target += multi_normal_cholesky_lupdf(z_aug_arr | mu_arr, L_Omega);
   }
-  for (n in 1:N) {
-    target += z_free[ev_idx[n], d_idx[n]];
-  }
+  target += sum(to_vector(z_free)[obs_idx]);
 }
 generated quantities {
   corr_matrix[D] Omega = multiply_lower_tri_self_transpose(L_Omega);
@@ -4322,11 +4321,10 @@ data {
 
   matrix[N_events, K] X_event;
 
-  array[N_events, D] int<lower=0,upper=1> obs_mask;
-  array[N_events, D] int<lower=0,upper=1> y_mat;
-
   array[N] int<lower=1,upper=N_events> ev_idx;
   array[N] int<lower=1,upper=D> d_idx;
+  array[N] real<lower=-1,upper=1> sign_obs; // +1 resistant, -1 susceptible
+  array[N] int<lower=1,upper=N_events*D> obs_idx; // matches to_vector()'s column-major order
 
   real<lower=0> prior_beta_sd;
   real<lower=0> prior_tau_sd;
@@ -4346,24 +4344,6 @@ transformed parameters {
     int hi = level_start[r] + n_levels[r] - 1;
     re_effect[, lo:hi] = diag_pre_multiply(tau_re[r], L_corr_re[r]) * z_re[, lo:hi];
   }
-
-  matrix[N_events, D] z_aug;
-  for (e in 1:N_events) {
-    for (d in 1:D) {
-      if (obs_mask[e, d] == 1) {
-        z_aug[e, d] = (y_mat[e, d] == 1) ? exp(z_free[e, d]) : -exp(z_free[e, d]);
-      } else {
-        z_aug[e, d] = z_free[e, d];
-      }
-    }
-  }
-
-  matrix[N_events, D] mu_mat = X_event * beta;
-  for (e in 1:N_events) {
-    for (r in 1:R) {
-      mu_mat[e] += re_effect[, re_idx[e, r]]';
-    }
-  }
 }
 model {
   to_vector(beta) ~ normal(0, prior_beta_sd);
@@ -4375,12 +4355,24 @@ model {
     L_corr_re[r]                 ~ lkj_corr_cholesky(lkj_eta);
   }
 
-  for (e in 1:N_events)
-    for (d in 1:D)
-      target += normal_lpdf(z_aug[e, d] | mu_mat[e, d], 1.0);
+  {
+    // exp() only at the N observed cells -- masking after exp() risks 0 * Inf = NaN.
+    matrix[N_events, D] z_aug = z_free;
+    for (n in 1:N) {
+      z_aug[ev_idx[n], d_idx[n]] = sign_obs[n] * exp(z_free[ev_idx[n], d_idx[n]]);
+    }
 
-  for (n in 1:N)
-    target += z_free[ev_idx[n], d_idx[n]];
+    matrix[N_events, D] mu_mat = X_event * beta;
+    for (e in 1:N_events) {
+      for (r in 1:R) {
+        mu_mat[e] += re_effect[, re_idx[e, r]]';
+      }
+    }
+
+    // Keep these local to exclude them from CmdStan output.
+    target += normal_lupdf(to_vector(z_aug) | to_vector(mu_mat), 1.0);
+  }
+  target += sum(to_vector(z_free)[obs_idx]);
 }
 generated quantities {
   array[R] corr_matrix[D] R_block;
@@ -4498,7 +4490,7 @@ generated quantities {
 #'
 #' @return Named list with elements: \code{draws}, \code{diagnostics},
 #'   \code{diagnostics_detail}, \code{fit}, \code{data_long}, \code{index_maps},
-#'   \code{X_design}, \code{X_event}, \code{event_re_idx}, \code{class_cols},
+#'   \code{X_event}, \code{event_re_idx}, \code{class_cols},
 #'   \code{event_metadata}, \code{n_re_levels}, \code{upper_re_col},
 #'   \code{middle_re_col}, \code{lower_re_col}, \code{patient_key_col},
 #'   \code{admission_key_col}, \code{pathogen_col}, \code{pathogen_fitted},
@@ -4880,7 +4872,8 @@ fit_bayesian_multivariate_probit <- function(
   }
 
   # -- Fail on fixed-effect missingness (do NOT impute; stop with clear msg) --
-  fe_df_check <- data_long[, fixed_effects, drop = FALSE]
+  # Checking after the pivot would count one missing value per observed class, not per event.
+  fe_df_check <- event_data[, fixed_effects, drop = FALSE]
   na_cols <- vapply(fixed_effects, function(cc) sum(is.na(fe_df_check[[cc]])), integer(1L))
   if (any(na_cols > 0L)) {
     bad <- paste(sprintf("'%s' (%d NA)", names(na_cols)[na_cols > 0L], na_cols[na_cols > 0L]),
@@ -4930,28 +4923,16 @@ fit_bayesian_multivariate_probit <- function(
   stopifnot(all(data_long$ev_idx >= 1L & data_long$ev_idx <= N_events))
   stopifnot(!anyDuplicated(event_data$.event_idx))
 
-  # -- Fixed-effects design matrix (event-level, not observation-level) -------
-  X_long <- stats::model.matrix(~., data = fe_df_check)
+  # event_data is already in .event_idx order; the long table would duplicate design rows by class.
+  X_event_mat <- stats::model.matrix(~., data = fe_df_check)
 
   D <- length(class_levels)
-  K <- ncol(X_long)
-
-  # Derive event-level arrays from the observation-level long table.
-  # ev_idx in data_long is 1-based; one unique row per event.
-  first_obs_per_event <- match(seq_len(N_events), data_long$ev_idx)
-  stopifnot(!anyNA(first_obs_per_event))
-  X_event_mat <- X_long[first_obs_per_event, , drop = FALSE] # N_events x K
+  K <- ncol(X_event_mat)
   re_idx_mat <- re_prep$flat_group_index # N_events x R, already event-ordered
 
-  # Build wide AST arrays for multivariate-probit data augmentation
-  obs_mask_mat <- matrix(0L, nrow = N_events, ncol = D)
-  y_mat_mat <- matrix(0L, nrow = N_events, ncol = D)
-  for (i in seq_len(nrow(data_long))) {
-    e <- data_long$ev_idx[i]
-    d <- data_long$d_idx[i]
-    obs_mask_mat[e, d] <- 1L
-    y_mat_mat[e, d] <- as.integer(data_long$resistance_binary[i])
-  }
+  # Sign (+1 resistant/-1 susceptible) and linear index per observed cell, for Stan's z_aug/Jacobian.
+  sign_obs <- as.integer(2L * data_long$resistance_binary - 1L)
+  obs_idx <- data_long$ev_idx + (data_long$d_idx - 1L) * N_events
 
   message(sprintf(
     "[fit_bayesian_multivariate_probit] %d obs | %d events | D=%d | RE blocks=%s",
@@ -4970,10 +4951,10 @@ fit_bayesian_multivariate_probit <- function(
     level_start     = as.array(as.integer(re_prep$level_start)),
     re_idx          = matrix(as.integer(re_idx_mat), nrow = N_events), # N_events x R
     X_event         = unname(X_event_mat), # N_events x K
-    obs_mask        = obs_mask_mat, # N_events x D
-    y_mat           = y_mat_mat, # N_events x D
     ev_idx          = as.integer(data_long$ev_idx),
     d_idx           = as.integer(data_long$d_idx),
+    sign_obs        = as.integer(sign_obs),
+    obs_idx         = as.integer(obs_idx),
     prior_beta_sd   = as.numeric(pc$beta_sd),
     prior_tau_sd    = as.numeric(pc$tau_sd),
     lkj_eta         = as.numeric(pc$lkj_eta)
@@ -5015,12 +4996,6 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  # -- Select and compile Stan model --------------------------------------------
-  # Stage 1 of the generic random-effect architecture: TWO variants
-  # (identity/correlated residual), regardless of how many RE blocks (R) were
-  # declared -- replaces the old six hardcoded 1re/2re/3re x identity/correlated
-  # variants (still defined above, unused by this function, kept only for
-  # equivalence testing against this generic path).
   stan_code <- if (identical(residual_structure, "correlated")) {
     .amr_probit_stan_generic_correlated()
   } else {
@@ -5440,8 +5415,7 @@ fit_bayesian_multivariate_probit <- function(
       # backward-compatible alias: first declared block's level set
       upper_levels      = re_prep$level_maps[[1L]]
     ),
-    X_design = X_long, # kept for back-compat; same as X_event aligned to obs
-    X_event = X_event_mat, # N_events x K (use this in simulation)
+    X_event = X_event_mat,
     # Generic random-effect representation (Stage 1): the self-contained
     # object from prepare_random_effects(), including flat_group_index
     # (N_events x R, one flattened level index per event per declared
@@ -5736,12 +5710,7 @@ compute_event_profile_probabilities <- function(
   D <- length(idx_maps$class_levels)
   re_prep <- fitted_model$random_effects_prep
 
-  # Prefer event-level arrays stored by fit function; fall back to deriving them
-  X_event_sim <- if (!is.null(fitted_model$X_event)) {
-    fitted_model$X_event
-  } else {
-    fitted_model$X_design
-  } # legacy fallback
+  X_event_sim <- fitted_model$X_event
   event_re_idx <- fitted_model$event_re_idx # N_events x R flattened level index
 
   K <- ncol(X_event_sim)
