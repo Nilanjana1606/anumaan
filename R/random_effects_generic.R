@@ -74,19 +74,28 @@
 #' @param random_effects Character vector (legacy) or list-of-blocks (see
 #'   .normalize_random_effects_spec()).
 #' @param min_repeated_levels Optional integer. If supplied, a block whose
-#'   number of levels with >=2 observations falls below this is a hard
-#'   stop (via on_mostly_singleton = "stop") rather than a warning. NULL
-#'   (default) never stops here -- eligibility gating belongs in the
-#'   analysis layer (see anumaan-analysis's random_effect_eligibility.R),
-#'   not hardcoded into the package.
-#' @param on_mostly_singleton "warn" (default) or "stop" when a block is
-#'   more than 90 percent singleton levels (1 observation).
+#'   number of levels with >=2 observations falls below this is checked
+#'   INDEPENDENTLY of singleton_threshold below (previously this was bugged:
+#'   nested inside the singleton_fraction check, so it was silently skipped
+#'   whenever singleton_fraction fell at or below the threshold even if
+#'   n_repeated_levels was itself too low). Triggers a stop (via
+#'   on_mostly_singleton = "stop") or warning. NULL (default) never checks
+#'   this -- eligibility gating belongs in the analysis layer (see
+#'   anumaan-analysis's random_effect_eligibility.R), not hardcoded into the
+#'   package.
+#' @param singleton_threshold Numeric in (0, 1]. A block whose fraction of
+#'   singleton levels (exactly 1 observation) exceeds this triggers a
+#'   separate warning/stop, evaluated independently of min_repeated_levels.
+#'   Default 0.90.
+#' @param on_mostly_singleton "warn" (default) or "stop" -- applies to BOTH
+#'   the min_repeated_levels check and the singleton_threshold check.
 #' @return An object of class "amr_random_effects": block metadata, level
 #'   maps, per-event flattened group indices, nesting diagnostics.
 #' @export
 prepare_random_effects <- function(data, random_effects,
-                                   min_repeated_levels = NULL,
-                                   on_mostly_singleton = c("warn", "stop")) {
+                                    min_repeated_levels = NULL,
+                                    singleton_threshold = 0.90,
+                                    on_mostly_singleton = c("warn", "stop")) {
   on_mostly_singleton <- match.arg(on_mostly_singleton)
   blocks <- .normalize_random_effects_spec(random_effects)
 
@@ -139,32 +148,86 @@ prepare_random_effects <- function(data, random_effects,
   flat_group_index <- matrix(NA_integer_, nrow = n_events, ncol = R)
   for (r in seq_len(R)) flat_group_index[, r] <- group_index[, r] + level_start[r] - 1L
 
-  # Nested-vs-crossed diagnostics between EACH PAIR of consecutive declared
-  # blocks, determined from the actual data (never assumed from declaration
-  # order alone): block r is "nested" within block r-1 if every level of r
-  # maps to exactly one level of r-1.
+  # Full pairwise relationship table between EVERY ordered pair of declared
+  # blocks (not just consecutive ones), determined from the actual data --
+  # never assumed from declaration order. Declaring blocks as
+  # hospital/admission/patient (in that order) does NOT mean patient is
+  # meaningfully related only to admission; a patient with several
+  # admissions is nested-within-patient from admission's perspective
+  # regardless of where "patient" appears in the declaration list.
+  #   nested:              every level of child maps to exactly one parent level
+  #   identical_partition: nested AND every parent level maps to exactly one
+  #                        child level (the two blocks partition events identically)
+  #   crossed_or_non_nested: otherwise
+  pairwise_relationships <- if (R >= 2L) {
+    rows <- list()
+    for (child in seq_len(R)) {
+      for (parent in seq_len(R)) {
+        if (child == parent) next
+        parents_per_child_level <- tapply(group_index[, parent], group_index[, child], function(x) length(unique(x)))
+        n_child_one_parent  <- sum(parents_per_child_level == 1L)
+        n_child_multi_parent <- sum(parents_per_child_level > 1L)
+        is_nested <- n_child_multi_parent == 0L
+        children_per_parent_level <- tapply(group_index[, child], group_index[, parent], function(x) length(unique(x)))
+        is_reverse_nested <- all(children_per_parent_level == 1L)
+        relationship <- if (is_nested && is_reverse_nested) "identical_partition"
+                        else if (is_nested) "nested"
+                        else "crossed_or_non_nested"
+        rows[[length(rows) + 1L]] <- data.frame(
+          child_block = block_names[child],
+          parent_block = block_names[parent],
+          n_child_levels = n_levels[child],
+          n_child_levels_mapping_to_one_parent = n_child_one_parent,
+          n_child_levels_mapping_to_multiple_parents = n_child_multi_parent,
+          relationship = relationship,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+    do.call(rbind, rows)
+  } else {
+    data.frame(child_block = character(0), parent_block = character(0),
+               n_child_levels = integer(0),
+               n_child_levels_mapping_to_one_parent = integer(0),
+               n_child_levels_mapping_to_multiple_parents = integer(0),
+               relationship = character(0), stringsAsFactors = FALSE)
+  }
+
+  # Compact per-block summary retained for print()/backward-compat callers --
+  # block r's relationship to block r-1 specifically. This is NOT a
+  # substitute for pairwise_relationships above, which covers every pair.
   nesting <- character(R)
   nesting[1L] <- "root"
   if (R >= 2L) {
     for (r in 2:R) {
-      levels_per_parent <- tapply(group_index[, r - 1L], group_index[, r], function(x) length(unique(x)))
-      nesting[r] <- if (all(levels_per_parent == 1L)) "nested_within_previous" else "crossed_with_previous"
+      rel <- pairwise_relationships$relationship[
+        pairwise_relationships$child_block == block_names[r] &
+        pairwise_relationships$parent_block == block_names[r - 1L]]
+      nesting[r] <- if (length(rel) == 1L) rel else NA_character_
     }
   }
 
   singleton_fraction <- vapply(n_obs_per_level, function(x) mean(x == 1L), numeric(1L))
+  .signal <- function(msg) {
+    if (identical(on_mostly_singleton, "stop")) stop(msg, call. = FALSE) else warning(msg, call. = FALSE)
+  }
   for (r in seq_len(R)) {
-    if (singleton_fraction[r] > 0.9) {
-      n_repeated <- sum(n_obs_per_level[[r]] >= 2L)
-      msg <- sprintf(
-        "random_effects block '%s': %.1f%% of its %d levels are singletons (exactly 1 observation) -- this block's variance may be weakly identified.",
-        block_names[r], 100 * singleton_fraction[r], n_levels[r]
-      )
-      if (!is.null(min_repeated_levels) && n_repeated < min_repeated_levels) {
-        if (identical(on_mostly_singleton, "stop")) stop(msg, call. = FALSE) else warning(msg, call. = FALSE)
-      } else {
-        warning(msg, call. = FALSE)
-      }
+    n_repeated <- sum(n_obs_per_level[[r]] >= 2L)
+
+    # Two INDEPENDENT checks -- previously min_repeated_levels was nested
+    # inside the singleton_fraction condition, so a block could fall below
+    # min_repeated_levels while its singleton_fraction was still <= the
+    # threshold and the check would silently never fire.
+    if (!is.null(min_repeated_levels) && n_repeated < min_repeated_levels) {
+      .signal(sprintf(
+        "random_effects block '%s': only %d of its %d levels have >=2 observations (need >= %d) -- this block's variance may be weakly identified.",
+        block_names[r], n_repeated, n_levels[r], min_repeated_levels))
+    }
+
+    if (singleton_fraction[r] > singleton_threshold) {
+      .signal(sprintf(
+        "random_effects block '%s': %.1f%% of its %d levels are singletons (exactly 1 observation), above the %.0f%% threshold -- this block's variance may be weakly identified.",
+        block_names[r], 100 * singleton_fraction[r], n_levels[r], 100 * singleton_threshold))
     }
   }
 
@@ -182,6 +245,7 @@ prepare_random_effects <- function(data, random_effects,
     flat_group_index   = flat_group_index,
     n_obs_per_level    = n_obs_per_level,
     nesting            = nesting,
+    pairwise_relationships = pairwise_relationships,
     singleton_fraction = singleton_fraction
   ), class = "amr_random_effects")
 }
