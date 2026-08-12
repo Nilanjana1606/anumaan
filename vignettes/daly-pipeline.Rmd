@@ -32,6 +32,12 @@ This vignette covers the **DALY burden estimation pipeline**. It does not
 repeat preprocessing — that is in the
 [Preprocessing Workflow vignette](preprocessing-workflow.html).
 
+For Bayesian multivariate probit resistance-profile estimation, `anumaan`
+supports both CPU and OpenCL execution backends through the `compute` argument
+to `fit_bayesian_multivariate_probit()`. This is a computational choice only:
+it does not alter the statistical model, validation framework, or DALY
+estimands.
+
 The pipeline has two stages:
 
 1. **Resistance profile estimation** — converts resistance prevalence data
