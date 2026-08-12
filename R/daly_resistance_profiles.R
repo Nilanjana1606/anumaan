@@ -4475,6 +4475,12 @@ generated quantities {
 #'   (NULL), \code{max_param_count} (NULL -- set to a positive integer to stop
 #'   if approximate parameter count exceeds the threshold). Any additional entries
 #'   are forwarded via \code{...}.
+#' @param compute Named list controlling the Stan execution backend. Supported
+#'   fields are \code{backend} (\code{"cpu"} default or \code{"opencl"}),
+#'   \code{opencl_platform_id}, \code{opencl_device_id}, and
+#'   \code{allow_cpu_fallback} (\code{FALSE} by default). OpenCL changes the
+#'   compilation/sampling backend only; it does not change the statistical
+#'   model, priors, diagnostics, or downstream estimands.
 #' @param show_messages Logical. Print sampling progress. Default \code{TRUE}.
 #' @param save_full_latent_diagnostics Logical. When \code{FALSE} (default),
 #'   \code{diagnostics_detail$all_parameters} (per-parameter Rhat/ESS
@@ -4495,7 +4501,8 @@ generated quantities {
 #'   \code{middle_re_col}, \code{lower_re_col}, \code{patient_key_col},
 #'   \code{admission_key_col}, \code{pathogen_col}, \code{pathogen_fitted},
 #'   \code{residual_structure}, \code{estimand}, \code{prior_config_used},
-#'   \code{sampler_config_used}, and \code{eligibility_report}.
+#'   \code{sampler_config_used}, \code{compute_config_used}, and
+#'   \code{eligibility_report}.
 #'
 #'   \code{diagnostics} is a one-row monitored summary. The main diagnostic
 #'   fields \code{max_rhat}, \code{min_ess_bulk}, and \code{min_ess_tail}
@@ -4542,6 +4549,7 @@ fit_bayesian_multivariate_probit <- function(
   estimand = "observed_stewardship_event_mix",
   prior_config = list(),
   sampler_config = list(),
+  compute = list(),
   show_messages = TRUE,
   save_full_latent_diagnostics = FALSE,
   ...
@@ -4564,6 +4572,8 @@ fit_bayesian_multivariate_probit <- function(
       call. = FALSE
     )
   }
+
+  compute_cfg <- validate_compute_backend(compute)
 
   # -- Data checks ------------------------------------------------------------
   if (!is.data.frame(event_class_data) || nrow(event_class_data) == 0L) {
@@ -5001,12 +5011,49 @@ fit_bayesian_multivariate_probit <- function(
   } else {
     .amr_probit_stan_generic_identity()
   }
-  stan_file <- cmdstanr::write_stan_file(stan_code)
   message(sprintf(
-    "[fit_bayesian_multivariate_probit] Compiling generic %d-block Stan model...",
-    re_prep$R
+    "[fit_bayesian_multivariate_probit] Compiling generic %d-block Stan model (backend=%s)...",
+    re_prep$R, compute_cfg$backend
   ))
-  mod <- cmdstanr::cmdstan_model(stan_file, compile = TRUE)
+  compile_result <- tryCatch(
+    .amr_compile_stan_backend(
+      stan_code = stan_code,
+      residual_structure = residual_structure,
+      compute_config = compute_cfg,
+      compile = TRUE,
+      quiet = !isTRUE(show_messages)
+    ),
+    error = function(e) {
+      if (identical(compute_cfg$backend, "opencl") && isTRUE(compute_cfg$allow_cpu_fallback)) {
+        warning(sprintf("OpenCL compile failed; retrying on CPU. Reason: %s", conditionMessage(e)),
+          call. = FALSE)
+        .amr_compile_stan_backend(
+          stan_code = stan_code,
+          residual_structure = residual_structure,
+          compute_config = modifyList(compute_cfg, list(
+            backend = "cpu",
+            opencl_platform_id = NULL,
+            opencl_device_id = NULL
+          )),
+          compile = TRUE,
+          quiet = !isTRUE(show_messages)
+        )
+      } else {
+        stop(conditionMessage(e), call. = FALSE)
+      }
+    }
+  )
+  mod <- compile_result$model
+  actual_compute_cfg <- compile_result$compute_config
+  backend_fallback <- FALSE
+  backend_fallback_reason <- NULL
+  if (!identical(compute_cfg$backend, actual_compute_cfg$backend)) {
+    backend_fallback <- TRUE
+    backend_fallback_reason <- sprintf(
+      "Requested %s backend but compiled %s backend.",
+      compute_cfg$backend, actual_compute_cfg$backend
+    )
+  }
 
   # -- Build sample() call args -----------------------------------------------
   sample_args <- list(
@@ -5028,7 +5075,34 @@ fit_bayesian_multivariate_probit <- function(
     "[fit_bayesian_multivariate_probit] Sampling: %d chains x (%d warmup + %d sampling)...",
     sc$chains, sc$iter_warmup, sc$iter_sampling
   ))
-  fit <- do.call(mod$sample, sample_args)
+  fit <- tryCatch(
+    .amr_sample_with_backend(mod, sample_args, actual_compute_cfg),
+    error = function(e) {
+      if (identical(actual_compute_cfg$backend, "opencl") && isTRUE(actual_compute_cfg$allow_cpu_fallback)) {
+        warning(sprintf("OpenCL sampling failed; retrying on CPU. Reason: %s", conditionMessage(e)),
+          call. = FALSE)
+        backend_fallback <<- TRUE
+        backend_fallback_reason <<- sprintf("OpenCL sampling failed: %s", conditionMessage(e))
+        actual_compute_cfg <<- modifyList(actual_compute_cfg, list(
+          backend = "cpu",
+          opencl_platform_id = NULL,
+          opencl_device_id = NULL
+        ))
+        cpu_compile <- .amr_compile_stan_backend(
+          stan_code = stan_code,
+          residual_structure = residual_structure,
+          compute_config = actual_compute_cfg,
+          compile = TRUE,
+          quiet = !isTRUE(show_messages)
+        )
+        mod <<- cpu_compile$model
+        actual_compute_cfg <<- cpu_compile$compute_config
+        .amr_sample_with_backend(mod, sample_args, actual_compute_cfg)
+      } else {
+        stop(conditionMessage(e), call. = FALSE)
+      }
+    }
+  )
 
   # -- Extract draws (exclude z_free; it is large and not needed downstream) --
   keep_vars <- c(
@@ -5435,6 +5509,20 @@ fit_bayesian_multivariate_probit <- function(
     estimand = estimand,
     prior_config_used = pc,
     sampler_config_used = sc,
+    compute_config_used = list(
+      requested_backend = compute_cfg$backend,
+      actual_backend = actual_compute_cfg$backend,
+      stan_opencl_enabled = identical(actual_compute_cfg$backend, "opencl"),
+      opencl_platform_id = actual_compute_cfg$opencl_platform_id,
+      opencl_device_id = actual_compute_cfg$opencl_device_id,
+      allow_cpu_fallback = compute_cfg$allow_cpu_fallback,
+      backend_fallback = backend_fallback,
+      backend_fallback_reason = backend_fallback_reason,
+      cmdstan_version = tryCatch(as.character(cmdstanr::cmdstan_version()), error = function(e) NA_character_),
+      cmdstanr_version = tryCatch(as.character(utils::packageVersion("cmdstanr")), error = function(e) NA_character_),
+      compile_cache_key = compile_result$cache_key,
+      compiled_basename = compile_result$basename
+    ),
     eligibility_report = list(
       marginal  = eligibility_report,
       pairwise  = co_test_report
