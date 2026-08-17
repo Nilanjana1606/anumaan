@@ -1,7 +1,7 @@
 Package: anumaan
 Type: Package
 Title: Antimicrobial Resistance Surveillance Preprocessing and Burden Estimation
-Version: 0.1.0.9023
+Version: 0.1.0.9024
 Authors@R: c(
     person(
       "Nilanjana", "Dey",
@@ -25,8 +25,9 @@ Authors@R: c(
     )
   )
 Description: anumaan provides a preprocessing pipeline for antimicrobial resistance (AMR)
-    surveillance data and performs burden estimation. Supports polymicrobial weighting, MDR/XDR classification, and burden
-    estimation calculations.
+    surveillance data, exploratory data analysis (EDA) tools for reviewing cohorts prior to
+    modelling, and burden estimation. Supports polymicrobial weighting, MDR/XDR classification,
+    resistance profile estimation, and burden estimation calculations.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends:
