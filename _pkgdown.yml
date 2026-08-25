@@ -77,6 +77,8 @@ navbar:
       - text: "Pipelines"
       - text: Preprocessing Workflow
         href: articles/preprocessing-workflow.html
+      - text: Exploratory Data Analysis
+        href: articles/eda-workflow.html
       - text: DALY Burden Estimation
         href: articles/daly-pipeline.html
 
