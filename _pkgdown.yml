@@ -241,11 +241,14 @@ reference:
     hardcode which blocks are scientifically appropriate for a given dataset).
     Two residual structures are supported: identity (default, no residual
     correlation) and correlated (full LKJ-Cholesky residual covariance).
+    CPU and OpenCL backends are both supported as execution choices; backend
+    selection changes compilation/sampling only, not the underlying model.
     Run once per pathogen; orchestrate across pathogens in the analysis repository.
     Use \code{estimate_resistance_profiles(method = "bayesian")} as the top-level
     entry point.
   contents:
   - fit_bayesian_multivariate_probit
+  - validate_compute_backend
   - prepare_random_effects
   - re_contribution
   - compute_event_profile_probabilities

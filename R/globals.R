@@ -171,6 +171,11 @@ utils::globalVariables(c(
   # aggregate_profiles_for_daly() -- created via dplyr::mutate then selected
   "low_draws_flag",
 
+  # Pathway 2 — backend/provenance fields carried in fit metadata and summaries
+  "requested_backend", "actual_backend", "backend_fallback",
+  "backend_fallback_reason", "opencl_platform_id", "opencl_device_id",
+  "stan_opencl_enabled", "cmdstan_version", "cmdstanr_version",
+
   # plot_probit_diagnostics() -- ggplot2 aes() column references
   "rhat", "ess", "metric"
 ))

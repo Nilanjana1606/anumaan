@@ -28,25 +28,30 @@ library(dplyr)
 
 # Overview
 
-This vignette covers **resistance profile estimation** — the first stage of
-the DALY burden estimation pipeline, converting resistance data into
-probability distributions over all 2^n binary resistance profiles (S/R per
-antibiotic class). It does not repeat preprocessing — that is in the
-[Preprocessing Workflow vignette](preprocessing-workflow.html). Downstream
-burden calculation (RR assignment, YLL/YLD) is not yet covered here.
+This vignette covers the **DALY burden estimation pipeline**. It does not
+repeat preprocessing — that is in the
+[Preprocessing Workflow vignette](preprocessing-workflow.html).
 
-Resistance profile estimation has **two pathways**, chosen by what data you
-have and how much you need the profiles to reflect patient/hospital-level
-structure:
+For Bayesian multivariate probit resistance-profile estimation, `anumaan`
+supports both CPU and OpenCL execution backends through the `compute` argument
+to `fit_bayesian_multivariate_probit()`. This is a computational choice only:
+it does not alter the statistical model, validation framework, or DALY
+estimands.
 
-| | Option 1: Convex Optimisation (Pathway 1) | Option 2: Bayesian Multivariate Probit (Pathway 2) |
-|---|---|---|
-| Input | Pre-computed aggregate marginals (GBD ST-GPR, GLASS, national surveillance) **or** facility line-list AST data | Facility-level, event-level AST data with covariates |
-| Method | Simplex-constrained QP (GBD eq. 7.5.1.3) reproducing marginal + pairwise resistance rates | Bayesian hierarchical multivariate probit model, fit with Stan/`cmdstanr` |
-| Entry point | `estimate_profiles_convex()` (aggregate) or `compute_marginal_resistance()` → `compute_pairwise_coresistance()` → `compute_resistance_profiles()` (line-list) | `fit_bayesian_multivariate_probit()` → `compute_event_profile_probabilities()` |
-| Captures hospital/random effects, fixed-effect covariates | No | Yes |
-| Extra dependency | None beyond `osqp`/`quadprog` | `cmdstanr` + CmdStan (optional, see `DESCRIPTION`) |
-| Unified dispatcher | `estimate_resistance_profiles(method = "convex", ...)` | `estimate_resistance_profiles(method = "bayesian", ...)` |
+The pipeline has two stages:
+
+1. **Resistance profile estimation** — converts resistance prevalence data
+   into probability distributions over all 2^n binary resistance profiles
+   (S/R per antibiotic class). Uses convex optimisation (GBD eq. 7.5.1.3).
+2. **Burden calculation** — applies relative-risk weights to profiles and
+   computes YLL, YLD, and total DALY burden.
+
+Input can come from two sources:
+
+| Source | Entry point |
+|---|---|
+| Pre-computed aggregate marginals (GBD, GLASS, national surveillance) | `validate_aggregate_inputs()` → `estimate_profiles_convex()` |
+| Facility line-list AST data (after preprocessing) | `compute_marginal_resistance()` → `compute_pairwise_coresistance()` → `compute_resistance_profiles()` |
 
 ---
 

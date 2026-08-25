@@ -20,6 +20,7 @@ fit_bayesian_multivariate_probit(
   estimand = "observed_stewardship_event_mix",
   prior_config = list(),
   sampler_config = list(),
+  compute = list(),
   show_messages = TRUE,
   save_full_latent_diagnostics = FALSE,
   ...
@@ -87,6 +88,13 @@ mainly by the LKJ prior and adds identifiability risk.}
 if approximate parameter count exceeds the threshold). Any additional entries
 are forwarded via \code{...}.}
 
+\item{compute}{Named list controlling the Stan execution backend. Supported
+fields are \code{backend} (\code{"cpu"} default or \code{"opencl"}),
+\code{opencl_platform_id}, \code{opencl_device_id}, and
+\code{allow_cpu_fallback} (\code{FALSE} by default). OpenCL changes the
+compilation/sampling backend only; it does not change the statistical
+model, priors, diagnostics, or downstream estimands.}
+
 \item{show_messages}{Logical. Print sampling progress. Default \code{TRUE}.}
 
 \item{save_full_latent_diagnostics}{Logical. When \code{FALSE} (default),
@@ -110,7 +118,8 @@ Named list with elements: \code{draws}, \code{diagnostics},
   \code{middle_re_col}, \code{lower_re_col}, \code{patient_key_col},
   \code{admission_key_col}, \code{pathogen_col}, \code{pathogen_fitted},
   \code{residual_structure}, \code{estimand}, \code{prior_config_used},
-  \code{sampler_config_used}, and \code{eligibility_report}.
+  \code{sampler_config_used}, \code{compute_config_used}, and
+  \code{eligibility_report}.
 
   \code{diagnostics} is a one-row monitored summary. The main diagnostic
   fields \code{max_rhat}, \code{min_ess_bulk}, and \code{min_ess_tail}
