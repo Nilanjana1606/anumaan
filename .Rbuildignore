@@ -14,6 +14,7 @@
 ^\.DS_Store$
 ^\.Rhistory$
 ^\.codex$
+^\.agents$
 ^output_data$
 ^output_plots$
 ^spatial_data$
@@ -22,5 +23,8 @@
 ^pkgdown$
 ^data$
 ^\.here$
+^anumaan\.Rcheck$
+^\.\.Rcheck$
+^vignettes/.*\.html$
 inst/extdata/\.~lock\..*
 ^tests/output_data/\.gitkeep$
