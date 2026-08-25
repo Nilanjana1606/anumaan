@@ -80,16 +80,12 @@ plot_probit_diagnostics <- function(
   lp_vars <- grep("^lp__$", all_vars, value = TRUE)
   tau_vars <- grep("^tau_", all_vars, value = TRUE)
   beta_vars <- grep("^beta\\[", all_vars, value = TRUE)
-  re_vars <- c(
-    grep("^hospital_effect\\[", all_vars, value = TRUE),
-    grep("^patient_effect\\[", all_vars, value = TRUE),
-    grep("^admission_effect\\[", all_vars, value = TRUE)
-  )
-  corr_vars <- c(
-    grep("^R_hospital\\[", all_vars, value = TRUE),
-    grep("^R_patient\\[", all_vars, value = TRUE),
-    grep("^R_admission\\[", all_vars, value = TRUE)
-  )
+  # Generic random-effect deviations are `re_effect[d,level]` and block-level
+  # correlation matrices are `R_block[r,i,j]` (see
+  # .amr_probit_stan_generic_identity()/_correlated() and
+  # .probit_parameter_group() in R/daly_resistance_profiles.R).
+  re_vars <- grep("^re_effect\\[", all_vars, value = TRUE)
+  corr_vars <- grep("^R_block\\[", all_vars, value = TRUE)
   omega_vars <- c(
     grep("^Omega\\[", all_vars, value = TRUE),
     grep("^L_Omega\\[", all_vars, value = TRUE)

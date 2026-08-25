@@ -5030,7 +5030,7 @@ fit_bayesian_multivariate_probit <- function(
         .amr_compile_stan_backend(
           stan_code = stan_code,
           residual_structure = residual_structure,
-          compute_config = modifyList(compute_cfg, list(
+          compute_config = utils::modifyList(compute_cfg, list(
             backend = "cpu",
             opencl_platform_id = NULL,
             opencl_device_id = NULL
@@ -5083,7 +5083,7 @@ fit_bayesian_multivariate_probit <- function(
           call. = FALSE)
         backend_fallback <<- TRUE
         backend_fallback_reason <<- sprintf("OpenCL sampling failed: %s", conditionMessage(e))
-        actual_compute_cfg <<- modifyList(actual_compute_cfg, list(
+        actual_compute_cfg <<- utils::modifyList(actual_compute_cfg, list(
           backend = "cpu",
           opencl_platform_id = NULL,
           opencl_device_id = NULL
