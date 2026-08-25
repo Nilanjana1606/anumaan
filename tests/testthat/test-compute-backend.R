@@ -1,5 +1,11 @@
-testthat::test_that("compute backend defaults to CPU", {
+skip_if_no_cmdstan <- function() {
   testthat::skip_if_not_installed("cmdstanr")
+  path <- tryCatch(cmdstanr::cmdstan_path(), error = function(e) "")
+  testthat::skip_if(!nzchar(path), "CmdStan is not configured")
+}
+
+testthat::test_that("compute backend defaults to CPU", {
+  skip_if_no_cmdstan()
   cfg <- anumaan::validate_compute_backend(list())
   testthat::expect_identical(cfg$backend, "cpu")
   testthat::expect_false(cfg$allow_cpu_fallback)
@@ -8,7 +14,7 @@ testthat::test_that("compute backend defaults to CPU", {
 })
 
 testthat::test_that("opencl backend requires ids", {
-  testthat::skip_if_not_installed("cmdstanr")
+  skip_if_no_cmdstan()
   testthat::expect_error(
     anumaan::validate_compute_backend(list(backend = "opencl")),
     "requires both"
@@ -27,6 +33,7 @@ testthat::test_that("cpu backend ignores supplied opencl ids", {
 })
 
 testthat::test_that("cache keys differ by backend", {
+  skip_if_no_cmdstan()
   stan_code <- "parameters {real y;} model {y ~ normal(0,1);}"
   cpu <- anumaan::validate_compute_backend(list(backend = "cpu"))
   gpu <- anumaan:::.resolve_compute_config(list(
