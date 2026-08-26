@@ -8,7 +8,8 @@ fit_bayesian_multivariate_probit(
   event_class_data,
   class_cols,
   fixed_effects,
-  random_effects,
+  random_effects = list(),
+  profile_group_col = NULL,
   pathogen = NULL,
   pathogen_col = "pathogen",
   event_id_col = "event_id",
@@ -37,9 +38,16 @@ Required.}
 \item{fixed_effects}{Character vector. Event-level covariate column names.
 Required.}
 
-\item{random_effects}{Character vector of length 1, 2, or 3. Grouping
-column names. First element: hospital (upper); second (optional): patient;
-third (optional): admission. Required.}
+\item{random_effects}{Character vector or named list of random-intercept
+blocks. Use \code{list()} for no random-effect blocks. When non-empty,
+the legacy character-vector form names grouping columns; the list form
+uses \code{name}, \code{group_col}, and optional \code{terms = "intercept"}.}
+
+\item{profile_group_col}{Character scalar or \code{NULL}. Column used for
+downstream profile aggregation, eligibility summaries, and validation.
+It is independent of the random-effect specification. Defaults to the
+first random-effect grouping column when random effects exist; it is
+required for fixed-effects-only fits.}
 
 \item{pathogen}{Character or \code{NULL}. When supplied, filters
 \code{event_class_data} to rows where \code{pathogen_col} equals this

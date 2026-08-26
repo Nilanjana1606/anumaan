@@ -67,6 +67,7 @@ generated quantities {
 #' @return \code{array(dim = c(n_states, n_matrices, D, D))}.
 #' @keywords internal
 .draw_lkj_cholesky_prior <- function(D, eta, n_matrices, n_states, seed) {
+  if (n_matrices == 0L) return(array(0, dim = c(n_states, 0L, D, D)))
   if (D == 1L) {
     # A 1x1 correlation "matrix" is trivially [1]; no need to invoke Stan.
     return(array(1, dim = c(n_states, n_matrices, 1L, 1L)))
@@ -174,7 +175,10 @@ generated quantities {
     matrix(lkj_arr[s, R + 1L, , ], nrow = D, ncol = D)
   } else NULL
 
-  mu <- (setup$X_event %*% beta) + re_contribution(re_effect, setup$flat_re_idx_obs)
+  re_term <- if (R > 0L) re_contribution(re_effect, setup$flat_re_idx_obs) else {
+    matrix(0, nrow = setup$N_ev, ncol = D)
+  }
+  mu <- (setup$X_event %*% beta) + re_term
   list(beta = beta, re_effect = re_effect, L_Omega = L_Omega, mu = mu)
 }
 

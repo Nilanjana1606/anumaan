@@ -11,7 +11,8 @@ estimate_resistance_profiles(
   panel_map = NULL,
   class_cols = NULL,
   fixed_effects = NULL,
-  random_effects = NULL,
+  random_effects = list(),
+  profile_group_col = NULL,
   pathogen = NULL,
   pathogen_col = "pathogen",
   eligible_pairs = NULL,
@@ -41,8 +42,12 @@ event-level tibble (one row per event; class columns 0/1/NA).}
 
 \item{fixed_effects}{Character vector. Pathway 2 only. Required.}
 
-\item{random_effects}{Character vector (1-3 elements). Pathway 2 only.
-Required. Elements: hospital; [+patient]; [+admission].}
+\item{random_effects}{Character vector or named list of random-intercept
+blocks. Pathway 2 only. Use \code{list()} for a fixed-effects-only model.}
+
+\item{profile_group_col}{Character scalar or \code{NULL}. Pathway 2 only.
+Grouping column for profile aggregation and validation. Required when
+\code{random_effects} is empty.}
 
 \item{pathogen}{Character or \code{NULL}. Pathway 2 only. When supplied,
 filters data to a single pathogen before fitting.}

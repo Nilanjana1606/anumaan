@@ -48,6 +48,16 @@ test_that("simulate_probit_mixed_predictive() validates blocks_to_replicate agai
   expect_error(simulate_probit_mixed_predictive(fit, blocks_to_replicate = character(0)), "non-empty")
 })
 
+test_that("simulate_probit_mixed_predictive() clearly rejects fixed-only fits", {
+  fixed_only_fit <- list(random_effects_prep = prepare_random_effects(
+    data.frame(profile_group = c("H1", "H2")), list()
+  ))
+  expect_error(
+    simulate_probit_mixed_predictive(fixed_only_fit, blocks_to_replicate = "anything"),
+    "No fitted random-effect blocks"
+  )
+})
+
 test_that("unreplicated_block_behavior = 'error' rejects fits with un-listed declared blocks", {
   # Argument validation happens before any posterior-draws extraction, so a
   # minimal hand-built object with a real two-block random_effects_prep
