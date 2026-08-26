@@ -81,6 +81,11 @@ simulate_probit_mixed_predictive <- function(
   unreplicated_block_behavior <- match.arg(unreplicated_block_behavior)
   re_prep <- fitted_model$random_effects_prep
 
+  if (is.null(re_prep) || re_prep$R == 0L) {
+    stop("No fitted random-effect blocks are available to replicate. Use simulate_probit_posterior_predictive() for fixed-only models.",
+         call. = FALSE)
+  }
+
   if (length(blocks_to_replicate) == 0L)
     stop("`blocks_to_replicate` must be non-empty.", call. = FALSE)
   bad_blocks <- setdiff(blocks_to_replicate, re_prep$block_names)
