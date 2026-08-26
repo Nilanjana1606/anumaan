@@ -4330,6 +4330,7 @@ data {
   real<lower=0> prior_tau_sd;
   real<lower=1> lkj_eta;
 }
+
 parameters {
   matrix[K, D] beta;
   matrix[D, total_re_levels] z_re;
@@ -4381,6 +4382,85 @@ generated quantities {
 )"
 }
 
+# Fixed-effects-only variants deliberately omit every random-effect parameter.
+# Keeping these separate from the generic R >= 1 models avoids relying on
+# zero-sized Stan arrays/matrices and leaves existing model mathematics intact.
+.amr_probit_stan_fixed_correlated <- function() {
+  r"(
+data {
+  int<lower=1> N;
+  int<lower=1> N_events;
+  int<lower=2> D;
+  int<lower=1> K;
+  matrix[N_events, K] X_event;
+  array[N] int<lower=1,upper=N_events> ev_idx;
+  array[N] int<lower=1,upper=D> d_idx;
+  array[N] real<lower=-1,upper=1> sign_obs;
+  array[N] int<lower=1,upper=N_events*D> obs_idx;
+  real<lower=0> prior_beta_sd;
+  real<lower=1> lkj_eta;
+}
+parameters {
+  matrix[K, D] beta;
+  cholesky_factor_corr[D] L_Omega;
+  matrix[N_events, D] z_free;
+}
+model {
+  to_vector(beta) ~ normal(0, prior_beta_sd);
+  L_Omega ~ lkj_corr_cholesky(lkj_eta);
+  {
+    matrix[N_events, D] z_aug = z_free;
+    for (n in 1:N)
+      z_aug[ev_idx[n], d_idx[n]] = sign_obs[n] * exp(z_free[ev_idx[n], d_idx[n]]);
+    array[N_events] vector[D] z_aug_arr;
+    array[N_events] vector[D] mu_arr;
+    matrix[N_events, D] mu_mat = X_event * beta;
+    for (e in 1:N_events) {
+      z_aug_arr[e] = z_aug[e]';
+      mu_arr[e] = mu_mat[e]';
+    }
+    target += multi_normal_cholesky_lupdf(z_aug_arr | mu_arr, L_Omega);
+  }
+  target += sum(to_vector(z_free)[obs_idx]);
+}
+generated quantities {
+  corr_matrix[D] Omega = multiply_lower_tri_self_transpose(L_Omega);
+}
+)"
+}
+
+.amr_probit_stan_fixed_identity <- function() {
+  r"(
+data {
+  int<lower=1> N;
+  int<lower=1> N_events;
+  int<lower=2> D;
+  int<lower=1> K;
+  matrix[N_events, K] X_event;
+  array[N] int<lower=1,upper=N_events> ev_idx;
+  array[N] int<lower=1,upper=D> d_idx;
+  array[N] real<lower=-1,upper=1> sign_obs;
+  array[N] int<lower=1,upper=N_events*D> obs_idx;
+  real<lower=0> prior_beta_sd;
+}
+parameters {
+  matrix[K, D] beta;
+  matrix[N_events, D] z_free;
+}
+model {
+  to_vector(beta) ~ normal(0, prior_beta_sd);
+  {
+    matrix[N_events, D] z_aug = z_free;
+    for (n in 1:N)
+      z_aug[ev_idx[n], d_idx[n]] = sign_obs[n] * exp(z_free[ev_idx[n], d_idx[n]]);
+    matrix[N_events, D] mu_mat = X_event * beta;
+    target += normal_lupdf(to_vector(z_aug) | to_vector(mu_mat), 1.0);
+  }
+  target += sum(to_vector(z_free)[obs_idx]);
+}
+)"
+}
+
 
 # fit_bayesian_multivariate_probit()
 
@@ -4408,9 +4488,10 @@ generated quantities {
 #' \strong{Single-pathogen design:} pass \code{pathogen} to restrict the fit.
 #' Run once per pathogen and orchestrate in the analysis repository.
 #'
-#' \strong{Random effects} (\code{random_effects}): 1, 2, or 3 grouping column
-#' names defining the clustering hierarchy (e.g. hospital; hospital + patient;
-#' hospital + patient + admission). The first element is the upper-most level;
+#' \strong{Random effects} (\code{random_effects}): an optional character
+#' vector or list of grouping blocks defining the clustering hierarchy. Use
+#' \code{list()} for a fixed-effects-only model. When blocks are present, the
+#' first element is the upper-most level;
 #' subsequent elements are nested within it. Nested levels receive globally unique
 #' composite keys built internally. Any hierarchical grouping variable can occupy
 #' any slot -- the labels hospital/patient/admission are semantic conventions, not
@@ -4436,9 +4517,15 @@ generated quantities {
 #'   Required.
 #' @param fixed_effects Character vector. Event-level covariate column names.
 #'   Required.
-#' @param random_effects Character vector of length 1, 2, or 3. Grouping
-#'   column names. First element: hospital (upper); second (optional): patient;
-#'   third (optional): admission. Required.
+#' @param random_effects Character vector or named list of random-intercept
+#'   blocks. Use \code{list()} for no random-effect blocks. When non-empty,
+#'   the legacy character-vector form names grouping columns; the list form
+#'   uses \code{name}, \code{group_col}, and optional \code{terms = "intercept"}.
+#' @param profile_group_col Character scalar or \code{NULL}. Column used for
+#'   downstream profile aggregation, eligibility summaries, and validation.
+#'   It is independent of the random-effect specification. Defaults to the
+#'   first random-effect grouping column when random effects exist; it is
+#'   required for fixed-effects-only fits.
 #' @param pathogen Character or \code{NULL}. When supplied, filters
 #'   \code{event_class_data} to rows where \code{pathogen_col} equals this
 #'   value before fitting. Recommended: fit one pathogen at a time.
@@ -4537,7 +4624,8 @@ fit_bayesian_multivariate_probit <- function(
   event_class_data,
   class_cols,
   fixed_effects,
-  random_effects,
+  random_effects = list(),
+  profile_group_col = NULL,
   pathogen = NULL,
   pathogen_col = "pathogen",
   event_id_col = "event_id",
@@ -4604,7 +4692,7 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  # -- Validate random_effects --------------------------------------------------
+  # -- Validate random_effects and profile grouping ----------------------------
   # Accepts EITHER the legacy character vector (c("center_name", "readmission_id"))
   # or the generic list-of-blocks spec (list(list(name=, group_col=, terms=), ...));
   # see .normalize_random_effects_spec(). Arbitrarily many blocks are allowed now
@@ -4615,13 +4703,11 @@ fit_bayesian_multivariate_probit <- function(
   # prepare_random_effects() below detects nested-vs-crossed from the actual data
   # rather than assuming it, so an accidentally-non-unique group_col shows up as
   # "crossed_with_previous" rather than silently merging distinct groups.
-  if (missing(random_effects) || is.null(random_effects) || length(random_effects) == 0L) {
-    stop("`random_effects` is required (no default). Supply a character vector of grouping columns, or a list of blocks (name/group_col/terms).",
-      call. = FALSE
-    )
-  }
+  if (is.null(random_effects)) random_effects <- list()
   .re_blocks_early <- .normalize_random_effects_spec(random_effects)
-  .re_group_cols_early <- vapply(.re_blocks_early, function(b) b$group_col, character(1L))
+  .re_group_cols_early <- if (length(.re_blocks_early) > 0L) {
+    vapply(.re_blocks_early, function(b) b$group_col, character(1L))
+  } else character(0)
   miss_re <- setdiff(.re_group_cols_early, names(event_class_data))
   if (length(miss_re) > 0L) {
     stop(sprintf(
@@ -4630,7 +4716,15 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  upper_re_col <- .re_group_cols_early[1L]
+  upper_re_col <- profile_group_col %||%
+    if (length(.re_group_cols_early) > 0L) .re_group_cols_early[1L] else NULL
+  if (is.null(upper_re_col) || !is.character(upper_re_col) || length(upper_re_col) != 1L ||
+      !nzchar(upper_re_col)) {
+    stop("`profile_group_col` is required when `random_effects` is empty.", call. = FALSE)
+  }
+  if (!upper_re_col %in% names(event_class_data)) {
+    stop(sprintf("profile_group_col '%s' not found in event_class_data.", upper_re_col), call. = FALSE)
+  }
 
   # -- Validate pathogen_col and optionally filter to one pathogen -----------
   if (!pathogen_col %in% names(event_class_data)) {
@@ -4944,9 +5038,12 @@ fit_bayesian_multivariate_probit <- function(
   sign_obs <- as.integer(2L * data_long$resistance_binary - 1L)
   obs_idx <- data_long$ev_idx + (data_long$d_idx - 1L) * N_events
 
+  re_label <- if (re_prep$R == 0L) "none (fixed-only)" else {
+    paste(sprintf("%s(%d)", re_prep$block_names, re_prep$n_levels), collapse = "+")
+  }
   message(sprintf(
     "[fit_bayesian_multivariate_probit] %d obs | %d events | D=%d | RE blocks=%s",
-    nrow(data_long), N_events, D, paste(sprintf("%s(%d)", re_prep$block_names, re_prep$n_levels), collapse = "+")
+    nrow(data_long), N_events, D, re_label
   ))
 
   # -- Build Stan data list -----------------------------------------------------
@@ -4955,20 +5052,26 @@ fit_bayesian_multivariate_probit <- function(
     N_events        = N_events,
     D               = D,
     K               = K,
-    R               = re_prep$R,
-    total_re_levels = re_prep$total_re_levels,
-    n_levels        = as.array(as.integer(re_prep$n_levels)),
-    level_start     = as.array(as.integer(re_prep$level_start)),
-    re_idx          = matrix(as.integer(re_idx_mat), nrow = N_events), # N_events x R
     X_event         = unname(X_event_mat), # N_events x K
     ev_idx          = as.integer(data_long$ev_idx),
     d_idx           = as.integer(data_long$d_idx),
     sign_obs        = as.integer(sign_obs),
     obs_idx         = as.integer(obs_idx),
-    prior_beta_sd   = as.numeric(pc$beta_sd),
-    prior_tau_sd    = as.numeric(pc$tau_sd),
-    lkj_eta         = as.numeric(pc$lkj_eta)
+    prior_beta_sd   = as.numeric(pc$beta_sd)
   )
+  if (re_prep$R > 0L) {
+    stan_data <- c(stan_data, list(
+      R               = re_prep$R,
+      total_re_levels = re_prep$total_re_levels,
+      n_levels        = as.array(as.integer(re_prep$n_levels)),
+      level_start     = as.array(as.integer(re_prep$level_start)),
+      re_idx          = matrix(as.integer(re_idx_mat), nrow = N_events),
+      prior_tau_sd    = as.numeric(pc$tau_sd),
+      lkj_eta         = as.numeric(pc$lkj_eta)
+    ))
+  } else if (identical(residual_structure, "correlated")) {
+    stan_data$lkj_eta <- as.numeric(pc$lkj_eta)
+  }
 
   # -- Parameter-count preflight -----------------------------------------------
   n_z_free <- N_events * D
@@ -5006,14 +5109,18 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  stan_code <- if (identical(residual_structure, "correlated")) {
+  stan_code <- if (re_prep$R == 0L && identical(residual_structure, "correlated")) {
+    .amr_probit_stan_fixed_correlated()
+  } else if (re_prep$R == 0L) {
+    .amr_probit_stan_fixed_identity()
+  } else if (identical(residual_structure, "correlated")) {
     .amr_probit_stan_generic_correlated()
   } else {
     .amr_probit_stan_generic_identity()
   }
   message(sprintf(
-    "[fit_bayesian_multivariate_probit] Compiling generic %d-block Stan model (backend=%s)...",
-    re_prep$R, compute_cfg$backend
+    "[fit_bayesian_multivariate_probit] Compiling %s Stan model (backend=%s)...",
+    if (re_prep$R == 0L) "fixed-only" else sprintf("generic %d-block", re_prep$R), compute_cfg$backend
   ))
   compile_result <- tryCatch(
     .amr_compile_stan_backend(
@@ -5106,7 +5213,7 @@ fit_bayesian_multivariate_probit <- function(
 
   # -- Extract draws (exclude z_free; it is large and not needed downstream) --
   keep_vars <- c(
-    "beta", "re_effect", "tau_re", "R_block",
+    "beta", if (re_prep$R > 0L) c("re_effect", "tau_re", "R_block"),
     if (residual_structure == "correlated") c("L_Omega", "Omega"),
     "lp__"
   )
@@ -5487,7 +5594,7 @@ fit_bayesian_multivariate_probit <- function(
     index_maps = list(
       class_levels      = class_levels,
       # backward-compatible alias: first declared block's level set
-      upper_levels      = re_prep$level_maps[[1L]]
+      upper_levels      = if (re_prep$R > 0L) re_prep$level_maps[[1L]] else NULL
     ),
     X_event = X_event_mat,
     # Generic random-effect representation (Stage 1): the self-contained
@@ -5503,6 +5610,7 @@ fit_bayesian_multivariate_probit <- function(
     event_metadata = tibble::as_tibble(event_data),
     n_re_levels = re_prep$R,
     upper_re_col = upper_re_col,
+    profile_group_col = upper_re_col,
     pathogen_col = pathogen_col,
     pathogen_fitted = pathogen_fitted,
     residual_structure = residual_structure,
@@ -5820,7 +5928,9 @@ compute_event_profile_probabilities <- function(
   }
 
   beta_arr <- .arr("beta", K, D) # S x K x D
-  re_eff_arr <- .arr("re_effect", D, re_prep$total_re_levels) # S x D x total_re_levels
+  re_eff_arr <- if (re_prep$R > 0L) {
+    .arr("re_effect", D, re_prep$total_re_levels)
+  } else NULL
   L_omega_arr <- if (residual_structure == "correlated") {
     .arr("L_Omega", D, D)
   } # S x D x D (lower triangular)
@@ -5967,12 +6077,13 @@ compute_event_profile_probabilities <- function(
   # -- Main draw loop: mu_all computed once per draw, shared across hp-keys ---
   for (s in seq_len(S)) {
     beta_s <- matrix(beta_arr[s, , ], nrow = K, ncol = D)
-    re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
-
-    # Generic random-effect contribution: sums over an arbitrary number of
-    # declared blocks via one shared helper (re_contribution()), rather than
-    # hand-summing hospital_effect/patient_effect/admission_effect.
-    mu_all <- (X_event %*% beta_s) + re_contribution(re_eff_s, flat_re_idx_obs) # N_ev x D
+    re_term <- if (re_prep$R > 0L) {
+      re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
+      re_contribution(re_eff_s, flat_re_idx_obs)
+    } else {
+      matrix(0, nrow = N_ev, ncol = D)
+    }
+    mu_all <- (X_event %*% beta_s) + re_term # N_ev x D
 
     Omega_s_full <- if (identical(residual_structure, "correlated")) {
       tcrossprod(matrix(L_omega_arr[s, , ], nrow = D, ncol = D))
@@ -6379,8 +6490,11 @@ aggregate_profiles_for_daly <- function(
 #' @param panel_map Named list or \code{NULL}. Pathway 1 only.
 #' @param class_cols Character vector. Pathway 2 only. Required.
 #' @param fixed_effects Character vector. Pathway 2 only. Required.
-#' @param random_effects Character vector (1-3 elements). Pathway 2 only.
-#'   Required. Elements: hospital; [+patient]; [+admission].
+#' @param random_effects Character vector or named list of random-intercept
+#'   blocks. Pathway 2 only. Use \code{list()} for a fixed-effects-only model.
+#' @param profile_group_col Character scalar or \code{NULL}. Pathway 2 only.
+#'   Grouping column for profile aggregation and validation. Required when
+#'   \code{random_effects} is empty.
 #' @param pathogen Character or \code{NULL}. Pathway 2 only. When supplied,
 #'   filters data to a single pathogen before fitting.
 #' @param pathogen_col Character. Default \code{"pathogen"}.
@@ -6414,7 +6528,8 @@ estimate_resistance_profiles <- function(
   # Pathway 2 -- required with no defaults
   class_cols = NULL,
   fixed_effects = NULL,
-  random_effects = NULL,
+  random_effects = list(),
+  profile_group_col = NULL,
   pathogen = NULL,
   pathogen_col = "pathogen",
   eligible_pairs = NULL,
@@ -6438,6 +6553,8 @@ estimate_resistance_profiles <- function(
     pathogen_col                   = pathogen_col,
     pathogen                       = pathogen,
     residual_structure             = residual_structure,
+    random_effects                 = random_effects,
+    profile_group_col              = profile_group_col,
     estimand                       = estimand,
     n_posterior_draws_for_profiles = n_posterior_draws_for_profiles,
     prior_config                   = prior_config,
@@ -6487,15 +6604,13 @@ estimate_resistance_profiles <- function(
   if (is.null(fixed_effects)) {
     stop("`fixed_effects` is required for method = 'bayesian'.", call. = FALSE)
   }
-  if (is.null(random_effects)) {
-    stop("`random_effects` is required for method = 'bayesian'.", call. = FALSE)
-  }
 
   fitted_mod <- fit_bayesian_multivariate_probit(
     event_class_data   = data,
     class_cols         = class_cols,
     fixed_effects      = fixed_effects,
     random_effects     = random_effects,
+    profile_group_col  = profile_group_col,
     pathogen           = pathogen,
     pathogen_col       = pathogen_col,
     eligible_pairs     = eligible_pairs,

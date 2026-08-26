@@ -123,7 +123,7 @@
     array(draws_mat[, cols, drop = FALSE], dim = c(S, d1, d2))
   }
   beta_arr    <- .arr("beta", K, D)
-  re_eff_arr  <- .arr("re_effect", D, re_prep$total_re_levels)
+  re_eff_arr  <- if (re_prep$R > 0L) .arr("re_effect", D, re_prep$total_re_levels) else NULL
   L_omega_arr <- if (identical(residual_structure, "correlated")) .arr("L_Omega", D, D) else NULL
 
   stopifnot(".event_idx" %in% names(event_meta))
@@ -147,8 +147,11 @@
   # hardcodes hospital/admission/patient.
   mu_all_for_draw <- function(s) {
     beta_s   <- matrix(beta_arr[s, , ],   nrow = K, ncol = D)
-    re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
-    (X_event %*% beta_s) + re_contribution(re_eff_s, flat_re_idx_obs)
+    re_term <- if (re_prep$R > 0L) {
+      re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
+      re_contribution(re_eff_s, flat_re_idx_obs)
+    } else matrix(0, nrow = N_ev, ncol = D)
+    (X_event %*% beta_s) + re_term
   }
   # Raw stored Cholesky factor of the residual correlation matrix (a Stan
   # cholesky_factor_corr[D] parameter -- already a valid Cholesky factor, no

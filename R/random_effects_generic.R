@@ -22,9 +22,6 @@
 #' @keywords internal
 .normalize_random_effects_spec <- function(random_effects) {
   if (is.character(random_effects)) {
-    if (length(random_effects) == 0L) {
-      stop("`random_effects` must be non-empty.", call. = FALSE)
-    }
     if (anyDuplicated(random_effects)) {
       stop("`random_effects` column names must be unique.", call. = FALSE)
     }
@@ -33,8 +30,8 @@
     }))
   }
 
-  if (!is.list(random_effects) || length(random_effects) == 0L) {
-    stop("`random_effects` must be a non-empty character vector or a list of blocks (name/group_col/terms).",
+  if (!is.list(random_effects)) {
+    stop("`random_effects` must be a character vector or a list of blocks (name/group_col/terms).",
       call. = FALSE
     )
   }
@@ -197,7 +194,7 @@ prepare_random_effects <- function(data, random_effects,
   # block r's relationship to block r-1 specifically. This is NOT a
   # substitute for pairwise_relationships above, which covers every pair.
   nesting <- character(R)
-  nesting[1L] <- "root"
+  if (R > 0L) nesting[1L] <- "root"
   if (R >= 2L) {
     for (r in 2:R) {
       rel <- pairwise_relationships$relationship[
@@ -286,6 +283,7 @@ re_contribution <- function(re_effect, flat_group_index) {
     out
   } else {
     R <- length(flat_group_index)
+    if (R == 0L) return(rep(0, nrow(re_effect)))
     Reduce(`+`, lapply(seq_len(R), function(r) re_effect[, flat_group_index[r]]))
   }
 }
