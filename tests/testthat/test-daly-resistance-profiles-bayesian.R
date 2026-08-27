@@ -74,6 +74,28 @@
   ))
 }
 
+.bprofile_fit_fixed_only <- function(wide, class_cols, residual_structure = "identity",
+                                     chains = 2L, iter = 150L, seed = 123L) {
+  suppressWarnings(fit_bayesian_multivariate_probit(
+    event_class_data = wide,
+    class_cols = class_cols,
+    fixed_effects = c("Age_normalised", "gender", "center_name"),
+    random_effects = list(),
+    profile_group_col = "center_name",
+    pathogen = "bug",
+    pathogen_col = "pathogen",
+    event_id_col = "event_id",
+    outcome_col = "final_outcome",
+    residual_structure = residual_structure,
+    prior_config = list(beta_sd = 1.0, tau_sd = 0.5, lkj_eta = 2.0),
+    sampler_config = list(
+      chains = chains, iter_warmup = iter, iter_sampling = iter,
+      seed = seed, parallel_chains = chains, adapt_delta = 0.9
+    ),
+    show_messages = FALSE
+  ))
+}
+
 test_that("identity residual: fully observed event gets a degenerate profile", {
   skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
 
@@ -232,4 +254,84 @@ test_that("correlated residual: profile output uses conditional Gibbs imputation
   expect_true(any(daly_tbl$eligible_for_YLL))
   expect_true(any(daly_tbl$eligible_for_YLD))
   expect_true(all(is.na(daly_tbl$exclusion_reason_YLL[daly_tbl$eligible_for_YLL])))
+})
+
+test_that("fixed-only identity fit supports diagnostics, profile generation, and DALY aggregation", {
+  skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
+
+  wide <- .bprofile_make_wide_data(
+    n_hosp = 3, n_ev_per_hosp = 40,
+    class_cols = c("classA", "classB"),
+    sparse_class_at_last_hosp = FALSE
+  )
+  fit <- .bprofile_fit_fixed_only(wide, c("classA", "classB"), "identity")
+
+  expect_identical(fit$n_re_levels, 0L)
+  expect_identical(fit$upper_re_col, "center_name")
+  expect_identical(fit$profile_group_col, "center_name")
+  expect_identical(fit$compute_config_used$requested_backend, "cpu")
+  expect_true("diagnostic_status" %in% names(fit$diagnostics))
+
+  profs <- compute_event_profile_probabilities(
+    fitted_model = fit,
+    n_posterior_draws_for_profiles = 100L,
+    outcome_col = "final_outcome",
+    seed = 123L
+  )
+
+  expect_true(is.data.frame(profs$event_profiles))
+  expect_true(is.data.frame(profs$aggregate_draws))
+  expect_true(nrow(profs$event_profiles) > 0L)
+  expect_true(nrow(profs$aggregate_draws) > 0L)
+  expect_true(all(profs$event_profiles$profile_generation_method == "conditional_analytic_identity"))
+
+  by_event <- tapply(
+    profs$event_profiles$profile_probability,
+    profs$event_profiles$event_idx,
+    sum
+  )
+  expect_true(all(abs(by_event - 1) < 1e-6))
+
+  daly_tbl <- aggregate_profiles_for_daly(
+    profile_output = profs,
+    hospital_col = fit$upper_re_col,
+    pathogen_col = fit$pathogen_col,
+    estimand = fit$estimand
+  )
+
+  expect_true(is.data.frame(daly_tbl))
+  expect_true(nrow(daly_tbl) > 0L)
+  expect_true("center_name" %in% names(daly_tbl))
+  expect_true("profile_delta" %in% names(daly_tbl))
+  expect_true("eligible_for_profile_inference" %in% names(daly_tbl))
+  expect_true(all(daly_tbl$eligible_for_profile_inference))
+})
+
+test_that("fixed-only fit requires profile_group_col", {
+  skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
+
+  wide <- .bprofile_make_wide_data(
+    n_hosp = 2, n_ev_per_hosp = 20,
+    class_cols = c("classA", "classB"),
+    sparse_class_at_last_hosp = FALSE
+  )
+
+  expect_error(
+    fit_bayesian_multivariate_probit(
+      event_class_data = wide,
+      class_cols = c("classA", "classB"),
+      fixed_effects = c("Age_normalised", "gender", "center_name"),
+      random_effects = list(),
+      pathogen = "bug",
+      pathogen_col = "pathogen",
+      event_id_col = "event_id",
+      residual_structure = "identity",
+      sampler_config = list(
+        chains = 1L, iter_warmup = 50L, iter_sampling = 50L,
+        seed = 1L, parallel_chains = 1L
+      ),
+      show_messages = FALSE
+    ),
+    "profile_group_col"
+  )
 })
