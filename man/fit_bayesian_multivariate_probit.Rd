@@ -182,9 +182,10 @@ the D-dim random effect vectors are correlated across antibiotic classes.
 \strong{Single-pathogen design:} pass \code{pathogen} to restrict the fit.
 Run once per pathogen and orchestrate in the analysis repository.
 
-\strong{Random effects} (\code{random_effects}): 1, 2, or 3 grouping column
-names defining the clustering hierarchy (e.g. hospital; hospital + patient;
-hospital + patient + admission). The first element is the upper-most level;
+\strong{Random effects} (\code{random_effects}): an optional character
+vector or list of grouping blocks defining the clustering hierarchy. Use
+\code{list()} for a fixed-effects-only model. When blocks are present, the
+first element is the upper-most level;
 subsequent elements are nested within it. Nested levels receive globally unique
 composite keys built internally. Any hierarchical grouping variable can occupy
 any slot -- the labels hospital/patient/admission are semantic conventions, not

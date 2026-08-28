@@ -9,7 +9,8 @@ validate_complete_profile_calibration(
   n_posterior_draws_for_validation = 2000L,
   seed = 123L,
   ci_level = 0.95,
-  min_complete_events = 30L
+  min_complete_events = 30L,
+  n_mc_profile_replicates = 200L
 )
 }
 \arguments{
@@ -24,6 +25,19 @@ Default \code{2000L}.}
 
 \item{min_complete_events}{Integer. Minimum number of fully-observed-panel
 events required to evaluate a hospital-pathogen panel. Default \code{30L}.}
+
+\item{n_mc_profile_replicates}{Integer. Correlated residual structure only:
+inner Monte Carlo replicate count \code{M} used per posterior draw per
+complete event to estimate model-implied full-profile probabilities via
+\eqn{Z = \mu + L_\Omega \epsilon}, \eqn{Y = I(Z > 0)} (the same simulation
+mechanism \code{.ppc_generate_correlated()} uses). Worst-case Monte Carlo
+SE on a cohort of \code{n} complete events is approximately
+\eqn{0.5/\sqrt{Mn}}; the default \code{200} keeps that under ~0.7pp even
+at the \code{min_complete_events} floor of 30, while remaining far
+cheaper than reusing \code{n_posterior_draws_for_validation} (e.g. 2000)
+as the inner replicate count would be. Ignored for identity residual
+structure, where profile probabilities are computed exactly (the
+independent product of \eqn{\Phi(\mu_d)} terms), not simulated.}
 }
 \value{
 Tibble with one row per hospital x pathogen x profile for evaluated
