@@ -597,12 +597,30 @@ validate_complete_profile_calibration <- function(
         eps <- matrix(stats::rnorm(D_panel * n_ev * M), nrow = D_panel, ncol = n_ev * M)
         z <- t(L_sub %*% eps) + mu_sub[rep(seq_len(n_ev), each = M), , drop = FALSE]
         y_rep <- z > 0
-        labels_rep <- apply(y_rep, 1L, function(row) paste(ifelse(row, "R", "S"), collapse = ""))
-        tab_rep <- table(labels_rep)
+        # Vectorized label tabulation: pack each simulated row's D_panel-length
+        # 0/1 pattern into an integer code (column 1 = most-significant bit,
+        # matching the left-to-right "R"/"S" string order enumerate_binary_
+        # profiles() uses), then tabulate directly on the integer codes.
+        # Avoids apply()-ing a per-row paste() over n_ev*M rows, which
+        # otherwise dominates runtime once M or the complete-event cohort
+        # size grow (n_ev*M can reach the hundreds of thousands per draw).
+        weights <- 2L^((D_panel - 1L):0L)
+        codes <- as.vector(y_rep %*% weights)
+        n_codes <- 2L^D_panel
+        bit_matrix <- vapply(0:(n_codes - 1L), function(code) {
+          vapply(seq_len(D_panel), function(b) as.integer((code %/% 2L^(D_panel - b)) %% 2L), integer(1L))
+        }, integer(D_panel))
+        code_labels <- apply(matrix(bit_matrix, nrow = D_panel), 2L,
+                              function(bits) paste(ifelse(bits == 1L, "R", "S"), collapse = ""))
+        tab_counts <- tabulate(codes + 1L, nbins = n_codes)
+        names(tab_counts) <- code_labels
         enum_df <- enumerate_binary_profiles(ci$classes)
         freqs <- vapply(
           enum_df$profile_delta,
-          function(lbl) if (lbl %in% names(tab_rep)) as.numeric(tab_rep[[lbl]]) else 0,
+          function(lbl) {
+            idx <- match(lbl, code_labels)
+            if (is.na(idx)) 0 else tab_counts[[idx]]
+          },
           numeric(1L)
         ) / (n_ev * M)
         per_key[[key]] <- tibble::tibble(
