@@ -18,4 +18,3 @@ returns the abbreviated form (e.g. \code{"3GC"}). Falls back to the first
 4 characters of the underscore-cleaned name, upper-cased, for any class
 not in the reference table.
 }
-\keyword{internal}

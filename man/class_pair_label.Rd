@@ -19,4 +19,3 @@ Character vector, e.g. \code{"AMG x CARB"}.
 \description{
 Human-readable class-pair label
 }
-\keyword{internal}

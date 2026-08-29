@@ -29,7 +29,7 @@
 #'
 #' @param x Character vector of raw class names (e.g. \code{"Third_generation_cephalosporins"}).
 #' @return Character vector of display labels, same length as \code{x}.
-#' @keywords internal
+#' @export
 class_display_label <- function(x) {
   tbl <- .class_display_labels_cache()
   idx <- match(x, tbl$class_name)
@@ -46,7 +46,7 @@ class_display_label <- function(x) {
 #'
 #' @param x Character vector of raw class names.
 #' @return Character vector of short labels, same length as \code{x}.
-#' @keywords internal
+#' @export
 class_short_label <- function(x) {
   tbl <- .class_display_labels_cache()
   idx <- match(x, tbl$class_name)
@@ -61,7 +61,7 @@ class_short_label <- function(x) {
 #'   \code{class_display_label()}. Default \code{TRUE} (pairwise facet strips
 #'   get crowded fast with full names).
 #' @return Character vector, e.g. \code{"AMG x CARB"}.
-#' @keywords internal
+#' @export
 class_pair_label <- function(class_1, class_2, short = TRUE) {
   f <- if (isTRUE(short)) class_short_label else class_display_label
   paste(f(class_1), f(class_2), sep = " x ")
@@ -76,7 +76,7 @@ class_pair_label <- function(class_1, class_2, short = TRUE) {
 #'
 #' @param x Character vector of raw hospital/site names (e.g. \code{"AIIMS_trauma_center"}).
 #' @return Character vector, e.g. \code{"AIIMS trauma center"}.
-#' @keywords internal
+#' @export
 hospital_display_label <- function(x) {
   gsub("_", " ", x)
 }

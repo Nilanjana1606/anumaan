@@ -18,4 +18,3 @@ replacing underscores with spaces for any class not in the table (e.g. a
 pathogen-specific class not yet added there), so this never errors on an
 unmapped class -- it just degrades to a readable-if-generic label.
 }
-\keyword{internal}
