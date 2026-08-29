@@ -172,6 +172,11 @@ plot_probit_diagnostics <- function(
   if (!is.null(corr_summary)) {
     .try_plot(plot_omega_correlation_heatmap(corr_summary, fit_obj$class_cols, title_base), "Omega correlation heatmap")
     .try_plot(plot_omega_convergence_heatmap(corr_summary, fit_obj$class_cols, title_base), "Omega convergence heatmap")
+    .try_plot(plot_omega_summary_table(corr_summary, fit_obj$class_cols, title_base), "Omega summary table")
+    .try_plot(
+      tryCatch(plot_omega_degeneracy_diagnostic(fit_obj, fit_obj$class_cols, title_base), error = function(e) NULL),
+      "Omega degeneracy diagnostic"
+    )
   }
 
   fe_plots <- tryCatch(plot_probit_fixed_effect_diagnostics(fit_obj, title_base), error = function(e) NULL)
@@ -190,6 +195,15 @@ plot_probit_diagnostics <- function(
     tryCatch(plot_probit_worst_parameters(fit_obj, title_base), error = function(e) NULL),
     "worst structural parameters"
   )
+
+  worst_offender_plots <- tryCatch(
+    plot_probit_worst_offender_diagnostics(fit_obj, draws, title_base),
+    error = function(e) NULL
+  )
+  if (!is.null(worst_offender_plots)) {
+    if (!is.null(worst_offender_plots$trace)) .try_plot(worst_offender_plots$trace, "worst-offender trace plot")
+    if (!is.null(worst_offender_plots$rank)) .try_plot(worst_offender_plots$rank, "worst-offender rank plot")
+  }
 
   # -- 1. Sampling trace plots --------------------------------------------------
   .try_plot(
@@ -394,6 +408,98 @@ plot_probit_diagnostics <- function(
     )
   }
 
+  # -- 9. Interpretation summary (final page) -----------------------------------
+  # Every page above requires the reader to synthesise several numbers into a
+  # conclusion themselves; this closing page does that synthesis explicitly
+  # from the same canonical fields already shown (nothing new is computed),
+  # so a reviewer has a plain-English starting point even if they only read
+  # the first and last pages.
+  degeneracy_stats <- if (!is.null(corr_summary)) {
+    tryCatch(.omega_degeneracy_stats(fit_obj, fit_obj$class_cols), error = function(e) NULL)
+  } else NULL
+  interp_lines <- .probit_interpretation_text(
+    diag, status_str, verdict,
+    beta_summary = beta_family_plots$summary,
+    degeneracy_stats = degeneracy_stats,
+    residual_structure = fit_obj$residual_structure
+  )
+  wrapped <- unlist(lapply(interp_lines, function(l) c(strwrap(l, width = 95), "")))
+  wrapped <- utils::head(wrapped, -1L)
+  .try_plot(
+    ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = rev(seq_along(wrapped)), label = wrapped,
+                        hjust = 0, size = 3.6) +
+      ggplot2::xlim(0, 1) + ggplot2::ylim(0, length(wrapped) + 1) +
+      ggplot2::labs(
+        title = paste(title_base, "-- Interpretation Summary"),
+        subtitle = "Auto-generated from the canonical diagnostic fields shown on the pages above -- not a substitute for reading them, a starting point for reading them."
+      ) +
+      ggplot2::theme_void(base_size = 11) +
+      ggplot2::theme(plot.title = ggplot2::element_text(size = 12), plot.subtitle = ggplot2::element_text(size = 9)),
+    "interpretation summary"
+  )
+
   message(sprintf("[plot_probit_diagnostics] Done -- %s", pdf_path))
   invisible(pdf_path)
+}
+
+.probit_interpretation_text <- function(diag, status_str, verdict, beta_summary,
+                                        degeneracy_stats, residual_structure) {
+  lines <- character(0)
+
+  if (!is.null(beta_summary) && nrow(beta_summary) > 0L) {
+    worst_family <- beta_summary[which.max(beta_summary$pct_rhat_gt_1_01), ]
+    lines <- c(lines, if (worst_family$pct_rhat_gt_1_01 > 0) {
+      sprintf(
+        "Primary fitting concern: %.1f%% of %s fixed-effect coefficients exceed Rhat 1.01 (worst Rhat = %.4f, min bulk ESS = %.0f in this family).",
+        worst_family$pct_rhat_gt_1_01, worst_family$family, worst_family$worst_rhat, worst_family$min_ess_bulk
+      )
+    } else {
+      "No fixed-effect coefficient family shows elevated Rhat (all families at or below 1.01)."
+    })
+  }
+
+  ebfmi_min <- diag$ebfmi_min[[1L]]
+  ebfmi_txt <- if (!is.null(ebfmi_min) && !is.na(ebfmi_min) && ebfmi_min < 0.3) {
+    sprintf("Energy exploration is a concern (minimum E-BFMI = %.3f, below the 0.3 warning threshold).", ebfmi_min)
+  } else if (!is.null(ebfmi_min) && !is.na(ebfmi_min)) {
+    sprintf("Energy exploration is healthy (minimum E-BFMI = %.3f).", ebfmi_min)
+  } else {
+    "Energy exploration diagnostics unavailable."
+  }
+  n_divergent <- diag$n_divergent[[1L]]
+  div_txt <- if (!is.null(n_divergent) && !is.na(n_divergent) && n_divergent > 0) {
+    sprintf("%d divergent transition(s) were observed -- treat the posterior as untrustworthy until adapt_delta is increased or the model is simplified.", n_divergent)
+  } else {
+    "There were no divergent transitions."
+  }
+  lines <- c(lines, paste(ebfmi_txt, div_txt))
+
+  if (identical(residual_structure, "correlated")) {
+    lines <- c(lines, if (!is.null(degeneracy_stats)) {
+      sprintf(
+        "Omega (latent cross-class correlation): %.1f%% of posterior draws have a smallest eigenvalue below %.2f (median condition number = %.1f) -- %s.",
+        degeneracy_stats$pct_near_degenerate, degeneracy_stats$degenerate_threshold, degeneracy_stats$med_condition_number,
+        if (degeneracy_stats$pct_near_degenerate > 10) {
+          "the sampler is repeatedly visiting a near-singular boundary of the correlation-matrix space, not a settled interior estimate"
+        } else {
+          "the correlation matrix does not show strong evidence of near-singularity"
+        }
+      )
+    } else {
+      "Omega degeneracy diagnostics were unavailable for this fit."
+    })
+  }
+
+  pattern_txt <- if (grepl("^fail_divergent|^fail_energy", status_str)) {
+    "This pattern suggests a geometry/energy problem with the sampler, not simply slow mixing of a subset of coefficients -- consider increasing adapt_delta or simplifying the model before trusting any downstream profile."
+  } else if (grepl("^warning_rhat|^warning_low_bulk_ess|^warning_low_tail_ess|^fail_rhat", status_str) &&
+             !is.null(beta_summary) && nrow(beta_summary) > 0L && max(beta_summary$pct_rhat_gt_1_01) > 0) {
+    "This pattern suggests slow/inconsistent mixing concentrated in a subset of the mean-structure coefficients (see the fixed-effect family breakdown above) rather than a global HMC energy failure."
+  } else if (identical(verdict, "PASS")) {
+    "No convergence, energy, or divergence concerns were found for this fit."
+  } else {
+    "See the sampler health, fixed-effect family, and Omega pages above for the specific parameters driving this status."
+  }
+  c(lines, pattern_txt)
 }

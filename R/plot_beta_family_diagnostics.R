@@ -113,7 +113,7 @@ plot_probit_beta_family_diagnostics <- function(fit, title_base = "") {
     ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(plot.title = ggplot2::element_text(size = 10))
 
-  list(table = table_page, bar = bar_page)
+  list(table = table_page, bar = bar_page, summary = summary_tbl)
 }
 
 .human_readable_parameter_label <- function(variable, parameter_group, fit) {

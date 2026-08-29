@@ -4196,7 +4196,8 @@ summarize_fit_correlation_matrix <- function(fit, matrix_var, class_cols, ci_lev
         # from the SAME chain-preserving subset (not the flattened draws_ij
         # above) so rhat/ess_bulk use the actual multi-chain structure.
         rhat                = tryCatch(posterior::rhat(draws_ij_sub), error = function(e) NA_real_),
-        ess_bulk            = tryCatch(posterior::ess_bulk(draws_ij_sub), error = function(e) NA_real_)
+        ess_bulk            = tryCatch(posterior::ess_bulk(draws_ij_sub), error = function(e) NA_real_),
+        ess_tail            = tryCatch(posterior::ess_tail(draws_ij_sub), error = function(e) NA_real_)
       )
     }
   }
