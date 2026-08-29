@@ -123,6 +123,49 @@ plot_probit_diagnostics <- function(
   n_chains <- dim(draws)[2]
   n_sampling <- dim(draws)[1]
 
+  # -- 0. Fit-health section: sampler status, Omega diagnostics (correlated
+  # fits only), fixed-effect coefficients -- placed before the trace/rank/
+  # density pages so a reader sees whether the fit is even trustworthy
+  # before looking at anything downstream of it.
+  .fmt_or_na <- function(x, fmt) if (is.null(x) || length(x) == 0L || is.na(x[[1L]])) "NA" else sprintf(fmt, x[[1L]])
+  health_lines <- c(
+    sprintf("Diagnostic status: %s", .fmt_or_na(diag$diagnostic_status, "%s")),
+    sprintf("Divergent transitions: %s", .fmt_or_na(diag$n_divergent, "%d")),
+    sprintf("Treedepth saturations: %s", .fmt_or_na(diag$n_treedepth_sat, "%d")),
+    sprintf("Min E-BFMI: %s (warn below 0.3)", .fmt_or_na(diag$ebfmi_min, "%.3f")),
+    sprintf("Max Rhat (structural): %s (warn above 1.01)", .fmt_or_na(diag$max_rhat_structural, "%.4f")),
+    sprintf("Min ESS bulk (structural): %s (warn below 100)", .fmt_or_na(diag$min_ess_bulk_structural, "%.0f")),
+    sprintf("Min ESS tail (structural): %s (warn below 100)", .fmt_or_na(diag$min_ess_tail_structural, "%.0f")),
+    sprintf("Converged (structural): %s", .fmt_or_na(diag$converged_structural, "%s"))
+  )
+  .try_plot(
+    ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = seq(length(health_lines), 1), label = health_lines,
+                        hjust = 0, size = 4.2, family = "mono") +
+      ggplot2::xlim(0, 1) + ggplot2::ylim(0, length(health_lines) + 1) +
+      ggplot2::labs(
+        title = paste(title_base, "-- Sampler Health"),
+        subtitle = "Read this page before interpreting anything downstream -- a failure/warning status here means the posterior itself is not yet trustworthy, regardless of how the rest of this PDF looks."
+      ) +
+      ggplot2::theme_void(base_size = 11) +
+      ggplot2::theme(plot.title = ggplot2::element_text(size = 12), plot.subtitle = ggplot2::element_text(size = 9)),
+    "sampler health"
+  )
+
+  corr_summary <- if (identical(fit_obj$residual_structure, "correlated")) {
+    tryCatch(summarize_fit_correlation_matrix(fit_obj, "Omega", fit_obj$class_cols), error = function(e) NULL)
+  } else NULL
+  if (!is.null(corr_summary)) {
+    .try_plot(plot_omega_correlation_heatmap(corr_summary, fit_obj$class_cols, title_base), "Omega correlation heatmap")
+    .try_plot(plot_omega_convergence_heatmap(corr_summary, fit_obj$class_cols, title_base), "Omega convergence heatmap")
+  }
+
+  fe_plots <- tryCatch(plot_probit_fixed_effect_diagnostics(fit_obj, title_base), error = function(e) NULL)
+  if (!is.null(fe_plots)) {
+    if (!is.null(fe_plots$other)) .try_plot(fe_plots$other, "fixed-effect coefficients (non-hospital)")
+    if (!is.null(fe_plots$hospital)) .try_plot(fe_plots$hospital, "fixed-effect coefficients (hospital)")
+  }
+
   # -- 1. Sampling trace plots --------------------------------------------------
   .try_plot(
     bayesplot::mcmc_trace(draws, pars = priority) +
