@@ -89,6 +89,27 @@ test_that("resistant-count distribution plot never conflates different panel wid
   expect_identical(p$labels$y, "Proportion of fully-observed events")
 })
 
+.fake_ppc_resistant_count_summary <- data.frame(
+  statistic_name = c("resistant_count_mean", "resistant_count_median", "resistant_count_p90",
+                     "resistant_count_max", "resistant_count_variance"),
+  stratum = "all_events",
+  observed_value = c(3.4, 4, 5, 5, 3.1), replicated_mean = c(3.3, 3.9, 4.8, 4.9, 2.9),
+  replicated_q025 = c(3.0, 3.5, 4.5, 4.5, 2.5), replicated_q975 = c(3.6, 4.2, 5.0, 5.0, 3.3),
+  support_status = "supported", stringsAsFactors = FALSE
+)
+
+test_that("resistant-count summary splits location/tail stats from variance onto separate axes", {
+  plots <- .ppc_plot_resistant_count_summary(.fake_ppc_resistant_count_summary, "test")
+  expect_true(all(c("location", "dispersion") %in% names(plots)))
+  expect_identical(plots$location$labels$x, "Number of resistant classes per event")
+  expect_identical(plots$dispersion$labels$x, "Variance of resistant-class count")
+  expect_false(identical(plots$location$labels$x, "Value"))
+  expect_false(identical(plots$dispersion$labels$x, "Value"))
+  # Location panel must contain mean/median/p90/max but NOT variance.
+  expect_true(all(c("Mean", "Median", "90th percentile", "Maximum") %in% levels(plots$location$data$metric_display)))
+  expect_false("resistant_count_variance" %in% plots$location$data$statistic_name)
+})
+
 .fake_ppc_hh <- data.frame(
   statistic_name = c("hospital_heterogeneity_sd", "hospital_heterogeneity_range"),
   stratum = c("class:Carbapenems", "class:Carbapenems"),
