@@ -4182,6 +4182,7 @@ summarize_fit_correlation_matrix <- function(fit, matrix_var, class_cols, ci_lev
         sprintf("%s[%d,%d,%d]", matrix_var, block_index, i, j)
       }
       if (!vname %in% var_names) next
+      draws_ij_sub <- posterior::subset_draws(draws_arr, variable = vname)
       draws_ij <- as.numeric(posterior::extract_variable(draws_arr, vname))
       rows[[length(rows) + 1L]] <- tibble::tibble(
         class_1             = class_cols[i],
@@ -4189,7 +4190,14 @@ summarize_fit_correlation_matrix <- function(fit, matrix_var, class_cols, ci_lev
         correlation_mean    = mean(draws_ij),
         correlation_median  = stats::median(draws_ij),
         correlation_lower   = stats::quantile(draws_ij, probs = alpha, names = FALSE),
-        correlation_upper   = stats::quantile(draws_ij, probs = 1 - alpha, names = FALSE)
+        correlation_upper   = stats::quantile(draws_ij, probs = 1 - alpha, names = FALSE),
+        # Per-pair sampler diagnostics -- a visually attractive correlation
+        # estimate is meaningless if the chains never agreed on it. Computed
+        # from the SAME chain-preserving subset (not the flattened draws_ij
+        # above) so rhat/ess_bulk use the actual multi-chain structure.
+        rhat                = tryCatch(posterior::rhat(draws_ij_sub), error = function(e) NA_real_),
+        ess_bulk            = tryCatch(posterior::ess_bulk(draws_ij_sub), error = function(e) NA_real_),
+        ess_tail            = tryCatch(posterior::ess_tail(draws_ij_sub), error = function(e) NA_real_)
       )
     }
   }
