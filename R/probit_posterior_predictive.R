@@ -1334,6 +1334,66 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
   plots
 }
 
+#' Resistant-class-count summary statistics (Phase B redesign): mean,
+#' median, 90th percentile and maximum are counts of resistant classes and
+#' share one axis; variance is a dispersion statistic on a different scale
+#' (roughly the square of a count) and must not share that axis, even
+#' though the old .ppc_dotplot_page() call put all five on one row range
+#' labelled "Value". Split into two plots: Panel A (location/tail summaries)
+#' and Panel B (variance). There is no hospital/class dimension here (each
+#' statistic is a single dataset-wide row, stratum == "all_events"), so
+#' neither panel needs faceting.
+#' @keywords internal
+.ppc_plot_resistant_count_summary <- function(st, title_base) {
+  df <- st[grepl("^resistant_count_", st$statistic_name) & st$stratum == "all_events" &
+             st$support_status == "supported", , drop = FALSE]
+  if (nrow(df) == 0L) return(NULL)
+
+  metric_labels_a <- c(resistant_count_mean = "Mean", resistant_count_median = "Median",
+                       resistant_count_p90 = "90th percentile", resistant_count_max = "Maximum")
+
+  plots <- list()
+
+  df_a <- df[df$statistic_name %in% names(metric_labels_a), , drop = FALSE]
+  if (nrow(df_a) > 0L) {
+    df_a$metric_display <- factor(metric_labels_a[df_a$statistic_name],
+                                  levels = rev(unname(metric_labels_a)))
+    plots$location <- ggplot2::ggplot(df_a, ggplot2::aes(y = .data$metric_display)) +
+      ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
+                             height = 0, colour = "#4292C6", alpha = 0.6) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 2) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
+                          size = 2.4, stroke = 1.2) +
+      ggplot2::expand_limits(x = 0) +
+      ggplot2::labs(
+        title = paste(title_base, "-- Posterior Predictive Check: Resistant Classes per Event (location)"),
+        subtitle = "Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval.",
+        x = "Number of resistant classes per event", y = "Summary statistic"
+      ) + .ppc_common_theme()
+  }
+
+  df_b <- df[df$statistic_name == "resistant_count_variance", , drop = FALSE]
+  if (nrow(df_b) > 0L) {
+    df_b$metric_display <- "Variance"
+    plots$dispersion <- ggplot2::ggplot(df_b, ggplot2::aes(y = .data$metric_display)) +
+      ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
+                             height = 0, colour = "#4292C6", alpha = 0.6) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 2) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
+                          size = 2.4, stroke = 1.2) +
+      ggplot2::expand_limits(x = 0) +
+      ggplot2::labs(
+        title = paste(title_base, "-- Posterior Predictive Check: Resistant Classes per Event (dispersion)"),
+        subtitle = paste("Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval.",
+                         "NOT on the same scale as the location/tail-summary page (variance is not a count)."),
+        x = "Variance of resistant-class count", y = NULL
+      ) + .ppc_common_theme() +
+      ggplot2::theme(axis.text.y = ggplot2::element_blank())
+  }
+
+  plots
+}
+
 #' Between-hospital heterogeneity, faceted by spread metric (SD/IQR/MAD/
 #' range) instead of concatenating class + metric into one axis. These four
 #' metrics are not numerically interchangeable, but they share the same
@@ -1576,16 +1636,13 @@ plot_probit_posterior_predictive_checks <- function(
   p <- .ppc_plot_marginal(st, title_base)
   if (!is.null(p)) .try_plot(p, "marginal resistance")
 
-  # 2. Number resistant per event (summary stats: mean/median/p90/max/
-  # variance) -- NOT yet redesigned (Phase B: these mix a dispersion
-  # statistic with count statistics on one axis; deferred).
-  rc <- st[grepl("^resistant_count_", st$statistic_name) & st$stratum == "all_events", , drop = FALSE]
-  if (nrow(rc) > 0L) {
-    rc$stratum <- rc$statistic_name
-    p <- .ppc_dotplot_page(rc, paste(title_base, "-- Resistant Classes per Event"),
-                            "Summary statistics of resistant-class count per event (among tested classes)",
-                            "Value")
-    if (!is.null(p)) .try_plot(p, "resistant count summary")
+  # 2. Number resistant per event (summary stats) -- Phase B redesign:
+  # split into location/tail summaries (mean/median/p90/max, a count) and
+  # dispersion (variance, not a count) -- previously mixed on one "Value"
+  # axis.
+  rc_plots <- .ppc_plot_resistant_count_summary(st, title_base)
+  if (!is.null(rc_plots)) {
+    for (nm in names(rc_plots)) .try_plot(rc_plots[[nm]], sprintf("resistant count summary (%s)", nm))
   }
   # 3. Resistant-count distribution (complete panels) -- faceted by hospital
   # (Phase A redesign), panel size shown in the facet label so different
