@@ -2,15 +2,20 @@
 # Generates a multi-page diagnostic PDF for one pathogen fit from
 # fit_bayesian_multivariate_probit().
 #
-# Pages produced (each skipped gracefully if data unavailable):
-#   1. Sampling trace plots      -- selected monitored parameters
-#   2. Warmup + sampling traces  -- requires CmdStanMCMC CSV files still on disk
-#   3. Rank plots                -- chain mixing diagnostic
-#   4. Beta posterior densities  -- 89% / 95% credible intervals
-#   5. NUTS energy (E-BFMI)      -- geometry health check
-#   6. NUTS step size & acceptance rate
-#   7. Rhat histogram            -- convergence across retained structural parameters
-#   8. ESS histogram             -- sampling efficiency across retained structural parameters
+# Pages are grouped in CONCEPTUAL order, not merely appended as each
+# diagnostic family was implemented, so a reviewer can read the PDF top to
+# bottom and end up understanding why the fit passes or fails, with related
+# estimate/convergence pages kept adjacent (e.g. an Omega correlation
+# estimate is never separated from its own Rhat by unrelated pages):
+#   1. Overall sampler status       -- PASS/WARNING/FAIL verdict
+#   2. Rhat / ESS diagnosis         -- pooled distribution across structural parameters
+#   3. Which substantive terms fail -- human-readable worst-parameter list
+#   4. Trace/rank for those terms   -- chain behaviour of exactly the worst offenders
+#   5. Energy/divergence/treedepth  -- sampler geometry diagnostics
+#   6. Omega estimate + convergence -- correlated fits only, kept adjacent to each other
+#   7. Fixed-effect family diagnosis -- coefficient forest plots + family Rhat/ESS breakdown
+#   8. Supplementary                -- full (uncurated) trace/rank/density views, appendix-only
+#   9. Interpretation summary       -- final page, synthesises 1-7
 #
 # NOTE: `fit_obj$draws` (and therefore every page in this PDF) deliberately
 # excludes the N_events x D `z_free` latent probit-utility matrix -- see
@@ -123,10 +128,7 @@ plot_probit_diagnostics <- function(
   n_chains <- dim(draws)[2]
   n_sampling <- dim(draws)[1]
 
-  # -- 0. Fit-health section: sampler status, Omega diagnostics (correlated
-  # fits only), fixed-effect coefficients -- placed before the trace/rank/
-  # density pages so a reader sees whether the fit is even trustworthy
-  # before looking at anything downstream of it.
+  # -- 1. Overall sampler status -------------------------------------------------
   .fmt_or_na <- function(x, fmt) if (is.null(x) || length(x) == 0L || is.na(x[[1L]])) "NA" else sprintf(fmt, x[[1L]])
   status_str <- .fmt_or_na(diag$diagnostic_status, "%s")
   verdict <- if (grepl("^fail", status_str)) {
@@ -166,36 +168,89 @@ plot_probit_diagnostics <- function(
     "sampler health"
   )
 
-  corr_summary <- if (identical(fit_obj$residual_structure, "correlated")) {
-    tryCatch(summarize_fit_correlation_matrix(fit_obj, "Omega", fit_obj$class_cols), error = function(e) NULL)
-  } else NULL
-  if (!is.null(corr_summary)) {
-    .try_plot(plot_omega_correlation_heatmap(corr_summary, fit_obj$class_cols, title_base), "Omega correlation heatmap")
-    .try_plot(plot_omega_convergence_heatmap(corr_summary, fit_obj$class_cols, title_base), "Omega convergence heatmap")
-    .try_plot(plot_omega_summary_table(corr_summary, fit_obj$class_cols, title_base), "Omega summary table")
+  # -- 2. Rhat / ESS diagnosis (pooled across structural parameters) -----------
+  rhat_df <- tryCatch(
+    {
+      s <- posterior::summarise_draws(draws, "rhat")
+      s[!is.na(s$rhat), , drop = FALSE]
+    },
+    error = function(e) NULL
+  )
+  if (!is.null(rhat_df) && nrow(rhat_df) > 0L) {
+    max_rhat <- round(max(rhat_df$rhat, na.rm = TRUE), 3)
     .try_plot(
-      tryCatch(plot_omega_degeneracy_diagnostic(fit_obj, fit_obj$class_cols, title_base), error = function(e) NULL),
-      "Omega degeneracy diagnostic"
+      ggplot2::ggplot(rhat_df, ggplot2::aes(x = rhat)) +
+        ggplot2::geom_histogram(bins = 40, fill = "#4292C6", colour = "white") +
+        ggplot2::geom_vline(
+          xintercept = 1.01, colour = "red",
+          linetype = "dashed", linewidth = 0.8
+        ) +
+        ggplot2::annotate("text",
+          x = 1.01, y = Inf,
+          label = " Rhat = 1.01", hjust = 0, vjust = 1.5,
+          colour = "red", size = 3.5
+        ) +
+        ggplot2::labs(
+          title = paste(title_base, "-- Rhat Distribution (structural parameters)"),
+          subtitle = sprintf(
+            "max Rhat = %.3f | %d structural parameters | red line at 1.01 | excludes z_free latent utilities",
+            max_rhat, nrow(rhat_df)
+          ),
+          x = "Rhat", y = "Count"
+        ) +
+        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme(plot.title = ggplot2::element_text(size = 10)),
+      "Rhat histogram"
     )
   }
 
-  fe_plots <- tryCatch(plot_probit_fixed_effect_diagnostics(fit_obj, title_base), error = function(e) NULL)
-  if (!is.null(fe_plots)) {
-    if (!is.null(fe_plots$other)) .try_plot(fe_plots$other, "fixed-effect coefficients (non-hospital)")
-    if (!is.null(fe_plots$hospital)) .try_plot(fe_plots$hospital, "fixed-effect coefficients (hospital)")
+  ess_df <- tryCatch(
+    {
+      s <- posterior::summarise_draws(draws, "ess_bulk", "ess_tail")
+      s[(!is.na(s$ess_bulk)) | (!is.na(s$ess_tail)), , drop = FALSE]
+    },
+    error = function(e) NULL
+  )
+  if (!is.null(ess_df) && nrow(ess_df) > 0L) {
+    bulk_rows <- data.frame(ess = ess_df$ess_bulk, metric = "ESS bulk", stringsAsFactors = FALSE)
+    tail_rows <- data.frame(ess = ess_df$ess_tail, metric = "ESS tail", stringsAsFactors = FALSE)
+    ess_long <- rbind(bulk_rows[!is.na(bulk_rows$ess), ], tail_rows[!is.na(tail_rows$ess), ])
+    min_bulk <- round(min(ess_df$ess_bulk, na.rm = TRUE))
+    min_tail <- round(min(ess_df$ess_tail, na.rm = TRUE))
+    .try_plot(
+      ggplot2::ggplot(ess_long, ggplot2::aes(x = ess, fill = metric)) +
+        ggplot2::geom_histogram(bins = 40, alpha = 0.75, position = "identity") +
+        ggplot2::geom_vline(
+          xintercept = 100, colour = "red",
+          linetype = "dashed", linewidth = 0.8
+        ) +
+        ggplot2::scale_fill_manual(
+          values = c("ESS bulk" = "#2166AC", "ESS tail" = "#74ADD1")
+        ) +
+        ggplot2::labs(
+          title = paste(title_base, "-- ESS Distribution (structural parameters)"),
+          subtitle = sprintf(
+            "min ESS bulk = %d | min ESS tail = %d | red line at 100 | excludes z_free latent utilities",
+            min_bulk, min_tail
+          ),
+          x = "Effective Sample Size", y = "Count", fill = NULL
+        ) +
+        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(size = 10),
+          legend.position = "top"
+        ),
+      "ESS histogram"
+    )
   }
 
-  beta_family_plots <- tryCatch(plot_probit_beta_family_diagnostics(fit_obj, title_base), error = function(e) NULL)
-  if (!is.null(beta_family_plots)) {
-    if (!is.null(beta_family_plots$table)) .try_plot(beta_family_plots$table, "fixed-effect family convergence table")
-    if (!is.null(beta_family_plots$bar)) .try_plot(beta_family_plots$bar, "fixed-effect family convergence bar chart")
-  }
-
+  # -- 3. Which substantive terms are failing (human-readable, mixed families) -
   .try_plot(
     tryCatch(plot_probit_worst_parameters(fit_obj, title_base), error = function(e) NULL),
     "worst structural parameters"
   )
 
+  # -- 4. Trace/rank diagnostics for exactly those worst-converging terms ------
   worst_offender_plots <- tryCatch(
     plot_probit_worst_offender_diagnostics(fit_obj, draws, title_base),
     error = function(e) NULL
@@ -205,81 +260,7 @@ plot_probit_diagnostics <- function(
     if (!is.null(worst_offender_plots$rank)) .try_plot(worst_offender_plots$rank, "worst-offender rank plot")
   }
 
-  # -- 1. Sampling trace plots --------------------------------------------------
-  .try_plot(
-    bayesplot::mcmc_trace(draws, pars = priority) +
-      ggplot2::labs(
-        title = paste(title_base, "-- Sampling Traces"),
-        subtitle = sprintf(
-          "%d chains x %d sampling iterations",
-          n_chains, n_sampling
-        )
-      ) +
-      ggplot2::theme(plot.title = ggplot2::element_text(size = 10)),
-    "sampling trace"
-  )
-
-  # -- 2. Warmup + sampling traces (needs CSV files still on disk) -------------
-  base_vars <- unique(sub("\\[.*", "", priority))
-  warmup_draws <- tryCatch(
-    stan_fit$draws(inc_warmup = TRUE, variables = base_vars, format = "draws_array"),
-    error = function(e) {
-      message(sprintf(
-        "  [INFO] Warmup draws unavailable (CSV files may be cleaned up): %s",
-        conditionMessage(e)
-      ))
-      NULL
-    }
-  )
-  if (!is.null(warmup_draws)) {
-    wvars <- intersect(priority, dimnames(warmup_draws)[[3]])
-    if (length(wvars) > 0L) {
-      .try_plot(
-        bayesplot::mcmc_trace(warmup_draws,
-          pars = wvars,
-          n_warmup = iter_warmup
-        ) +
-          ggplot2::labs(
-            title = paste(title_base, "-- Warmup + Sampling Traces"),
-            subtitle = sprintf(
-              "Vertical line at warmup/sampling boundary (iter = %d)", iter_warmup
-            )
-          ) +
-          ggplot2::theme(plot.title = ggplot2::element_text(size = 10)),
-        "warmup trace"
-      )
-    }
-  }
-
-  # -- 3. Rank plots ------------------------------------------------------------
-  .try_plot(
-    bayesplot::mcmc_rank_overlay(draws, pars = priority) +
-      ggplot2::labs(
-        title    = paste(title_base, "-- Rank Plots"),
-        subtitle = "Uniform distribution across ranks indicates good chain mixing"
-      ) +
-      ggplot2::theme(plot.title = ggplot2::element_text(size = 10)),
-    "rank plot"
-  )
-
-  # -- 4. Beta posterior densities ----------------------------------------------
-  beta_vars <- grep("^beta\\[", priority, value = TRUE)
-  if (length(beta_vars) > 0L) {
-    .try_plot(
-      bayesplot::mcmc_areas(draws,
-        pars = beta_vars,
-        prob = 0.89, prob_outer = 0.95
-      ) +
-        ggplot2::labs(
-          title    = paste(title_base, "-- Beta Coefficients"),
-          subtitle = "Shaded: 89% CI | outer line: 95% CI"
-        ) +
-        ggplot2::theme(plot.title = ggplot2::element_text(size = 10)),
-      "beta area plot"
-    )
-  }
-
-  # -- 5 & 6. NUTS diagnostics (energy + acceptance) ---------------------------
+  # -- 5. Energy / divergence / treedepth (sampler geometry) -------------------
   # mcmc_nuts_energy() plots the marginal energy distribution (pi_E) against
   # the distribution of between-iteration energy transitions (pi_delta_E) --
   # it is a SHAPE/OVERLAP diagnostic, not a bar chart of the E-BFMI number
@@ -320,91 +301,104 @@ plot_probit_diagnostics <- function(
     )
   }
 
-  # -- 7. Rhat histogram --------------------------------------------------------
-  rhat_df <- tryCatch(
-    {
-      s <- posterior::summarise_draws(draws, "rhat")
-      s[!is.na(s$rhat), , drop = FALSE]
-    },
-    error = function(e) NULL
-  )
-
-  if (!is.null(rhat_df) && nrow(rhat_df) > 0L) {
-    max_rhat <- round(max(rhat_df$rhat, na.rm = TRUE), 3)
+  # -- 6. Omega estimate + convergence (correlated fits only, kept adjacent) --
+  corr_summary <- if (identical(fit_obj$residual_structure, "correlated")) {
+    tryCatch(summarize_fit_correlation_matrix(fit_obj, "Omega", fit_obj$class_cols), error = function(e) NULL)
+  } else NULL
+  if (!is.null(corr_summary)) {
+    .try_plot(plot_omega_correlation_heatmap(corr_summary, fit_obj$class_cols, title_base), "Omega correlation heatmap")
+    .try_plot(plot_omega_convergence_heatmap(corr_summary, fit_obj$class_cols, title_base), "Omega convergence heatmap")
+    .try_plot(plot_omega_summary_table(corr_summary, fit_obj$class_cols, title_base), "Omega summary table")
     .try_plot(
-      ggplot2::ggplot(rhat_df, ggplot2::aes(x = rhat)) +
-        ggplot2::geom_histogram(bins = 40, fill = "#4292C6", colour = "white") +
-        ggplot2::geom_vline(
-          xintercept = 1.01, colour = "red",
-          linetype = "dashed", linewidth = 0.8
-        ) +
-        ggplot2::annotate("text",
-          x = 1.01, y = Inf,
-          label = " Rhat = 1.01", hjust = 0, vjust = 1.5,
-          colour = "red", size = 3.5
-        ) +
-        ggplot2::labs(
-          title = paste(title_base, "-- Rhat Distribution (structural parameters)"),
-          subtitle = sprintf(
-            "max Rhat = %.3f | %d structural parameters | red line at 1.01 | excludes z_free latent utilities",
-            max_rhat, nrow(rhat_df)
-          ),
-          x = "Rhat", y = "Count"
-        ) +
-        ggplot2::theme_minimal(base_size = 12) +
-        ggplot2::theme(plot.title = ggplot2::element_text(size = 10)),
-      "Rhat histogram"
+      tryCatch(plot_omega_degeneracy_diagnostic(fit_obj, fit_obj$class_cols, title_base), error = function(e) NULL),
+      "Omega degeneracy diagnostic"
     )
   }
 
-  # -- 8. ESS histogram ---------------------------------------------------------
-  ess_df <- tryCatch(
-    {
-      s <- posterior::summarise_draws(draws, "ess_bulk", "ess_tail")
-      s[(!is.na(s$ess_bulk)) | (!is.na(s$ess_tail)), , drop = FALSE]
-    },
-    error = function(e) NULL
+  # -- 7. Fixed-effect family diagnosis -----------------------------------------
+  fe_plots <- tryCatch(plot_probit_fixed_effect_diagnostics(fit_obj, title_base), error = function(e) NULL)
+  if (!is.null(fe_plots)) {
+    if (!is.null(fe_plots$other)) .try_plot(fe_plots$other, "fixed-effect coefficients (non-hospital)")
+    if (!is.null(fe_plots$hospital)) .try_plot(fe_plots$hospital, "fixed-effect coefficients (hospital)")
+  }
+
+  beta_family_plots <- tryCatch(plot_probit_beta_family_diagnostics(fit_obj, title_base), error = function(e) NULL)
+  if (!is.null(beta_family_plots)) {
+    if (!is.null(beta_family_plots$table)) .try_plot(beta_family_plots$table, "fixed-effect family convergence table")
+    if (!is.null(beta_family_plots$bar)) .try_plot(beta_family_plots$bar, "fixed-effect family convergence bar chart")
+  }
+
+  # -- 8. Supplementary: full (uncurated) trace/rank/density views -------------
+  # Appendix-only -- pages 3-4 above already show the curated worst-offender
+  # view; these cover a broader (but still capped at max_params) parameter
+  # set for a reader who wants the fuller picture after reading 1-7.
+  .try_plot(
+    bayesplot::mcmc_trace(draws, pars = priority) +
+      ggplot2::labs(
+        title = paste(title_base, "-- Supplementary: Sampling Traces (broader parameter set)"),
+        subtitle = sprintf(
+          "%d chains x %d sampling iterations",
+          n_chains, n_sampling
+        )
+      ) +
+      ggplot2::theme(plot.title = ggplot2::element_text(size = 10)),
+    "sampling trace"
   )
 
-  if (!is.null(ess_df) && nrow(ess_df) > 0L) {
-    bulk_rows <- data.frame(
-      ess = ess_df$ess_bulk, metric = "ESS bulk",
-      stringsAsFactors = FALSE
-    )
-    tail_rows <- data.frame(
-      ess = ess_df$ess_tail, metric = "ESS tail",
-      stringsAsFactors = FALSE
-    )
-    ess_long <- rbind(
-      bulk_rows[!is.na(bulk_rows$ess), ],
-      tail_rows[!is.na(tail_rows$ess), ]
-    )
-    min_bulk <- round(min(ess_df$ess_bulk, na.rm = TRUE))
-    min_tail <- round(min(ess_df$ess_tail, na.rm = TRUE))
+  base_vars <- unique(sub("\\[.*", "", priority))
+  warmup_draws <- tryCatch(
+    stan_fit$draws(inc_warmup = TRUE, variables = base_vars, format = "draws_array"),
+    error = function(e) {
+      message(sprintf(
+        "  [INFO] Warmup draws unavailable (CSV files may be cleaned up): %s",
+        conditionMessage(e)
+      ))
+      NULL
+    }
+  )
+  if (!is.null(warmup_draws)) {
+    wvars <- intersect(priority, dimnames(warmup_draws)[[3]])
+    if (length(wvars) > 0L) {
+      .try_plot(
+        bayesplot::mcmc_trace(warmup_draws,
+          pars = wvars,
+          n_warmup = iter_warmup
+        ) +
+          ggplot2::labs(
+            title = paste(title_base, "-- Supplementary: Warmup + Sampling Traces"),
+            subtitle = sprintf(
+              "Vertical line at warmup/sampling boundary (iter = %d)", iter_warmup
+            )
+          ) +
+          ggplot2::theme(plot.title = ggplot2::element_text(size = 10)),
+        "warmup trace"
+      )
+    }
+  }
+
+  .try_plot(
+    bayesplot::mcmc_rank_overlay(draws, pars = priority) +
+      ggplot2::labs(
+        title    = paste(title_base, "-- Supplementary: Rank Plots (broader parameter set)"),
+        subtitle = "Uniform distribution across ranks indicates good chain mixing"
+      ) +
+      ggplot2::theme(plot.title = ggplot2::element_text(size = 10)),
+    "rank plot"
+  )
+
+  beta_vars <- grep("^beta\\[", priority, value = TRUE)
+  if (length(beta_vars) > 0L) {
     .try_plot(
-      ggplot2::ggplot(ess_long, ggplot2::aes(x = ess, fill = metric)) +
-        ggplot2::geom_histogram(bins = 40, alpha = 0.75, position = "identity") +
-        ggplot2::geom_vline(
-          xintercept = 100, colour = "red",
-          linetype = "dashed", linewidth = 0.8
-        ) +
-        ggplot2::scale_fill_manual(
-          values = c("ESS bulk" = "#2166AC", "ESS tail" = "#74ADD1")
-        ) +
+      bayesplot::mcmc_areas(draws,
+        pars = beta_vars,
+        prob = 0.89, prob_outer = 0.95
+      ) +
         ggplot2::labs(
-          title = paste(title_base, "-- ESS Distribution (structural parameters)"),
-          subtitle = sprintf(
-            "min ESS bulk = %d | min ESS tail = %d | red line at 100 | excludes z_free latent utilities",
-            min_bulk, min_tail
-          ),
-          x = "Effective Sample Size", y = "Count", fill = NULL
+          title    = paste(title_base, "-- Supplementary: Beta Coefficients"),
+          subtitle = "Shaded: 89% CI | outer line: 95% CI"
         ) +
-        ggplot2::theme_minimal(base_size = 12) +
-        ggplot2::theme(
-          plot.title = ggplot2::element_text(size = 10),
-          legend.position = "top"
-        ),
-      "ESS histogram"
+        ggplot2::theme(plot.title = ggplot2::element_text(size = 10)),
+      "beta area plot"
     )
   }
 
@@ -421,7 +415,8 @@ plot_probit_diagnostics <- function(
     diag, status_str, verdict,
     beta_summary = beta_family_plots$summary,
     degeneracy_stats = degeneracy_stats,
-    residual_structure = fit_obj$residual_structure
+    residual_structure = fit_obj$residual_structure,
+    corr_summary = corr_summary
   )
   wrapped <- unlist(lapply(interp_lines, function(l) c(strwrap(l, width = 95), "")))
   wrapped <- utils::head(wrapped, -1L)
@@ -444,7 +439,8 @@ plot_probit_diagnostics <- function(
 }
 
 .probit_interpretation_text <- function(diag, status_str, verdict, beta_summary,
-                                        degeneracy_stats, residual_structure) {
+                                        degeneracy_stats, residual_structure,
+                                        corr_summary = NULL) {
   lines <- character(0)
 
   if (!is.null(beta_summary) && nrow(beta_summary) > 0L) {
@@ -476,7 +472,7 @@ plot_probit_diagnostics <- function(
   lines <- c(lines, paste(ebfmi_txt, div_txt))
 
   if (identical(residual_structure, "correlated")) {
-    lines <- c(lines, if (!is.null(degeneracy_stats)) {
+    omega_line <- if (!is.null(degeneracy_stats)) {
       sprintf(
         "Omega (latent cross-class correlation): %.1f%% of posterior draws have a smallest eigenvalue below %.2f (median condition number = %.1f) -- %s.",
         degeneracy_stats$pct_near_degenerate, degeneracy_stats$degenerate_threshold, degeneracy_stats$med_condition_number,
@@ -488,7 +484,21 @@ plot_probit_diagnostics <- function(
       )
     } else {
       "Omega degeneracy diagnostics were unavailable for this fit."
-    })
+    }
+    # Name the SPECIFIC class-pair driving Omega non-convergence, not just an
+    # aggregate degeneracy percentage -- a reviewer deciding whether to
+    # simplify the drug panel (e.g. drop a class) needs to know which pair,
+    # not just that "Omega has convergence problems" in general.
+    if (!is.null(corr_summary) && nrow(corr_summary) > 0L && "rhat" %in% names(corr_summary)) {
+      worst_pair <- corr_summary[which.max(corr_summary$rhat), ]
+      if (!is.na(worst_pair$rhat[[1L]]) && worst_pair$rhat[[1L]] > 1.01) {
+        omega_line <- paste(omega_line, sprintf(
+          "The least-converged Omega element is %s x %s (Rhat = %.4f) -- treat that specific correlation as unsettled.",
+          class_short_label(worst_pair$class_1[[1L]]), class_short_label(worst_pair$class_2[[1L]]), worst_pair$rhat[[1L]]
+        ))
+      }
+    }
+    lines <- c(lines, omega_line)
   }
 
   pattern_txt <- if (grepl("^fail_divergent|^fail_energy", status_str)) {

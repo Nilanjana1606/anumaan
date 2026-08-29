@@ -108,6 +108,27 @@ test_that(".probit_interpretation_text() picks the rhat-mixing branch and mentio
   expect_false(any(grepl("^Omega", txt_identity)))
 })
 
+test_that(".probit_interpretation_text() names the specific worst-converging Omega pair when one exceeds the Rhat threshold", {
+  diag <- list(ebfmi_min = 0.8, n_divergent = 0)
+  beta_summary <- data.frame(family = "Hospital", pct_rhat_gt_1_01 = 5, worst_rhat = 1.005, min_ess_bulk = 500)
+  degeneracy_stats <- list(pct_near_degenerate = 2, med_condition_number = 8, degenerate_threshold = 0.05)
+  corr_summary_bad <- data.frame(
+    class_1 = c("Aminoglycosides", "Penicillins"), class_2 = c("Fluoroquinolones", "Carbapenems"),
+    rhat = c(1.05, 1.001), stringsAsFactors = FALSE
+  )
+  txt <- .probit_interpretation_text(diag, "pass", "PASS", beta_summary, degeneracy_stats, "correlated",
+                                     corr_summary = corr_summary_bad)
+  omega_line <- txt[grepl("^Omega", txt)]
+  expect_true(grepl("least-converged Omega element is AMG x FQ", omega_line))
+
+  corr_summary_ok <- corr_summary_bad
+  corr_summary_ok$rhat <- c(1.005, 1.001)
+  txt_ok <- .probit_interpretation_text(diag, "pass", "PASS", beta_summary, degeneracy_stats, "correlated",
+                                        corr_summary = corr_summary_ok)
+  omega_line_ok <- txt_ok[grepl("^Omega", txt_ok)]
+  expect_false(grepl("least-converged Omega element", omega_line_ok))
+})
+
 test_that(".probit_interpretation_text() reports a clean pass with no concerns", {
   diag <- list(ebfmi_min = 0.8, n_divergent = 0)
   beta_summary <- data.frame(family = c("Hospital", "Age"), pct_rhat_gt_1_01 = c(0, 0),
