@@ -1205,6 +1205,249 @@ compute_probit_ppc_statistics <- function(
 }
 
 # ---------------------------------------------------------------------------
+# Faceted PPC plots (Phase A redesign): replace the single generic
+# .ppc_dotplot_page() -- which put every hospital x class x pair x profile
+# combination on one un-faceted, unparsed `stratum` string axis -- with
+# purpose-built plots per statistic family, each parsing `stratum` back into
+# real columns (hospital, class, class pair, C, panel_size) and faceting on
+# the dimension that has too many levels for one axis. .ppc_dotplot_page()
+# itself is UNCHANGED and still used by families not yet redesigned
+# (resistant_count_* summary stats, complete-profile statistics, cluster
+# statistics) -- see the phased plan this was built under.
+# ---------------------------------------------------------------------------
+
+#' @keywords internal
+.ppc_common_theme <- function() {
+  ggplot2::theme_minimal(base_size = 10) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 11),
+      strip.text = ggplot2::element_text(size = 8),
+      axis.text.y = ggplot2::element_text(size = 7)
+    )
+}
+
+#' @keywords internal
+.ppc_forest_by_hospital <- function(df, facet_var, title, subtitle, x_label,
+                                    facet_ncol = NULL, caption = NULL) {
+  if (is.null(df) || nrow(df) == 0L) return(NULL)
+  df$hospital_display <- factor(hospital_display_label(df$hospital),
+                                levels = sort(unique(hospital_display_label(df$hospital)), decreasing = TRUE))
+  ggplot2::ggplot(df, ggplot2::aes(y = .data$hospital_display)) +
+    ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
+                           height = 0, colour = "#4292C6", alpha = 0.6) +
+    ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 1.6) +
+    ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
+                        size = 2, stroke = 1) +
+    ggplot2::facet_wrap(stats::as.formula(paste0("~", facet_var)), ncol = facet_ncol) +
+    ggplot2::coord_cartesian(xlim = c(0, 1)) +
+    ggplot2::labs(title = title, subtitle = subtitle, x = x_label, y = "Hospital", caption = caption) +
+    .ppc_common_theme() +
+    ggplot2::theme(plot.caption = ggplot2::element_text(hjust = 0, size = 8, face = "italic"))
+}
+
+#' Marginal resistance PPC, faceted by class instead of one hospital x class
+#' forest plot -- keeps the same statistic (marginal_resistance,
+#' hospital-level rows only; the pooled class-level rows are a separate,
+#' coarser stratum not shown here) and observed/replicated convention (red
+#' cross = observed, blue point + 95\% interval = replicated).
+#' @keywords internal
+.ppc_plot_marginal <- function(st, title_base) {
+  df <- st[st$statistic_name == "marginal_resistance" &
+             grepl("^hospital:", st$stratum) &
+             st$support_status == "supported", , drop = FALSE]
+  if (nrow(df) == 0L) return(NULL)
+  m <- regmatches(df$stratum, regexec("^hospital:(.+)\\|class:(.+)$", df$stratum))
+  df$hospital <- vapply(m, `[`, character(1L), 2L)
+  df$class <- vapply(m, `[`, character(1L), 3L)
+  df$class_display <- class_display_label(df$class)
+  .ppc_forest_by_hospital(
+    df, "class_display",
+    paste(title_base, "-- Posterior Predictive Check: Marginal Resistance by Hospital"),
+    "Red cross = observed resistance proportion | blue point + bar = posterior-predictive mean and 95% interval",
+    "Resistance proportion"
+  )
+}
+
+#' Resistant-class-count distribution (P(C=c)) for fully-observed panels,
+#' faceted by hospital (panel size shown in the facet label) so C=4 for a
+#' 4-class panel is never plotted alongside C=5 for a 5-class panel as if
+#' they were the same quantity.
+#' @keywords internal
+.ppc_plot_resistant_count_distribution <- function(st, title_base) {
+  df <- st[st$statistic_name == "resistant_count_proportion" &
+             st$support_status == "supported", , drop = FALSE]
+  if (nrow(df) == 0L) return(NULL)
+  m <- regmatches(df$stratum, regexec("^hospital:(.+)\\|pathogen:(.+)\\|panel_size:(\\d+)\\|C=(\\d+)$", df$stratum))
+  df$hospital <- vapply(m, `[`, character(1L), 2L)
+  df$panel_size <- as.integer(vapply(m, `[`, character(1L), 4L))
+  df$C <- as.integer(vapply(m, `[`, character(1L), 5L))
+  df$facet_label <- sprintf("%s (panel size = %d)", hospital_display_label(df$hospital), df$panel_size)
+  ggplot2::ggplot(df, ggplot2::aes(x = .data$C)) +
+    ggplot2::geom_errorbar(ggplot2::aes(ymin = .data$replicated_q025, ymax = .data$replicated_q975),
+                           width = 0.15, colour = "#4292C6", alpha = 0.6) +
+    ggplot2::geom_point(ggplot2::aes(y = .data$replicated_mean), colour = "#4292C6", size = 1.8) +
+    ggplot2::geom_point(ggplot2::aes(y = .data$observed_value), colour = "red", shape = 4,
+                        size = 2.2, stroke = 1.1) +
+    ggplot2::facet_wrap(~facet_label) +
+    ggplot2::scale_x_continuous(breaks = scales_int_breaks) +
+    ggplot2::labs(
+      title = paste(title_base, "-- Posterior Predictive Check: Resistant-Class Count Distribution"),
+      subtitle = paste("P(C = c) among fully-observed-panel events, per hospital.",
+                       "Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval."),
+      x = "Number of resistant classes (C)", y = "Proportion of fully-observed events"
+    ) +
+    .ppc_common_theme()
+}
+#' @keywords internal
+scales_int_breaks <- function(x) unique(round(pretty(x)))
+
+#' Pairwise co-resistance PPC. Returns a NAMED LIST of four plots (RR, RS,
+#' SR, SS) instead of one page -- the previous single forest plot mixed all
+#' four cell types with hospital x class-pair labels on one axis, which was
+#' the single worst page in the report. Each returned plot facets by class
+#' pair (short labels) with hospital on the y-axis.
+#' @keywords internal
+.ppc_plot_pairwise <- function(st, title_base) {
+  df <- st[grepl("^pairwise_", st$statistic_name) & st$support_status == "supported", , drop = FALSE]
+  if (nrow(df) == 0L) return(NULL)
+  m <- regmatches(df$stratum, regexec("^hospital:(.+)\\|(.+)_x_(.+)$", df$stratum))
+  df$hospital <- vapply(m, `[`, character(1L), 2L)
+  df$class_1 <- vapply(m, `[`, character(1L), 3L)
+  df$class_2 <- vapply(m, `[`, character(1L), 4L)
+  df$class_pair <- class_pair_label(df$class_1, df$class_2)
+  df$cell <- sub("^pairwise_", "", df$statistic_name)
+
+  cell_labels <- c(RR = "Both resistant (R,R)", RS = "First resistant, second susceptible (R,S)",
+                   SR = "First susceptible, second resistant (S,R)", SS = "Both susceptible (S,S)")
+  plots <- list()
+  for (cell in c("RR", "RS", "SR", "SS")) {
+    sub_df <- df[df$cell == cell, , drop = FALSE]
+    if (nrow(sub_df) == 0L) next
+    plots[[cell]] <- .ppc_forest_by_hospital(
+      sub_df, "class_pair",
+      paste(title_base, sprintf("-- Posterior Predictive Check: Pairwise Co-resistance (%s)", cell)),
+      sprintf("%s | Red cross = observed proportion among co-tested events | blue point + bar = posterior-predictive mean and 95%% interval",
+              cell_labels[[cell]]),
+      sprintf("Observed/replicated %s proportion", cell)
+    )
+  }
+  plots
+}
+
+#' Between-hospital heterogeneity, faceted by spread metric (SD/IQR/MAD/
+#' range) instead of concatenating class + metric into one axis. These four
+#' metrics are not numerically interchangeable, but they share the same
+#' underlying units (spread of a resistance PROPORTION), so faceting them
+#' side by side (rather than requiring four separate pages) is appropriate
+#' here -- unlike the complete-profile page, where probability, count, and
+#' entropy are genuinely different units.
+#' @keywords internal
+.ppc_plot_hospital_heterogeneity <- function(st, title_base) {
+  df <- st[grepl("^hospital_heterogeneity_", st$statistic_name) &
+             st$support_status == "supported", , drop = FALSE]
+  if (nrow(df) == 0L) return(NULL)
+  m <- regmatches(df$stratum, regexec("^class:(.+)$", df$stratum))
+  df$class <- vapply(m, `[`, character(1L), 2L)
+  df$class_display <- class_display_label(df$class)
+  metric_labels <- c(sd = "Standard deviation", iqr = "Interquartile range",
+                     mad = "Median absolute deviation", range = "Range")
+  df$metric <- sub("^hospital_heterogeneity_", "", df$statistic_name)
+  df$metric_display <- factor(metric_labels[df$metric], levels = unname(metric_labels))
+  df$class_display <- factor(df$class_display, levels = sort(unique(df$class_display), decreasing = TRUE))
+
+  ggplot2::ggplot(df, ggplot2::aes(y = .data$class_display)) +
+    ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
+                           height = 0, colour = "#4292C6", alpha = 0.6) +
+    ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 1.8) +
+    ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
+                        size = 2.2, stroke = 1.1) +
+    ggplot2::facet_wrap(~metric_display, scales = "free_x") +
+    ggplot2::labs(
+      title = paste(title_base, "-- Posterior Predictive Check: Between-Hospital Heterogeneity"),
+      subtitle = paste("Observed vs. replicated spread of hospital-specific resistance proportions, by class.",
+                       "Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval."),
+      x = "Spread of hospital-specific resistance proportion", y = "Antimicrobial class"
+    ) +
+    .ppc_common_theme()
+}
+
+#' Complete-profile statistics, split by measurement unit (Phase A does the
+#' minimum split needed so the axis is never labelled "Value" across
+#' incompatible units; a fuller redesign -- worst-deviation labelling,
+#' rare-vs-common profile zoom -- is a later phase). Group A (0-1 scale:
+#' frequencies + Simpson concentration) is faceted by hospital; group B
+#' (profile count) and group C (entropy) are compact dotplots, since there
+#' is only one statistic each per hospital, not a hospital x metric grid.
+#' @keywords internal
+.ppc_plot_complete_profile_statistics <- function(st, title_base) {
+  df <- st[grepl("^profile_", st$statistic_name) &
+             st$support_status == "supported" &
+             st$statistic_name != "profile_top_observed_frequency", , drop = FALSE]
+  if (nrow(df) == 0L) return(NULL)
+  m <- regmatches(df$stratum, regexec("^hospital:(.+)\\|pathogen:(.+)$", df$stratum))
+  df$hospital <- vapply(m, `[`, character(1L), 2L)
+
+  prob_names <- c("profile_all_susceptible_frequency", "profile_all_resistant_frequency",
+                  "profile_most_common_frequency", "profile_simpson_concentration")
+  prob_labels <- c(profile_all_susceptible_frequency = "All modelled classes susceptible",
+                   profile_all_resistant_frequency = "All modelled classes resistant",
+                   profile_most_common_frequency = "Most-common observed profile",
+                   profile_simpson_concentration = "Simpson concentration")
+
+  plots <- list()
+
+  df_a <- df[df$statistic_name %in% prob_names, , drop = FALSE]
+  if (nrow(df_a) > 0L) {
+    df_a$metric_display <- factor(prob_labels[df_a$statistic_name], levels = unname(prob_labels))
+    plots$probability <- .ppc_forest_by_hospital(
+      df_a, "metric_display",
+      paste(title_base, "-- Posterior Predictive Check: Complete-Profile Frequencies"),
+      "Fully-observed-panel events only. Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval.",
+      "Proportion / concentration",
+      caption = paste("\"All modelled classes resistant\" is resistance to only the classes in THIS fit's panel,",
+                      "not necessarily every clinically relevant class (e.g. Colistin/Reserve-category agents",
+                      "may be excluded from the modelled panel) -- do not read this as \"pan-resistant\".")
+    )
+  }
+
+  df_b <- df[df$statistic_name == "profile_n_distinct", , drop = FALSE]
+  if (nrow(df_b) > 0L) {
+    df_b$hospital_display <- factor(hospital_display_label(df_b$hospital),
+                                    levels = sort(unique(hospital_display_label(df_b$hospital)), decreasing = TRUE))
+    plots$n_distinct <- ggplot2::ggplot(df_b, ggplot2::aes(y = .data$hospital_display)) +
+      ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
+                             height = 0, colour = "#4292C6", alpha = 0.6) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 1.8) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
+                          size = 2.2, stroke = 1.1) +
+      ggplot2::labs(
+        title = paste(title_base, "-- Posterior Predictive Check: Number of Distinct Resistance Profiles"),
+        subtitle = "Count of distinct complete profiles observed vs. replicated, per hospital -- NOT on the same scale as the frequency/entropy pages.",
+        x = "Number of distinct resistance profiles", y = "Hospital"
+      ) + .ppc_common_theme()
+  }
+
+  df_c <- df[df$statistic_name == "profile_shannon_entropy", , drop = FALSE]
+  if (nrow(df_c) > 0L) {
+    df_c$hospital_display <- factor(hospital_display_label(df_c$hospital),
+                                    levels = sort(unique(hospital_display_label(df_c$hospital)), decreasing = TRUE))
+    plots$entropy <- ggplot2::ggplot(df_c, ggplot2::aes(y = .data$hospital_display)) +
+      ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
+                             height = 0, colour = "#4292C6", alpha = 0.6) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 1.8) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
+                          size = 2.2, stroke = 1.1) +
+      ggplot2::labs(
+        title = paste(title_base, "-- Posterior Predictive Check: Complete-Profile Entropy"),
+        subtitle = "Shannon entropy of the observed complete-profile distribution vs. replicated -- NOT on the same scale as the frequency/count pages.",
+        x = "Profile entropy (nats)", y = "Hospital"
+      ) + .ppc_common_theme()
+  }
+
+  plots
+}
+
+# ---------------------------------------------------------------------------
 # plot_probit_posterior_predictive_checks(): compact multi-page PDF
 # ---------------------------------------------------------------------------
 
@@ -1328,14 +1571,14 @@ plot_probit_posterior_predictive_checks <- function(
 
   st <- ppc_statistics
 
-  # 1. Marginal resistance
-  marg <- st[st$statistic_name == "marginal_resistance", , drop = FALSE]
-  p <- .ppc_dotplot_page(marg, paste(title_base, "-- Marginal Resistance"),
-                          "Red x = observed | blue dot+bar = replicated mean and 95% interval",
-                          "Resistance rate")
+  # 1. Marginal resistance -- faceted by class (Phase A redesign); replaces
+  # the old single forest plot that put ~hospital*class rows on one axis.
+  p <- .ppc_plot_marginal(st, title_base)
   if (!is.null(p)) .try_plot(p, "marginal resistance")
 
-  # 2. Number resistant per event
+  # 2. Number resistant per event (summary stats: mean/median/p90/max/
+  # variance) -- NOT yet redesigned (Phase B: these mix a dispersion
+  # statistic with count statistics on one axis; deferred).
   rc <- st[grepl("^resistant_count_", st$statistic_name) & st$stratum == "all_events", , drop = FALSE]
   if (nrow(rc) > 0L) {
     rc$stratum <- rc$statistic_name
@@ -1344,43 +1587,34 @@ plot_probit_posterior_predictive_checks <- function(
                             "Value")
     if (!is.null(p)) .try_plot(p, "resistant count summary")
   }
-  rc_dist <- st[st$statistic_name == "resistant_count_proportion", , drop = FALSE]
-  if (nrow(rc_dist) > 0L) {
-    p <- .ppc_dotplot_page(rc_dist, paste(title_base, "-- Resistant-Count Distribution (complete panels)"),
-                            "Proportion of fully-observed events with exactly C resistant classes",
-                            "Proportion")
-    if (!is.null(p)) .try_plot(p, "resistant count distribution")
+  # 3. Resistant-count distribution (complete panels) -- faceted by hospital
+  # (Phase A redesign), panel size shown in the facet label so different
+  # panel widths are never plotted as though C meant the same thing.
+  p <- .ppc_plot_resistant_count_distribution(st, title_base)
+  if (!is.null(p)) .try_plot(p, "resistant count distribution")
+
+  # 4. Pairwise co-resistance -- FOUR separate pages (RR/RS/SR/SS), each
+  # faceted by class pair (Phase A redesign); replaces the single worst page
+  # in the old report (hundreds of hospital x pair x cell labels on one axis).
+  pw_plots <- .ppc_plot_pairwise(st, title_base)
+  if (!is.null(pw_plots)) {
+    for (cell in names(pw_plots)) .try_plot(pw_plots[[cell]], sprintf("pairwise co-resistance (%s)", cell))
   }
 
-  # 3. Pairwise co-resistance
-  pw <- st[grepl("^pairwise_", st$statistic_name), , drop = FALSE]
-  if (nrow(pw) > 0L) {
-    pw$stratum <- paste(pw$stratum, pw$statistic_name, sep = "|")
-    p <- .ppc_dotplot_page(pw, paste(title_base, "-- Pairwise Co-resistance (RR/RS/SR/SS)"),
-                            "Red x = observed | blue dot+bar = replicated mean and 95% interval",
-                            "Proportion")
-    if (!is.null(p)) .try_plot(p, "pairwise co-resistance")
+  # 5. Complete-profile statistics -- split by measurement unit (Phase A
+  # minimum split: probability/concentration vs. distinct-profile count vs.
+  # entropy are never on the same axis; full worst-deviation labelling and
+  # rare-profile zoom are a later phase), faceted by hospital within the
+  # probability group.
+  prof_plots <- .ppc_plot_complete_profile_statistics(st, title_base)
+  if (!is.null(prof_plots)) {
+    for (nm in names(prof_plots)) .try_plot(prof_plots[[nm]], sprintf("complete profile statistics (%s)", nm))
   }
 
-  # 4. Complete-profile concentration/entropy
-  prof <- st[grepl("^profile_", st$statistic_name), , drop = FALSE]
-  if (nrow(prof) > 0L) {
-    prof$stratum <- paste(prof$stratum, prof$statistic_name, sep = "|")
-    p <- .ppc_dotplot_page(prof, paste(title_base, "-- Complete-Profile Statistics"),
-                            "All-S / all-R / most-common / n-distinct / entropy / Simpson concentration / top observed profiles",
-                            "Value")
-    if (!is.null(p)) .try_plot(p, "complete profile statistics")
-  }
-
-  # 5. Hospital heterogeneity
-  hh <- st[grepl("^hospital_heterogeneity_", st$statistic_name), , drop = FALSE]
-  if (nrow(hh) > 0L) {
-    hh$stratum <- paste(hh$stratum, hh$statistic_name, sep = "|")
-    p <- .ppc_dotplot_page(hh, paste(title_base, "-- Hospital Heterogeneity"),
-                            "Spread (SD/IQR/MAD/range) of per-hospital resistance proportions, by class",
-                            "Value")
-    if (!is.null(p)) .try_plot(p, "hospital heterogeneity")
-  }
+  # 5c. Hospital heterogeneity -- faceted by spread metric (Phase A
+  # redesign); replaces the old class+metric-concatenated single axis.
+  p <- .ppc_plot_hospital_heterogeneity(st, title_base)
+  if (!is.null(p)) .try_plot(p, "hospital heterogeneity")
 
   # 5b. Cluster (admission/patient) statistics
   cl <- st[grepl("^cluster_", st$statistic_name), , drop = FALSE]
