@@ -1,0 +1,25 @@
+class_name,display_label,short_label
+Aminoglycosides,Aminoglycosides,AMG
+Penicillins,Penicillins,PEN
+Aminopenicillins,Aminopenicillins,APEN
+Fluoroquinolones,Fluoroquinolones,FQ
+Nalidixic_acid,Nalidixic acid,NAL
+Carbapenems,Carbapenems,CARB
+First_generation_cephalosporins,First-generation cephalosporins,1GC
+Second_generation_cephalosporins,Second-generation cephalosporins,2GC
+Third_generation_cephalosporins,Third-generation cephalosporins,3GC
+Fourth_generation_cephalosporins,Fourth-generation cephalosporins,4GC
+Fifth_generation_cephalosporins,Fifth-generation cephalosporins,5GC
+Tetracyclines,Tetracyclines,TET
+Glycylcyclines,Glycylcyclines,GLY
+Macrolides,Macrolides,MAC
+Lincosamides,Lincosamides,LIN
+Glycopeptides,Glycopeptides,GLYP
+Oxazolidinones,Oxazolidinones,OXA
+Lipopeptides,Lipopeptides,LIP
+Polymyxins,Polymyxins,POL
+Colistin,Colistin,COL
+Nitrofuran_derivatives,Nitrofuran derivatives,NIT
+Phosphonics,Phosphonics,PHOS
+Amphenicols,Amphenicols,AMP
+Vancomycin,Vancomycin,VAN
