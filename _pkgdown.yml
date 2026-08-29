@@ -257,6 +257,14 @@ reference:
   - aggregate_profiles_for_daly
   - summarize_fit_correlation_matrix
   - plot_probit_diagnostics
+  - plot_omega_correlation_heatmap
+  - plot_omega_convergence_heatmap
+  - plot_omega_summary_table
+  - plot_omega_degeneracy_diagnostic
+  - plot_probit_fixed_effect_diagnostics
+  - plot_probit_beta_family_diagnostics
+  - plot_probit_worst_parameters
+  - plot_probit_worst_offender_diagnostics
 
 - title: "Pathway 2: Model Validation"
   desc: >
@@ -352,6 +360,10 @@ reference:
   desc: "Generic AMR plotting utilities"
   contents:
   - eda_theme
+  - class_display_label
+  - class_short_label
+  - class_pair_label
+  - hospital_display_label
 
 - title: "Validation and reporting"
   desc: "Data quality checks and reports"
