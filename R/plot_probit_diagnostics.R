@@ -128,8 +128,19 @@ plot_probit_diagnostics <- function(
   # density pages so a reader sees whether the fit is even trustworthy
   # before looking at anything downstream of it.
   .fmt_or_na <- function(x, fmt) if (is.null(x) || length(x) == 0L || is.na(x[[1L]])) "NA" else sprintf(fmt, x[[1L]])
+  status_str <- .fmt_or_na(diag$diagnostic_status, "%s")
+  verdict <- if (grepl("^fail", status_str)) {
+    "FAIL"
+  } else if (grepl("^warning", status_str)) {
+    "WARNING"
+  } else if (identical(status_str, "pass")) {
+    "PASS"
+  } else {
+    "UNKNOWN"
+  }
+  verdict_colour <- c(FAIL = "#B2182B", WARNING = "#E08214", PASS = "#1A9850", UNKNOWN = "grey40")[[verdict]]
   health_lines <- c(
-    sprintf("Diagnostic status: %s", .fmt_or_na(diag$diagnostic_status, "%s")),
+    sprintf("Diagnostic status: %s", status_str),
     sprintf("Divergent transitions: %s", .fmt_or_na(diag$n_divergent, "%d")),
     sprintf("Treedepth saturations: %s", .fmt_or_na(diag$n_treedepth_sat, "%d")),
     sprintf("Min E-BFMI: %s (warn below 0.3)", .fmt_or_na(diag$ebfmi_min, "%.3f")),
@@ -140,9 +151,12 @@ plot_probit_diagnostics <- function(
   )
   .try_plot(
     ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0.5, y = length(health_lines) + 2.4,
+                        label = sprintf("SAMPLER STATUS: %s", verdict),
+                        hjust = 0.5, size = 8, fontface = "bold", colour = verdict_colour) +
       ggplot2::annotate("text", x = 0, y = seq(length(health_lines), 1), label = health_lines,
                         hjust = 0, size = 4.2, family = "mono") +
-      ggplot2::xlim(0, 1) + ggplot2::ylim(0, length(health_lines) + 1) +
+      ggplot2::xlim(0, 1) + ggplot2::ylim(0, length(health_lines) + 3.2) +
       ggplot2::labs(
         title = paste(title_base, "-- Sampler Health"),
         subtitle = "Read this page before interpreting anything downstream -- a failure/warning status here means the posterior itself is not yet trustworthy, regardless of how the rest of this PDF looks."
@@ -165,6 +179,17 @@ plot_probit_diagnostics <- function(
     if (!is.null(fe_plots$other)) .try_plot(fe_plots$other, "fixed-effect coefficients (non-hospital)")
     if (!is.null(fe_plots$hospital)) .try_plot(fe_plots$hospital, "fixed-effect coefficients (hospital)")
   }
+
+  beta_family_plots <- tryCatch(plot_probit_beta_family_diagnostics(fit_obj, title_base), error = function(e) NULL)
+  if (!is.null(beta_family_plots)) {
+    if (!is.null(beta_family_plots$table)) .try_plot(beta_family_plots$table, "fixed-effect family convergence table")
+    if (!is.null(beta_family_plots$bar)) .try_plot(beta_family_plots$bar, "fixed-effect family convergence bar chart")
+  }
+
+  .try_plot(
+    tryCatch(plot_probit_worst_parameters(fit_obj, title_base), error = function(e) NULL),
+    "worst structural parameters"
+  )
 
   # -- 1. Sampling trace plots --------------------------------------------------
   .try_plot(
