@@ -18,4 +18,3 @@ Replaces underscores with spaces only -- does not alter the underlying
 file paths all keep the raw value; this is a plotting-display transform
 only).
 }
-\keyword{internal}
