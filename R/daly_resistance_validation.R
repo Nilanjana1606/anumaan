@@ -211,6 +211,12 @@ validate_marginal_calibration <- function(
   }
 
   keys <- names(cell_meta)
+  .check_prob <- function(x) {
+    if (any(!is.finite(x)) || any(x < -1e-12 | x > 1 + 1e-12)) {
+      stop("[validate_pairwise_calibration] Materially invalid four-cell probability encountered.", call. = FALSE)
+    }
+    pmin(1, pmax(0, x))
+  }
   draw_rows <- vector("list", S)
   for (s in seq_len(S)) {
     p_all <- stats::pnorm(setup$mu_all_for_draw(s))
@@ -388,32 +394,55 @@ validate_pairwise_calibration <- function(
       Omega_s <- setup$Omega_for_draw(s)
       draw_rows[[s]] <- tibble::tibble(
         key = keys, draw_s = s,
-        model_pairwise_s = vapply(cell_meta, function(cm) {
+        model_RR_s = vapply(cell_meta, function(cm) {
           rho <- Omega_s[cm$d1, cm$d2]
           mean(pbivnorm::pbivnorm(mu_all[cm$ev_idx, cm$d1], mu_all[cm$ev_idx, cm$d2], rho = rho))
-        }, numeric(1L))
+        }, numeric(1L)),
+        p1_s = vapply(cell_meta, function(cm) mean(stats::pnorm(mu_all[cm$ev_idx, cm$d1])), numeric(1L)),
+        p2_s = vapply(cell_meta, function(cm) mean(stats::pnorm(mu_all[cm$ev_idx, cm$d2])), numeric(1L))
       )
     } else {
       p_all <- stats::pnorm(mu_all)
       draw_rows[[s]] <- tibble::tibble(
         key = keys, draw_s = s,
-        model_pairwise_s = vapply(cell_meta, function(cm) {
-          mean(p_all[cm$ev_idx, cm$d1] * p_all[cm$ev_idx, cm$d2])
-        }, numeric(1L))
+        model_RR_s = vapply(cell_meta, function(cm) mean(p_all[cm$ev_idx, cm$d1] * p_all[cm$ev_idx, cm$d2]), numeric(1L)),
+        model_RS_s = vapply(cell_meta, function(cm) mean(p_all[cm$ev_idx, cm$d1] * (1 - p_all[cm$ev_idx, cm$d2])), numeric(1L)),
+        model_SR_s = vapply(cell_meta, function(cm) mean((1 - p_all[cm$ev_idx, cm$d1]) * p_all[cm$ev_idx, cm$d2]), numeric(1L)),
+        model_SS_s = vapply(cell_meta, function(cm) mean((1 - p_all[cm$ev_idx, cm$d1]) * (1 - p_all[cm$ev_idx, cm$d2])), numeric(1L))
       )
     }
   }
   draws_tbl <- dplyr::bind_rows(draw_rows)
+  if (is_correlated) {
+    # These identities are applied event-wise in the correlated model.  The
+    # means below are equivalent by linearity, and preserve RR semantics.
+    draws_tbl <- draws_tbl %>% dplyr::mutate(
+      model_RS_s = .check_prob(.data$p1_s - .data$model_RR_s),
+      model_SR_s = .check_prob(.data$p2_s - .data$model_RR_s),
+      model_SS_s = .check_prob(1 - .data$p1_s - .data$p2_s + .data$model_RR_s)
+    )
+  }
+  draws_tbl <- draws_tbl %>% dplyr::mutate(
+    model_RR_s = .check_prob(.data$model_RR_s),
+    four_cell_sum = .data$model_RR_s + .data$model_RS_s + .data$model_SR_s + .data$model_SS_s
+  )
+  if (any(abs(draws_tbl$four_cell_sum - 1) > 1e-8)) {
+    stop("[validate_pairwise_calibration] Four pairwise probabilities do not sum to one.", call. = FALSE)
+  }
 
   lo_q <- (1 - ci_level) / 2
   hi_q <- 1 - lo_q
   summary_tbl <- draws_tbl %>%
     dplyr::group_by(.data$key) %>%
     dplyr::summarise(
-      model_pairwise_mean = mean(.data$model_pairwise_s),
-      model_pairwise_lower = stats::quantile(.data$model_pairwise_s, lo_q),
-      model_pairwise_upper = stats::quantile(.data$model_pairwise_s, hi_q),
+      dplyr::across(dplyr::all_of(c("model_RR_s", "model_RS_s", "model_SR_s", "model_SS_s")),
+        list(mean = mean, lower = ~ stats::quantile(.x, lo_q), upper = ~ stats::quantile(.x, hi_q)),
+        .names = "{sub('_s$', '', .col)}_{.fn}"),
       .groups = "drop"
+    ) %>% dplyr::rename(
+      model_pairwise_mean = .data$model_RR_mean,
+      model_pairwise_lower = .data$model_RR_lower,
+      model_pairwise_upper = .data$model_RR_upper
     )
 
   meta_tbl <- dplyr::bind_rows(lapply(keys, function(key) {
@@ -423,7 +452,9 @@ validate_pairwise_calibration <- function(
       !!upper_re_col := cm$h, !!pathogen_col := cm$k,
       class_1 = cm$c1, class_2 = cm$c2, n_cotested = cm$n_cotested,
       observed_RR = cm$n_RR, observed_RS = cm$n_RS, observed_SR = cm$n_SR, observed_SS = cm$n_SS,
-      observed_pairwise_resistance = cm$n_RR / cm$n_cotested
+      observed_pairwise_resistance = cm$n_RR / cm$n_cotested,
+      observed_RR_prop = cm$n_RR / cm$n_cotested, observed_RS_prop = cm$n_RS / cm$n_cotested,
+      observed_SR_prop = cm$n_SR / cm$n_cotested, observed_SS_prop = cm$n_SS / cm$n_cotested
     )
   }))
 
@@ -432,7 +463,17 @@ validate_pairwise_calibration <- function(
       absolute_error = abs(.data$observed_pairwise_resistance - .data$model_pairwise_mean),
       interval_contains_observed =
         .data$observed_pairwise_resistance >= .data$model_pairwise_lower &
-          .data$observed_pairwise_resistance <= .data$model_pairwise_upper
+          .data$observed_pairwise_resistance <= .data$model_pairwise_upper,
+      absolute_error_RR = abs(.data$observed_RR_prop - .data$model_RR_mean),
+      absolute_error_RS = abs(.data$observed_RS_prop - .data$model_RS_mean),
+      absolute_error_SR = abs(.data$observed_SR_prop - .data$model_SR_mean),
+      absolute_error_SS = abs(.data$observed_SS_prop - .data$model_SS_mean),
+      interval_contains_RR = .data$observed_RR_prop >= .data$model_RR_lower & .data$observed_RR_prop <= .data$model_RR_upper,
+      interval_contains_RS = .data$observed_RS_prop >= .data$model_RS_lower & .data$observed_RS_prop <= .data$model_RS_upper,
+      interval_contains_SR = .data$observed_SR_prop >= .data$model_SR_lower & .data$observed_SR_prop <= .data$model_SR_upper,
+      interval_contains_SS = .data$observed_SS_prop >= .data$model_SS_lower & .data$observed_SS_prop <= .data$model_SS_upper,
+      mean_absolute_error_4cell = (.data$absolute_error_RR + .data$absolute_error_RS + .data$absolute_error_SR + .data$absolute_error_SS) / 4,
+      max_absolute_error_4cell = pmax(.data$absolute_error_RR, .data$absolute_error_RS, .data$absolute_error_SR, .data$absolute_error_SS)
     ) %>%
     dplyr::select(-"key") %>%
     dplyr::mutate(dplyr::across(dplyr::where(is.numeric), ~ round(.x, 6L)))
@@ -449,9 +490,11 @@ validate_pairwise_calibration <- function(
 #' \code{min_complete_events} events that have \strong{every} panel class
 #' actually observed (no imputation involved), compares the empirical
 #' complete-profile frequency distribution against the model-implied profile
-#' probability distribution for that same event cohort (product of per-class
-#' \eqn{\Phi(\mu_{ed})}, as if the classes had not been observed -- i.e. the
-#' model's unconditional prediction, deliberately NOT using
+#' probability distribution for that same event cohort.  With identity residuals
+#' it uses the analytic product of per-class \eqn{\Phi(\mu_{ed})}; with
+#' correlated residuals it uses correlated MVN simulation with \eqn{L_\Omega},
+#' as if the classes had not been observed -- i.e. the model's unconditional
+#' prediction, deliberately NOT using
 #' \code{compute_event_profile_probabilities()}'s observed-cell-preserving
 #' logic, since the point here is to check whether the model's predictions
 #' agree with what was actually measured). Panels without enough complete
@@ -811,7 +854,7 @@ mask_and_validate_ast <- function(
   min_tested_after_mask = 30L,
   min_resistant_after_mask = 5L,
   min_susceptible_after_mask = 5L,
-  panel_eligibility = list(),
+  panel_eligibility = NULL,
   prior_config = NULL,
   sampler_config = NULL,
   n_gibbs_burnin = 10L,
@@ -896,6 +939,11 @@ mask_and_validate_ast <- function(
   ))
 
   refit_model <- NULL
+  panel_eligibility_used <- if (is.null(panel_eligibility)) {
+    .null_default(fitted_model$panel_eligibility_used, list())
+  } else {
+    panel_eligibility
+  }
   if (isTRUE(refit)) {
     if (is.null(fixed_effects)) {
       stop("[mask_and_validate_ast] `fixed_effects` must be supplied when refit = TRUE ",
@@ -924,7 +972,7 @@ mask_and_validate_ast <- function(
       pathogen_col       = pathogen_col,
       event_id_col       = event_id_col,
       outcome_col        = outcome_col,
-      panel_eligibility  = panel_eligibility,
+      panel_eligibility  = panel_eligibility_used,
       residual_structure = .null_default(fitted_model$residual_structure, "identity"),
       estimand           = .null_default(fitted_model$estimand, "observed_stewardship_event_mix"),
       prior_config       = .null_default(prior_config, .null_default(fitted_model$prior_config_used, list())),
@@ -1026,7 +1074,8 @@ mask_and_validate_ast <- function(
     accuracy_at_threshold_0_5 = round(mean(predicted_class == true_value), 6L),
     auroc = round(.auroc(true_value, predicted_p), 6L),
     fraction_to_mask = fraction_to_mask,
-    seed = as.integer(seed)
+    seed = as.integer(seed),
+    panel_eligibility_used = list(panel_eligibility_used)
   )
 
   list(predictions = predictions, summary = summary_tbl, refit_model = refit_model)
