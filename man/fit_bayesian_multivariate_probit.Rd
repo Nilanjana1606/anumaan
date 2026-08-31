@@ -8,7 +8,8 @@ fit_bayesian_multivariate_probit(
   event_class_data,
   class_cols,
   fixed_effects,
-  random_effects,
+  random_effects = list(),
+  profile_group_col = NULL,
   pathogen = NULL,
   pathogen_col = "pathogen",
   event_id_col = "event_id",
@@ -20,6 +21,7 @@ fit_bayesian_multivariate_probit(
   estimand = "observed_stewardship_event_mix",
   prior_config = list(),
   sampler_config = list(),
+  compute = list(),
   show_messages = TRUE,
   save_full_latent_diagnostics = FALSE,
   ...
@@ -36,9 +38,16 @@ Required.}
 \item{fixed_effects}{Character vector. Event-level covariate column names.
 Required.}
 
-\item{random_effects}{Character vector of length 1, 2, or 3. Grouping
-column names. First element: hospital (upper); second (optional): patient;
-third (optional): admission. Required.}
+\item{random_effects}{Character vector or named list of random-intercept
+blocks. Use \code{list()} for no random-effect blocks. When non-empty,
+the legacy character-vector form names grouping columns; the list form
+uses \code{name}, \code{group_col}, and optional \code{terms = "intercept"}.}
+
+\item{profile_group_col}{Character scalar or \code{NULL}. Column used for
+downstream profile aggregation, eligibility summaries, and validation.
+It is independent of the random-effect specification. Defaults to the
+first random-effect grouping column when random effects exist; it is
+required for fixed-effects-only fits.}
 
 \item{pathogen}{Character or \code{NULL}. When supplied, filters
 \code{event_class_data} to rows where \code{pathogen_col} equals this
@@ -77,7 +86,9 @@ mainly by the LKJ prior and adds identifiability risk.}
 \code{"observed_stewardship_event_mix"} is currently supported.}
 
 \item{prior_config}{Named list. Any subset of \code{beta_sd} (default 1.5),
-\code{tau_sd} (default 1.0), \code{lkj_eta} (default 2.0).}
+\code{tau_sd} (default 1.0), legacy \code{lkj_eta} (default 2.0), or
+separate \code{lkj_eta_residual} and \code{lkj_eta_random_effect}.
+Legacy \code{lkj_eta} resolves to both values for exact backward compatibility.}
 
 \item{sampler_config}{Named list. Sampler settings forwarded to
 \code{cmdstanr::sample()}: \code{chains} (4), \code{iter_warmup} (1000),
@@ -86,6 +97,13 @@ mainly by the LKJ prior and adds identifiability risk.}
 (NULL), \code{max_param_count} (NULL -- set to a positive integer to stop
 if approximate parameter count exceeds the threshold). Any additional entries
 are forwarded via \code{...}.}
+
+\item{compute}{Named list controlling the Stan execution backend. Supported
+fields are \code{backend} (\code{"cpu"} default or \code{"opencl"}),
+\code{opencl_platform_id}, \code{opencl_device_id}, and
+\code{allow_cpu_fallback} (\code{FALSE} by default). OpenCL changes the
+compilation/sampling backend only; it does not change the statistical
+model, priors, diagnostics, or downstream estimands.}
 
 \item{show_messages}{Logical. Print sampling progress. Default \code{TRUE}.}
 
@@ -110,7 +128,8 @@ Named list with elements: \code{draws}, \code{diagnostics},
   \code{middle_re_col}, \code{lower_re_col}, \code{patient_key_col},
   \code{admission_key_col}, \code{pathogen_col}, \code{pathogen_fitted},
   \code{residual_structure}, \code{estimand}, \code{prior_config_used},
-  \code{sampler_config_used}, and \code{eligibility_report}.
+  \code{sampler_config_used}, \code{compute_config_used}, and
+  \code{eligibility_report}.
 
   \code{diagnostics} is a one-row monitored summary. The main diagnostic
   fields \code{max_rhat}, \code{min_ess_bulk}, and \code{min_ess_tail}
@@ -165,9 +184,10 @@ the D-dim random effect vectors are correlated across antibiotic classes.
 \strong{Single-pathogen design:} pass \code{pathogen} to restrict the fit.
 Run once per pathogen and orchestrate in the analysis repository.
 
-\strong{Random effects} (\code{random_effects}): 1, 2, or 3 grouping column
-names defining the clustering hierarchy (e.g. hospital; hospital + patient;
-hospital + patient + admission). The first element is the upper-most level;
+\strong{Random effects} (\code{random_effects}): an optional character
+vector or list of grouping blocks defining the clustering hierarchy. Use
+\code{list()} for a fixed-effects-only model. When blocks are present, the
+first element is the upper-most level;
 subsequent elements are nested within it. Nested levels receive globally unique
 composite keys built internally. Any hierarchical grouping variable can occupy
 any slot -- the labels hospital/patient/admission are semantic conventions, not

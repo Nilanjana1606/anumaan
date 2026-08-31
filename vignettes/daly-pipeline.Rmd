@@ -28,25 +28,30 @@ library(dplyr)
 
 # Overview
 
-This vignette covers **resistance profile estimation** — the first stage of
-the DALY burden estimation pipeline, converting resistance data into
-probability distributions over all 2^n binary resistance profiles (S/R per
-antibiotic class). It does not repeat preprocessing — that is in the
-[Preprocessing Workflow vignette](preprocessing-workflow.html). Downstream
-burden calculation (RR assignment, YLL/YLD) is not yet covered here.
+This vignette covers the **DALY burden estimation pipeline**. It does not
+repeat preprocessing — that is in the
+[Preprocessing Workflow vignette](preprocessing-workflow.html).
 
-Resistance profile estimation has **two pathways**, chosen by what data you
-have and how much you need the profiles to reflect patient/hospital-level
-structure:
+For Bayesian multivariate probit resistance-profile estimation, `anumaan`
+supports both CPU and OpenCL execution backends through the `compute` argument
+to `fit_bayesian_multivariate_probit()`. This is a computational choice only:
+it does not alter the statistical model, validation framework, or DALY
+estimands.
 
-| | Option 1: Convex Optimisation (Pathway 1) | Option 2: Bayesian Multivariate Probit (Pathway 2) |
-|---|---|---|
-| Input | Pre-computed aggregate marginals (GBD ST-GPR, GLASS, national surveillance) **or** facility line-list AST data | Facility-level, event-level AST data with covariates |
-| Method | Simplex-constrained QP (GBD eq. 7.5.1.3) reproducing marginal + pairwise resistance rates | Bayesian hierarchical multivariate probit model, fit with Stan/`cmdstanr` |
-| Entry point | `estimate_profiles_convex()` (aggregate) or `compute_marginal_resistance()` → `compute_pairwise_coresistance()` → `compute_resistance_profiles()` (line-list) | `fit_bayesian_multivariate_probit()` → `compute_event_profile_probabilities()` |
-| Captures hospital/random effects, fixed-effect covariates | No | Yes |
-| Extra dependency | None beyond `osqp`/`quadprog` | `cmdstanr` + CmdStan (optional, see `DESCRIPTION`) |
-| Unified dispatcher | `estimate_resistance_profiles(method = "convex", ...)` | `estimate_resistance_profiles(method = "bayesian", ...)` |
+The pipeline has two stages:
+
+1. **Resistance profile estimation** — converts resistance prevalence data
+   into probability distributions over all 2^n binary resistance profiles
+   (S/R per antibiotic class). Uses convex optimisation (GBD eq. 7.5.1.3).
+2. **Burden calculation** — applies relative-risk weights to profiles and
+   computes YLL, YLD, and total DALY burden.
+
+Input can come from two sources:
+
+| Source | Entry point |
+|---|---|
+| Pre-computed aggregate marginals (GBD, GLASS, national surveillance) | `validate_aggregate_inputs()` → `estimate_profiles_convex()` |
+| Facility line-list AST data (after preprocessing) | `compute_marginal_resistance()` → `compute_pairwise_coresistance()` → `compute_resistance_profiles()` |
 
 ---
 
@@ -285,8 +290,8 @@ boot[["Klebsiella pneumoniae"]] %>%
 
 Pathway 2 fits a Bayesian hierarchical multivariate probit model directly to
 facility-level, event-level AST data. Unlike Pathway 1, it can incorporate
-fixed-effect covariates (age, gender, location, ...) and random effects
-(hospital, admission, ...), and estimate resistance *jointly* across
+fixed-effect covariates (age, gender, location, ...) and optional random
+effects (hospital, admission, ...), and estimate resistance *jointly* across
 antibiotic classes rather than reconstructing joint profiles purely from
 marginal + pairwise constraints.
 
@@ -330,11 +335,12 @@ class_cols <- c("Carbapenems", "Fluoroquinolones", "Aminoglycosides")
 
 ### 2.2 Fit the Model
 
-`fixed_effects` and `random_effects` are required, with no defaults --
-`random_effects` accepts 1-3 grouping columns (hospital; [+patient];
-[+admission]), or the generic list-of-blocks spec for more than three.
-`residual_structure = "identity"` treats classes as conditionally
-independent given the fixed/random effects (default, more stable);
+`fixed_effects` is required. `random_effects` may be a legacy character vector,
+a named list-of-blocks specification, or `list()` for a fixed-effects-only
+model. When no random effects are fitted, `profile_group_col` is required to
+state the column used for profile aggregation and validation; it does not make
+that column a random effect. `residual_structure = "identity"` treats classes
+as conditionally independent given the modelled mean (default, more stable);
 `"correlated"` estimates a full residual correlation matrix via an
 LKJCholesky prior, but needs adequate pairwise co-testing overlap to be
 identifiable (`fit$eligibility_report$pairwise`).
@@ -361,6 +367,21 @@ fit$diagnostics
 #> # i 30 more variables: n_classes <int>, max_rhat_structural <dbl>,
 #> #   min_ess_bulk_structural <dbl>, min_ess_tail_structural <dbl>,
 #> #   n_divergent <int>, converged_structural <lgl>, diagnostic_status <chr>, ...
+```
+
+For a fixed-effects-only comparison, retain the same fixed-effect design and
+make the grouping purpose explicit without adding a random-effect block:
+
+```r
+fixed_only_fit <- fit_bayesian_multivariate_probit(
+  event_class_data = event_class_data,
+  class_cols = class_cols,
+  fixed_effects = c("Age_normalised", "gender", "center_name"),
+  random_effects = list(),
+  profile_group_col = "center_name",
+  pathogen = "Klebsiella pneumoniae",
+  residual_structure = "identity"
+)
 ```
 
 With these deliberately tiny/fast settings, `converged_structural` comes
@@ -509,6 +530,89 @@ estimate_resistance_profiles(
 Both pathways' `profiles`/`agg` output are the deliverable of this vignette
 -- downstream burden calculation (RR assignment, YLL/YLD) is not yet covered
 here.
+
+### 2.8 Post-Fit Checklist: What to Run, and Why
+
+Sections 2.2-2.6 introduced each Pathway 2 function individually; this
+section ties them into one ordered checklist, since it's easy to run only
+some of them and miss a gap. Every function below reads `fit`, the object
+returned by `fit_bayesian_multivariate_probit()` -- none of them require
+re-fitting.
+
+**1. Did the sampler converge?** (`fit$diagnostics`, populated at fit time --
+no separate call needed). Check `diagnostic_status` (`"pass"` /
+`"warning_rhat"` / `"fail_energy"` / `"fail_divergent"` / ...),
+`converged_structural`, `max_rhat`, `min_ess_bulk`, `ebfmi_min`. This is a
+*computational* question -- did the four chains actually agree with each
+other about where the posterior mass is -- and it is answered independently
+of everything below. A model can fail here while still answering later
+checks well (the reverse is not reassuring: don't trust calibration numbers
+from an unconverged fit).
+
+**2. Estimate the resistance profiles.**
+`compute_event_profile_probabilities()` computes, per event, the posterior
+probability of every possible resistance profile -- analytically
+(`Phi(mu_d)` per class) for `residual_structure = "identity"`, or via Gibbs
+sampling of the truncated multivariate normal conditional on that event's
+own observed AST results for `"correlated"`. It never overwrites an
+observed cell -- only untested classes are imputed, so a fully-observed
+event's profile is a fact about the data, not a claim from the model.
+`aggregate_profiles_for_daly()` rolls the per-event, per-draw output up to
+one row per hospital x pathogen x profile (`R_ALL_mean/lower/upper`,
+DALY-eligibility flags gated by `sampler_acceptable` and panel support).
+
+**3. Does the model generate data that looks like the real data?**
+`simulate_probit_posterior_predictive()` draws replicated datasets from the
+posterior (Bernoulli(`Phi(mu)`) for identity; `Z = mu + L_Omega %*% eps`,
+`Y = I(Z > 0)` for correlated -- genuine correlated simulation either way).
+`compute_probit_ppc_statistics()` computes discrepancy statistics (marginal
+rate, pairwise co-resistance, complete-profile summary stats, hospital
+heterogeneity) on observed vs. every replicate.
+`compute_posterior_predictive_status()` classifies each statistic as
+extreme/severe and rolls up to an overall status. This is a strict trigger,
+not a fraction-based one -- even a single severely-extreme statistic in a
+family sets the whole run's status to `"fail_major_ppc_misfit"`, so always
+read the per-family `n_severe`/`fraction_extreme` breakdown underneath the
+top-line status rather than the label alone. `simulate_probit_prior_predictive()`
+(before fitting) and `simulate_probit_mixed_predictive()` (new, unseen
+groups) answer the adjacent but different questions "is the prior
+reasonable?" and "does this generalise beyond the fitted groups?".
+
+**4. Are the model's stated probabilities calibrated against reality?**
+`validate_marginal_calibration()`, `validate_pairwise_calibration()`, and
+`validate_complete_profile_calibration()` (Section 2.5) compare observed
+rates to model-implied probabilities at increasing joint complexity --
+single class, class pairs, and full profiles. All three correctly use
+`Omega` for correlated fits where relevant (pairwise and complete-profile;
+marginal probabilities don't depend on Omega by construction).
+`mask_and_validate_ast()` adds a masked-AST holdout check -- by default
+(`refit = FALSE`) this is an *in-sample* diagnostic (the masked cells were
+still seen during fitting, labelled `"in_sample_no_refit"` in its output,
+not a genuine holdout), while `refit = TRUE` actually refits without the
+masked cells for a real out-of-sample score, at proportionally higher cost.
+`compute_profile_validation_status()` rolls all four into one
+`profile_validation_status` verdict.
+
+**Quick reference: which check answers which question**
+
+| Question | Function | Needs `Omega`? |
+|---|---|---|
+| Did the sampler converge? | `fit$diagnostics` | -- |
+| What's the estimated resistance profile? | `compute_event_profile_probabilities()` + `aggregate_profiles_for_daly()` | correlated fits only |
+| Does simulated data resemble real data? | `simulate_probit_posterior_predictive()` + `compute_probit_ppc_statistics()` | correlated fits only |
+| Is the model calibrated on single classes? | `validate_marginal_calibration()` | no |
+| Is the model calibrated on class pairs? | `validate_pairwise_calibration()` | correlated fits only |
+| Is the model calibrated on full profiles? | `validate_complete_profile_calibration()` | correlated fits only |
+| Can it predict held-out AST results? | `mask_and_validate_ast()` | correlated fits only |
+
+A model can score well on some of these and poorly on others at the same
+time -- e.g. a correlated-residual fit with unresolved sampler convergence
+issues can still show much better calibration on class pairs and full
+profiles than a well-converged identity-residual fit, because convergence
+and calibration are answering different questions (numerical reliability
+of the specific parameter estimates vs. structural adequacy of the model
+form). Treat "did it converge" and "is it calibrated" as two separate
+verdicts, not one combined score.
 
 ---
 

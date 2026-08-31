@@ -17,6 +17,17 @@ test_that("legacy character vector and named-block spec produce the same structu
   expect_identical(re_named$block_names, c("hospital", "admission"))
 })
 
+test_that("an empty block list is a canonical zero-random-effect representation", {
+  d <- data.frame(profile_group = c("H1", "H2", "H1"))
+  re <- prepare_random_effects(d, list())
+
+  expect_identical(re$R, 0L)
+  expect_identical(re$total_re_levels, 0L)
+  expect_identical(dim(re$group_index), c(3L, 0L))
+  expect_identical(dim(re$flat_group_index), c(3L, 0L))
+  expect_length(re$blocks, 0L)
+})
+
 test_that("anonymous numbered blocks are rejected", {
   expect_error(
     .normalize_random_effects_spec(list(list(group_col = "hosp"))),
@@ -117,6 +128,14 @@ test_that("re_contribution() handles a single event vector input", {
   re_effect <- matrix(1:(D * total_levels), nrow = D)
   out <- re_contribution(re_effect, c(1L, 3L))
   expect_equal(out, re_effect[, 1] + re_effect[, 3])
+})
+
+test_that("re_contribution() is an N by D zero matrix for zero blocks", {
+  re_effect <- matrix(numeric(), nrow = 2L, ncol = 0L)
+  flat_group_index <- matrix(integer(), nrow = 4L, ncol = 0L)
+  out <- re_contribution(re_effect, flat_group_index)
+  expect_identical(dim(out), c(4L, 2L))
+  expect_true(all(out == 0))
 })
 
 test_that("print.amr_random_effects does not error", {

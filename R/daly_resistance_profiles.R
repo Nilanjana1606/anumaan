@@ -4182,6 +4182,7 @@ summarize_fit_correlation_matrix <- function(fit, matrix_var, class_cols, ci_lev
         sprintf("%s[%d,%d,%d]", matrix_var, block_index, i, j)
       }
       if (!vname %in% var_names) next
+      draws_ij_sub <- posterior::subset_draws(draws_arr, variable = vname)
       draws_ij <- as.numeric(posterior::extract_variable(draws_arr, vname))
       rows[[length(rows) + 1L]] <- tibble::tibble(
         class_1             = class_cols[i],
@@ -4189,7 +4190,14 @@ summarize_fit_correlation_matrix <- function(fit, matrix_var, class_cols, ci_lev
         correlation_mean    = mean(draws_ij),
         correlation_median  = stats::median(draws_ij),
         correlation_lower   = stats::quantile(draws_ij, probs = alpha, names = FALSE),
-        correlation_upper   = stats::quantile(draws_ij, probs = 1 - alpha, names = FALSE)
+        correlation_upper   = stats::quantile(draws_ij, probs = 1 - alpha, names = FALSE),
+        # Per-pair sampler diagnostics -- a visually attractive correlation
+        # estimate is meaningless if the chains never agreed on it. Computed
+        # from the SAME chain-preserving subset (not the flattened draws_ij
+        # above) so rhat/ess_bulk use the actual multi-chain structure.
+        rhat                = tryCatch(posterior::rhat(draws_ij_sub), error = function(e) NA_real_),
+        ess_bulk            = tryCatch(posterior::ess_bulk(draws_ij_sub), error = function(e) NA_real_),
+        ess_tail            = tryCatch(posterior::ess_tail(draws_ij_sub), error = function(e) NA_real_)
       )
     }
   }
@@ -4241,7 +4249,8 @@ data {
 
   real<lower=0> prior_beta_sd;
   real<lower=0> prior_tau_sd;
-  real<lower=1> lkj_eta;
+  real<lower=1> lkj_eta_residual;
+  real<lower=1> lkj_eta_random_effect;
 }
 parameters {
   matrix[K, D] beta;
@@ -4266,9 +4275,9 @@ model {
     int hi = level_start[r] + n_levels[r] - 1;
     tau_re[r]                    ~ normal(0, prior_tau_sd);
     to_vector(z_re[, lo:hi])     ~ std_normal();
-    L_corr_re[r]                 ~ lkj_corr_cholesky(lkj_eta);
+    L_corr_re[r]                 ~ lkj_corr_cholesky(lkj_eta_random_effect);
   }
-  L_Omega ~ lkj_corr_cholesky(lkj_eta);
+  L_Omega ~ lkj_corr_cholesky(lkj_eta_residual);
 
   {
     // exp() only at the N observed cells -- masking after exp() risks 0 * Inf = NaN.
@@ -4328,8 +4337,9 @@ data {
 
   real<lower=0> prior_beta_sd;
   real<lower=0> prior_tau_sd;
-  real<lower=1> lkj_eta;
+  real<lower=1> lkj_eta_random_effect;
 }
+
 parameters {
   matrix[K, D] beta;
   matrix[D, total_re_levels] z_re;
@@ -4352,7 +4362,7 @@ model {
     int hi = level_start[r] + n_levels[r] - 1;
     tau_re[r]                    ~ normal(0, prior_tau_sd);
     to_vector(z_re[, lo:hi])     ~ std_normal();
-    L_corr_re[r]                 ~ lkj_corr_cholesky(lkj_eta);
+    L_corr_re[r]                 ~ lkj_corr_cholesky(lkj_eta_random_effect);
   }
 
   {
@@ -4377,6 +4387,85 @@ model {
 generated quantities {
   array[R] corr_matrix[D] R_block;
   for (r in 1:R) R_block[r] = multiply_lower_tri_self_transpose(L_corr_re[r]);
+}
+)"
+}
+
+# Fixed-effects-only variants deliberately omit every random-effect parameter.
+# Keeping these separate from the generic R >= 1 models avoids relying on
+# zero-sized Stan arrays/matrices and leaves existing model mathematics intact.
+.amr_probit_stan_fixed_correlated <- function() {
+  r"(
+data {
+  int<lower=1> N;
+  int<lower=1> N_events;
+  int<lower=2> D;
+  int<lower=1> K;
+  matrix[N_events, K] X_event;
+  array[N] int<lower=1,upper=N_events> ev_idx;
+  array[N] int<lower=1,upper=D> d_idx;
+  array[N] real<lower=-1,upper=1> sign_obs;
+  array[N] int<lower=1,upper=N_events*D> obs_idx;
+  real<lower=0> prior_beta_sd;
+  real<lower=1> lkj_eta_residual;
+}
+parameters {
+  matrix[K, D] beta;
+  cholesky_factor_corr[D] L_Omega;
+  matrix[N_events, D] z_free;
+}
+model {
+  to_vector(beta) ~ normal(0, prior_beta_sd);
+  L_Omega ~ lkj_corr_cholesky(lkj_eta_residual);
+  {
+    matrix[N_events, D] z_aug = z_free;
+    for (n in 1:N)
+      z_aug[ev_idx[n], d_idx[n]] = sign_obs[n] * exp(z_free[ev_idx[n], d_idx[n]]);
+    array[N_events] vector[D] z_aug_arr;
+    array[N_events] vector[D] mu_arr;
+    matrix[N_events, D] mu_mat = X_event * beta;
+    for (e in 1:N_events) {
+      z_aug_arr[e] = z_aug[e]';
+      mu_arr[e] = mu_mat[e]';
+    }
+    target += multi_normal_cholesky_lupdf(z_aug_arr | mu_arr, L_Omega);
+  }
+  target += sum(to_vector(z_free)[obs_idx]);
+}
+generated quantities {
+  corr_matrix[D] Omega = multiply_lower_tri_self_transpose(L_Omega);
+}
+)"
+}
+
+.amr_probit_stan_fixed_identity <- function() {
+  r"(
+data {
+  int<lower=1> N;
+  int<lower=1> N_events;
+  int<lower=2> D;
+  int<lower=1> K;
+  matrix[N_events, K] X_event;
+  array[N] int<lower=1,upper=N_events> ev_idx;
+  array[N] int<lower=1,upper=D> d_idx;
+  array[N] real<lower=-1,upper=1> sign_obs;
+  array[N] int<lower=1,upper=N_events*D> obs_idx;
+  real<lower=0> prior_beta_sd;
+}
+parameters {
+  matrix[K, D] beta;
+  matrix[N_events, D] z_free;
+}
+model {
+  to_vector(beta) ~ normal(0, prior_beta_sd);
+  {
+    matrix[N_events, D] z_aug = z_free;
+    for (n in 1:N)
+      z_aug[ev_idx[n], d_idx[n]] = sign_obs[n] * exp(z_free[ev_idx[n], d_idx[n]]);
+    matrix[N_events, D] mu_mat = X_event * beta;
+    target += normal_lupdf(to_vector(z_aug) | to_vector(mu_mat), 1.0);
+  }
+  target += sum(to_vector(z_free)[obs_idx]);
 }
 )"
 }
@@ -4408,9 +4497,10 @@ generated quantities {
 #' \strong{Single-pathogen design:} pass \code{pathogen} to restrict the fit.
 #' Run once per pathogen and orchestrate in the analysis repository.
 #'
-#' \strong{Random effects} (\code{random_effects}): 1, 2, or 3 grouping column
-#' names defining the clustering hierarchy (e.g. hospital; hospital + patient;
-#' hospital + patient + admission). The first element is the upper-most level;
+#' \strong{Random effects} (\code{random_effects}): an optional character
+#' vector or list of grouping blocks defining the clustering hierarchy. Use
+#' \code{list()} for a fixed-effects-only model. When blocks are present, the
+#' first element is the upper-most level;
 #' subsequent elements are nested within it. Nested levels receive globally unique
 #' composite keys built internally. Any hierarchical grouping variable can occupy
 #' any slot -- the labels hospital/patient/admission are semantic conventions, not
@@ -4436,9 +4526,15 @@ generated quantities {
 #'   Required.
 #' @param fixed_effects Character vector. Event-level covariate column names.
 #'   Required.
-#' @param random_effects Character vector of length 1, 2, or 3. Grouping
-#'   column names. First element: hospital (upper); second (optional): patient;
-#'   third (optional): admission. Required.
+#' @param random_effects Character vector or named list of random-intercept
+#'   blocks. Use \code{list()} for no random-effect blocks. When non-empty,
+#'   the legacy character-vector form names grouping columns; the list form
+#'   uses \code{name}, \code{group_col}, and optional \code{terms = "intercept"}.
+#' @param profile_group_col Character scalar or \code{NULL}. Column used for
+#'   downstream profile aggregation, eligibility summaries, and validation.
+#'   It is independent of the random-effect specification. Defaults to the
+#'   first random-effect grouping column when random effects exist; it is
+#'   required for fixed-effects-only fits.
 #' @param pathogen Character or \code{NULL}. When supplied, filters
 #'   \code{event_class_data} to rows where \code{pathogen_col} equals this
 #'   value before fitting. Recommended: fit one pathogen at a time.
@@ -4467,7 +4563,9 @@ generated quantities {
 #' @param estimand Character. Identifies the target quantity. Only
 #'   \code{"observed_stewardship_event_mix"} is currently supported.
 #' @param prior_config Named list. Any subset of \code{beta_sd} (default 1.5),
-#'   \code{tau_sd} (default 1.0), \code{lkj_eta} (default 2.0).
+#'   \code{tau_sd} (default 1.0), legacy \code{lkj_eta} (default 2.0), or
+#'   separate \code{lkj_eta_residual} and \code{lkj_eta_random_effect}.
+#'   Legacy \code{lkj_eta} resolves to both values for exact backward compatibility.
 #' @param sampler_config Named list. Sampler settings forwarded to
 #'   \code{cmdstanr::sample()}: \code{chains} (4), \code{iter_warmup} (1000),
 #'   \code{iter_sampling} (1000), \code{adapt_delta} (NULL, uses Stan default),
@@ -4475,6 +4573,12 @@ generated quantities {
 #'   (NULL), \code{max_param_count} (NULL -- set to a positive integer to stop
 #'   if approximate parameter count exceeds the threshold). Any additional entries
 #'   are forwarded via \code{...}.
+#' @param compute Named list controlling the Stan execution backend. Supported
+#'   fields are \code{backend} (\code{"cpu"} default or \code{"opencl"}),
+#'   \code{opencl_platform_id}, \code{opencl_device_id}, and
+#'   \code{allow_cpu_fallback} (\code{FALSE} by default). OpenCL changes the
+#'   compilation/sampling backend only; it does not change the statistical
+#'   model, priors, diagnostics, or downstream estimands.
 #' @param show_messages Logical. Print sampling progress. Default \code{TRUE}.
 #' @param save_full_latent_diagnostics Logical. When \code{FALSE} (default),
 #'   \code{diagnostics_detail$all_parameters} (per-parameter Rhat/ESS
@@ -4495,7 +4599,8 @@ generated quantities {
 #'   \code{middle_re_col}, \code{lower_re_col}, \code{patient_key_col},
 #'   \code{admission_key_col}, \code{pathogen_col}, \code{pathogen_fitted},
 #'   \code{residual_structure}, \code{estimand}, \code{prior_config_used},
-#'   \code{sampler_config_used}, and \code{eligibility_report}.
+#'   \code{sampler_config_used}, \code{compute_config_used}, and
+#'   \code{eligibility_report}.
 #'
 #'   \code{diagnostics} is a one-row monitored summary. The main diagnostic
 #'   fields \code{max_rhat}, \code{min_ess_bulk}, and \code{min_ess_tail}
@@ -4530,7 +4635,8 @@ fit_bayesian_multivariate_probit <- function(
   event_class_data,
   class_cols,
   fixed_effects,
-  random_effects,
+  random_effects = list(),
+  profile_group_col = NULL,
   pathogen = NULL,
   pathogen_col = "pathogen",
   event_id_col = "event_id",
@@ -4542,6 +4648,7 @@ fit_bayesian_multivariate_probit <- function(
   estimand = "observed_stewardship_event_mix",
   prior_config = list(),
   sampler_config = list(),
+  compute = list(),
   show_messages = TRUE,
   save_full_latent_diagnostics = FALSE,
   ...
@@ -4564,6 +4671,8 @@ fit_bayesian_multivariate_probit <- function(
       call. = FALSE
     )
   }
+
+  compute_cfg <- validate_compute_backend(compute)
 
   # -- Data checks ------------------------------------------------------------
   if (!is.data.frame(event_class_data) || nrow(event_class_data) == 0L) {
@@ -4594,7 +4703,7 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  # -- Validate random_effects --------------------------------------------------
+  # -- Validate random_effects and profile grouping ----------------------------
   # Accepts EITHER the legacy character vector (c("center_name", "readmission_id"))
   # or the generic list-of-blocks spec (list(list(name=, group_col=, terms=), ...));
   # see .normalize_random_effects_spec(). Arbitrarily many blocks are allowed now
@@ -4605,13 +4714,11 @@ fit_bayesian_multivariate_probit <- function(
   # prepare_random_effects() below detects nested-vs-crossed from the actual data
   # rather than assuming it, so an accidentally-non-unique group_col shows up as
   # "crossed_with_previous" rather than silently merging distinct groups.
-  if (missing(random_effects) || is.null(random_effects) || length(random_effects) == 0L) {
-    stop("`random_effects` is required (no default). Supply a character vector of grouping columns, or a list of blocks (name/group_col/terms).",
-      call. = FALSE
-    )
-  }
+  if (is.null(random_effects)) random_effects <- list()
   .re_blocks_early <- .normalize_random_effects_spec(random_effects)
-  .re_group_cols_early <- vapply(.re_blocks_early, function(b) b$group_col, character(1L))
+  .re_group_cols_early <- if (length(.re_blocks_early) > 0L) {
+    vapply(.re_blocks_early, function(b) b$group_col, character(1L))
+  } else character(0)
   miss_re <- setdiff(.re_group_cols_early, names(event_class_data))
   if (length(miss_re) > 0L) {
     stop(sprintf(
@@ -4620,7 +4727,15 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  upper_re_col <- .re_group_cols_early[1L]
+  upper_re_col <- profile_group_col %||%
+    if (length(.re_group_cols_early) > 0L) .re_group_cols_early[1L] else NULL
+  if (is.null(upper_re_col) || !is.character(upper_re_col) || length(upper_re_col) != 1L ||
+      !nzchar(upper_re_col)) {
+    stop("`profile_group_col` is required when `random_effects` is empty.", call. = FALSE)
+  }
+  if (!upper_re_col %in% names(event_class_data)) {
+    stop(sprintf("profile_group_col '%s' not found in event_class_data.", upper_re_col), call. = FALSE)
+  }
 
   # -- Validate pathogen_col and optionally filter to one pathogen -----------
   if (!pathogen_col %in% names(event_class_data)) {
@@ -4660,14 +4775,19 @@ fit_bayesian_multivariate_probit <- function(
   # -- Resolve prior_config ---------------------------------------------------
   pc <- list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0)
   for (nm in names(prior_config)) pc[[nm]] <- prior_config[[nm]]
+  # Legacy lkj_eta deliberately resolves to both controls, reproducing the
+  # historical prior exactly. Explicit controls may subsequently differ.
+  pc$lkj_eta_residual <- .null_default(pc$lkj_eta_residual, pc$lkj_eta)
+  pc$lkj_eta_random_effect <- .null_default(pc$lkj_eta_random_effect, pc$lkj_eta)
   if (!is.numeric(pc$beta_sd) || pc$beta_sd <= 0) {
     stop("`prior_config$beta_sd` must be a positive number.", call. = FALSE)
   }
   if (!is.numeric(pc$tau_sd) || pc$tau_sd <= 0) {
     stop("`prior_config$tau_sd` must be a positive number.", call. = FALSE)
   }
-  if (!is.numeric(pc$lkj_eta) || pc$lkj_eta < 1) {
-    stop("`prior_config$lkj_eta` must be >= 1.", call. = FALSE)
+  if (!is.numeric(pc$lkj_eta_residual) || pc$lkj_eta_residual < 1 ||
+      !is.numeric(pc$lkj_eta_random_effect) || pc$lkj_eta_random_effect < 1) {
+    stop("Resolved residual and random-effect LKJ eta values must be >= 1.", call. = FALSE)
   }
 
   # -- Resolve sampler_config -------------------------------------------------
@@ -4680,8 +4800,8 @@ fit_bayesian_multivariate_probit <- function(
   sc <- sc_defaults
 
   message(sprintf(
-    "[fit_bayesian_multivariate_probit] Priors: beta~N(0,%.2g) | tau~HN(0,%.2g) | LKJ(%.2g)",
-    pc$beta_sd, pc$tau_sd, pc$lkj_eta
+    "[fit_bayesian_multivariate_probit] Priors: beta~N(0,%.2g) | tau~HN(0,%.2g) | LKJ residual(%.2g) | LKJ RE(%.2g)",
+    pc$beta_sd, pc$tau_sd, pc$lkj_eta_residual, pc$lkj_eta_random_effect
   ))
 
   # -- Remove reserve drug columns --------------------------------------------
@@ -4934,9 +5054,12 @@ fit_bayesian_multivariate_probit <- function(
   sign_obs <- as.integer(2L * data_long$resistance_binary - 1L)
   obs_idx <- data_long$ev_idx + (data_long$d_idx - 1L) * N_events
 
+  re_label <- if (re_prep$R == 0L) "none (fixed-only)" else {
+    paste(sprintf("%s(%d)", re_prep$block_names, re_prep$n_levels), collapse = "+")
+  }
   message(sprintf(
     "[fit_bayesian_multivariate_probit] %d obs | %d events | D=%d | RE blocks=%s",
-    nrow(data_long), N_events, D, paste(sprintf("%s(%d)", re_prep$block_names, re_prep$n_levels), collapse = "+")
+    nrow(data_long), N_events, D, re_label
   ))
 
   # -- Build Stan data list -----------------------------------------------------
@@ -4945,20 +5068,27 @@ fit_bayesian_multivariate_probit <- function(
     N_events        = N_events,
     D               = D,
     K               = K,
-    R               = re_prep$R,
-    total_re_levels = re_prep$total_re_levels,
-    n_levels        = as.array(as.integer(re_prep$n_levels)),
-    level_start     = as.array(as.integer(re_prep$level_start)),
-    re_idx          = matrix(as.integer(re_idx_mat), nrow = N_events), # N_events x R
     X_event         = unname(X_event_mat), # N_events x K
     ev_idx          = as.integer(data_long$ev_idx),
     d_idx           = as.integer(data_long$d_idx),
     sign_obs        = as.integer(sign_obs),
     obs_idx         = as.integer(obs_idx),
-    prior_beta_sd   = as.numeric(pc$beta_sd),
-    prior_tau_sd    = as.numeric(pc$tau_sd),
-    lkj_eta         = as.numeric(pc$lkj_eta)
+    prior_beta_sd   = as.numeric(pc$beta_sd)
   )
+  if (re_prep$R > 0L) {
+    stan_data <- c(stan_data, list(
+      R               = re_prep$R,
+      total_re_levels = re_prep$total_re_levels,
+      n_levels        = as.array(as.integer(re_prep$n_levels)),
+      level_start     = as.array(as.integer(re_prep$level_start)),
+      re_idx          = matrix(as.integer(re_idx_mat), nrow = N_events),
+      prior_tau_sd    = as.numeric(pc$tau_sd),
+      lkj_eta_random_effect = as.numeric(pc$lkj_eta_random_effect)
+    ))
+  }
+  if (identical(residual_structure, "correlated")) {
+    stan_data$lkj_eta_residual <- as.numeric(pc$lkj_eta_residual)
+  }
 
   # -- Parameter-count preflight -----------------------------------------------
   n_z_free <- N_events * D
@@ -4996,17 +5126,58 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  stan_code <- if (identical(residual_structure, "correlated")) {
+  stan_code <- if (re_prep$R == 0L && identical(residual_structure, "correlated")) {
+    .amr_probit_stan_fixed_correlated()
+  } else if (re_prep$R == 0L) {
+    .amr_probit_stan_fixed_identity()
+  } else if (identical(residual_structure, "correlated")) {
     .amr_probit_stan_generic_correlated()
   } else {
     .amr_probit_stan_generic_identity()
   }
-  stan_file <- cmdstanr::write_stan_file(stan_code)
   message(sprintf(
-    "[fit_bayesian_multivariate_probit] Compiling generic %d-block Stan model...",
-    re_prep$R
+    "[fit_bayesian_multivariate_probit] Compiling %s Stan model (backend=%s)...",
+    if (re_prep$R == 0L) "fixed-only" else sprintf("generic %d-block", re_prep$R), compute_cfg$backend
   ))
-  mod <- cmdstanr::cmdstan_model(stan_file, compile = TRUE)
+  compile_result <- tryCatch(
+    .amr_compile_stan_backend(
+      stan_code = stan_code,
+      residual_structure = residual_structure,
+      compute_config = compute_cfg,
+      compile = TRUE,
+      quiet = !isTRUE(show_messages)
+    ),
+    error = function(e) {
+      if (identical(compute_cfg$backend, "opencl") && isTRUE(compute_cfg$allow_cpu_fallback)) {
+        warning(sprintf("OpenCL compile failed; retrying on CPU. Reason: %s", conditionMessage(e)),
+          call. = FALSE)
+        .amr_compile_stan_backend(
+          stan_code = stan_code,
+          residual_structure = residual_structure,
+          compute_config = utils::modifyList(compute_cfg, list(
+            backend = "cpu",
+            opencl_platform_id = NULL,
+            opencl_device_id = NULL
+          )),
+          compile = TRUE,
+          quiet = !isTRUE(show_messages)
+        )
+      } else {
+        stop(conditionMessage(e), call. = FALSE)
+      }
+    }
+  )
+  mod <- compile_result$model
+  actual_compute_cfg <- compile_result$compute_config
+  backend_fallback <- FALSE
+  backend_fallback_reason <- NULL
+  if (!identical(compute_cfg$backend, actual_compute_cfg$backend)) {
+    backend_fallback <- TRUE
+    backend_fallback_reason <- sprintf(
+      "Requested %s backend but compiled %s backend.",
+      compute_cfg$backend, actual_compute_cfg$backend
+    )
+  }
 
   # -- Build sample() call args -----------------------------------------------
   sample_args <- list(
@@ -5028,11 +5199,38 @@ fit_bayesian_multivariate_probit <- function(
     "[fit_bayesian_multivariate_probit] Sampling: %d chains x (%d warmup + %d sampling)...",
     sc$chains, sc$iter_warmup, sc$iter_sampling
   ))
-  fit <- do.call(mod$sample, sample_args)
+  fit <- tryCatch(
+    .amr_sample_with_backend(mod, sample_args, actual_compute_cfg),
+    error = function(e) {
+      if (identical(actual_compute_cfg$backend, "opencl") && isTRUE(actual_compute_cfg$allow_cpu_fallback)) {
+        warning(sprintf("OpenCL sampling failed; retrying on CPU. Reason: %s", conditionMessage(e)),
+          call. = FALSE)
+        backend_fallback <<- TRUE
+        backend_fallback_reason <<- sprintf("OpenCL sampling failed: %s", conditionMessage(e))
+        actual_compute_cfg <<- utils::modifyList(actual_compute_cfg, list(
+          backend = "cpu",
+          opencl_platform_id = NULL,
+          opencl_device_id = NULL
+        ))
+        cpu_compile <- .amr_compile_stan_backend(
+          stan_code = stan_code,
+          residual_structure = residual_structure,
+          compute_config = actual_compute_cfg,
+          compile = TRUE,
+          quiet = !isTRUE(show_messages)
+        )
+        mod <<- cpu_compile$model
+        actual_compute_cfg <<- cpu_compile$compute_config
+        .amr_sample_with_backend(mod, sample_args, actual_compute_cfg)
+      } else {
+        stop(conditionMessage(e), call. = FALSE)
+      }
+    }
+  )
 
   # -- Extract draws (exclude z_free; it is large and not needed downstream) --
   keep_vars <- c(
-    "beta", "re_effect", "tau_re", "R_block",
+    "beta", if (re_prep$R > 0L) c("re_effect", "tau_re", "R_block"),
     if (residual_structure == "correlated") c("L_Omega", "Omega"),
     "lp__"
   )
@@ -5413,7 +5611,7 @@ fit_bayesian_multivariate_probit <- function(
     index_maps = list(
       class_levels      = class_levels,
       # backward-compatible alias: first declared block's level set
-      upper_levels      = re_prep$level_maps[[1L]]
+      upper_levels      = if (re_prep$R > 0L) re_prep$level_maps[[1L]] else NULL
     ),
     X_event = X_event_mat,
     # Generic random-effect representation (Stage 1): the self-contained
@@ -5429,12 +5627,28 @@ fit_bayesian_multivariate_probit <- function(
     event_metadata = tibble::as_tibble(event_data),
     n_re_levels = re_prep$R,
     upper_re_col = upper_re_col,
+    profile_group_col = upper_re_col,
     pathogen_col = pathogen_col,
     pathogen_fitted = pathogen_fitted,
     residual_structure = residual_structure,
     estimand = estimand,
     prior_config_used = pc,
+    panel_eligibility_used = pe,
     sampler_config_used = sc,
+    compute_config_used = list(
+      requested_backend = compute_cfg$backend,
+      actual_backend = actual_compute_cfg$backend,
+      stan_opencl_enabled = identical(actual_compute_cfg$backend, "opencl"),
+      opencl_platform_id = actual_compute_cfg$opencl_platform_id,
+      opencl_device_id = actual_compute_cfg$opencl_device_id,
+      allow_cpu_fallback = compute_cfg$allow_cpu_fallback,
+      backend_fallback = backend_fallback,
+      backend_fallback_reason = backend_fallback_reason,
+      cmdstan_version = tryCatch(as.character(cmdstanr::cmdstan_version()), error = function(e) NA_character_),
+      cmdstanr_version = tryCatch(as.character(utils::packageVersion("cmdstanr")), error = function(e) NA_character_),
+      compile_cache_key = compile_result$cache_key,
+      compiled_basename = compile_result$basename
+    ),
     eligibility_report = list(
       marginal  = eligibility_report,
       pairwise  = co_test_report
@@ -5668,6 +5882,10 @@ fit_bayesian_multivariate_probit <- function(
 #' @param n_gibbs_burnin,n_gibbs_kept Integer. Only used when
 #'   \code{fitted_model$residual_structure == "correlated"} -- see
 #'   \code{.gibbs_conditional_profile_probs()}. Defaults \code{10L}/\code{20L}.
+#' @param posterior_draw_indices Optional unique indices into the fitted
+#'   posterior draws. When supplied, these replace random draw subsampling.
+#' @param event_indices Optional canonical event indices to include. When
+#'   supplied, only observed events with these indices are processed.
 #'
 #' @return Named list: \code{event_profiles} (event-level posterior mean
 #'   observed-plus-imputed profile probabilities, with
@@ -5689,7 +5907,9 @@ compute_event_profile_probabilities <- function(
   ),
   seed = 123L,
   n_gibbs_burnin = 10L,
-  n_gibbs_kept = 20L
+  n_gibbs_kept = 20L,
+  posterior_draw_indices = NULL,
+  event_indices = NULL
 ) {
   if (!requireNamespace("posterior", quietly = TRUE)) {
     stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
@@ -5718,8 +5938,16 @@ compute_event_profile_probabilities <- function(
   # -- Thin draws to n_posterior_draws_for_profiles ---------------------------
   draws_mat <- posterior::as_draws_matrix(draws)
   n_total <- nrow(draws_mat)
-  S <- min(as.integer(n_posterior_draws_for_profiles), n_total)
-  draw_idx <- if (S < n_total) sort(sample.int(n_total, S)) else seq_len(n_total)
+  if (is.null(posterior_draw_indices)) {
+    S <- min(as.integer(n_posterior_draws_for_profiles), n_total)
+    draw_idx <- if (S < n_total) sort(sample.int(n_total, S)) else seq_len(n_total)
+  } else {
+    draw_idx <- as.integer(posterior_draw_indices)
+    if (length(draw_idx) < 1L || anyNA(draw_idx) || any(draw_idx < 1L | draw_idx > n_total) || anyDuplicated(draw_idx)) {
+      stop("`posterior_draw_indices` must be unique valid indices into fitted_model$draws.", call. = FALSE)
+    }
+    S <- length(draw_idx)
+  }
   draws_mat <- draws_mat[draw_idx, , drop = FALSE]
 
   # -- Helper: extract [S, d1, d2] array from draws ---------------------------
@@ -5732,7 +5960,9 @@ compute_event_profile_probabilities <- function(
   }
 
   beta_arr <- .arr("beta", K, D) # S x K x D
-  re_eff_arr <- .arr("re_effect", D, re_prep$total_re_levels) # S x D x total_re_levels
+  re_eff_arr <- if (re_prep$R > 0L) {
+    .arr("re_effect", D, re_prep$total_re_levels)
+  } else NULL
   L_omega_arr <- if (residual_structure == "correlated") {
     .arr("L_Omega", D, D)
   } # S x D x D (lower triangular)
@@ -5747,6 +5977,13 @@ compute_event_profile_probabilities <- function(
   # Use event_meta to identify which events appear in data_long (have observations)
   has_obs <- event_meta$.event_idx %in% fitted_model$data_long$ev_idx
   event_meta_obs <- event_meta[has_obs, , drop = FALSE]
+  if (!is.null(event_indices)) {
+    event_indices <- as.integer(event_indices)
+    event_meta_obs <- event_meta_obs[event_meta_obs$.event_idx %in% event_indices, , drop = FALSE]
+    if (nrow(event_meta_obs) == 0L) {
+      stop("`event_indices` selects no events with observed AST data.", call. = FALSE)
+    }
+  }
   N_ev <- nrow(event_meta_obs)
 
   # Event-level design matrix and RE indices (from stored event_re_idx, the
@@ -5879,12 +6116,13 @@ compute_event_profile_probabilities <- function(
   # -- Main draw loop: mu_all computed once per draw, shared across hp-keys ---
   for (s in seq_len(S)) {
     beta_s <- matrix(beta_arr[s, , ], nrow = K, ncol = D)
-    re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
-
-    # Generic random-effect contribution: sums over an arbitrary number of
-    # declared blocks via one shared helper (re_contribution()), rather than
-    # hand-summing hospital_effect/patient_effect/admission_effect.
-    mu_all <- (X_event %*% beta_s) + re_contribution(re_eff_s, flat_re_idx_obs) # N_ev x D
+    re_term <- if (re_prep$R > 0L) {
+      re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
+      re_contribution(re_eff_s, flat_re_idx_obs)
+    } else {
+      matrix(0, nrow = N_ev, ncol = D)
+    }
+    mu_all <- (X_event %*% beta_s) + re_term # N_ev x D
 
     Omega_s_full <- if (identical(residual_structure, "correlated")) {
       tcrossprod(matrix(L_omega_arr[s, , ], nrow = D, ncol = D))
@@ -6019,6 +6257,197 @@ compute_event_profile_probabilities <- function(
     event_profiles  = dplyr::bind_rows(event_profile_rows),
     aggregate_draws = dplyr::bind_rows(aggregate_draw_rows)
   )
+}
+
+#' Assess Numerical Stability of Correlated Profile Completion
+#'
+#' Repeats the existing conditional truncated-MVN Gibbs profile completion for
+#' fixed posterior draws and a fixed, reproducibly selected subset of incomplete
+#' events.  It does not refit Stan or alter the fitted model.  The comparison
+#' therefore isolates finite Gibbs-chain length.  The conditional completion
+#' algorithm is the correct profile-completion algorithm; this diagnostic checks
+#' whether its finite Monte Carlo run length is adequate for a particular fit,
+#' especially when posterior residual correlations are high.
+#'
+#' The default 0.01/0.02 thresholds are numerical-stability conventions for
+#' this diagnostic, not universal statistical thresholds.
+#'
+#' @param fitted_model Object returned by [fit_bayesian_multivariate_probit()].
+#' @param schedules Named list of `list(burnin=, kept=)` schedules.  It must
+#'   contain `baseline`, `medium`, and `long`.
+#' @param n_posterior_draws Number of fixed posterior draws to use.
+#' @param max_events Maximum number of incomplete events to assess.
+#' @param seed Seed used once to select draws/events and then reset before each
+#'   schedule.  Thus schedules share posterior draws, events, and RNG streams.
+#' @param tolerance Maximum aggregate difference for status `"pass"`; twice
+#'   this value is the `"warning"` upper bound.
+#' @param event_selection Currently `"stratified"` or `"all"`.
+#' @return A structured list with summary, event/aggregate comparisons, selected
+#'   events, schedules, posterior draw indices, and a separate stability status.
+#' @export
+assess_gibbs_profile_stability <- function(
+  fitted_model,
+  schedules = list(
+    baseline = list(burnin = 30L, kept = 50L),
+    medium = list(burnin = 60L, kept = 100L),
+    long = list(burnin = 100L, kept = 250L)
+  ),
+  n_posterior_draws = 200L,
+  max_events = 250L,
+  seed = 123L,
+  tolerance = 0.01,
+  event_selection = c("stratified", "all")
+) {
+  event_selection <- match.arg(event_selection)
+  required <- c("baseline", "medium", "long")
+  if (!all(required %in% names(schedules))) {
+    stop("`schedules` must contain named baseline, medium, and long schedules.", call. = FALSE)
+  }
+  schedules <- schedules[required]
+  for (nm in required) {
+    x <- schedules[[nm]]
+    if (!is.list(x) || !all(c("burnin", "kept") %in% names(x)) ||
+        length(x$burnin) != 1L || length(x$kept) != 1L ||
+        is.na(x$burnin) || is.na(x$kept) || x$burnin < 0 || x$kept < 1) {
+      stop(sprintf("Schedule `%s` must supply non-negative `burnin` and positive `kept`.", nm), call. = FALSE)
+    }
+    schedules[[nm]] <- list(burnin = as.integer(x$burnin), kept = as.integer(x$kept))
+  }
+  if (!is.numeric(tolerance) || length(tolerance) != 1L || is.na(tolerance) || tolerance <= 0) {
+    stop("`tolerance` must be one positive number.", call. = FALSE)
+  }
+
+  residual_structure <- .null_default(fitted_model$residual_structure, "identity")
+  empty <- tibble::tibble()
+  schedule_summary <- tibble::tibble(
+    residual_structure = residual_structure,
+    n_selected_events = 0L,
+    n_posterior_draws = 0L,
+    baseline_burnin = schedules$baseline$burnin, baseline_kept = schedules$baseline$kept,
+    medium_burnin = schedules$medium$burnin, medium_kept = schedules$medium$kept,
+    long_burnin = schedules$long$burnin, long_kept = schedules$long$kept,
+    max_abs_aggregate_difference_baseline_long = NA_real_,
+    mean_abs_aggregate_difference_baseline_long = NA_real_,
+    max_abs_aggregate_difference_medium_long = NA_real_,
+    mean_abs_aggregate_difference_medium_long = NA_real_,
+    p95_event_max_abs_diff_baseline_long = NA_real_,
+    max_event_max_abs_diff_baseline_long = NA_real_,
+    gibbs_stability_status = "not_applicable"
+  )
+  if (!identical(residual_structure, "correlated")) {
+    return(list(summary = schedule_summary, event_comparison = empty,
+      aggregate_comparison = empty, selected_events = empty,
+      schedules_used = schedules, posterior_draw_indices = integer(), seed = as.integer(seed),
+      tolerance = tolerance, status = "not_applicable",
+      rng_scheme = "Not applicable: identity-residual completion is analytic."))
+  }
+
+  event_meta <- fitted_model$event_metadata
+  class_cols <- fitted_model$class_cols
+  has_obs <- event_meta$.event_idx %in% fitted_model$data_long$ev_idx
+  candidate <- event_meta[has_obs, , drop = FALSE]
+  n_missing <- rowSums(is.na(candidate[, class_cols, drop = FALSE]))
+  candidate <- candidate[n_missing > 0L, , drop = FALSE]
+  n_missing <- n_missing[n_missing > 0L]
+  if (!nrow(candidate)) {
+    return(list(summary = schedule_summary, event_comparison = empty,
+      aggregate_comparison = empty, selected_events = empty,
+      schedules_used = schedules, posterior_draw_indices = integer(), seed = as.integer(seed),
+      tolerance = tolerance, status = "not_applicable",
+      rng_scheme = "Not applicable: no incomplete observed events."))
+  }
+  observed_n <- rowSums(!is.na(candidate[, class_cols, drop = FALSE]))
+  observed_r <- rowSums(candidate[, class_cols, drop = FALSE] == 1, na.rm = TRUE)
+  pattern <- ifelse(observed_n == 0L, "no_observed_class",
+    ifelse(observed_r / observed_n > 0.5, "mostly_R",
+      ifelse(observed_r / observed_n < 0.5, "mostly_S", "mixed_RS")))
+  selected <- tibble::as_tibble(candidate) %>%
+    dplyr::mutate(n_classes_missing = n_missing,
+      missingness_stratum = ifelse(.data$n_classes_missing == 1L, "missing_1", "missing_2_plus"),
+      observed_pattern_stratum = pattern)
+  if (event_selection == "stratified" && nrow(selected) > max_events) {
+    grp_cols <- c(fitted_model$upper_re_col, "missingness_stratum", "observed_pattern_stratum")
+    key <- do.call(paste, c(selected[grp_cols], sep = "||"))
+    groups <- split(seq_len(nrow(selected)), key)
+    set.seed(as.integer(seed))
+    quota <- max(1L, floor(max_events / length(groups)))
+    take <- unlist(lapply(groups, function(ii) sample(ii, min(length(ii), quota))), use.names = FALSE)
+    if (length(take) < max_events) {
+      rest <- setdiff(seq_len(nrow(selected)), take)
+      take <- c(take, sample(rest, min(length(rest), max_events - length(take))))
+    }
+    selected <- selected[sort(take), , drop = FALSE]
+  } else if (nrow(selected) > max_events) {
+    set.seed(as.integer(seed)); selected <- selected[sort(sample.int(nrow(selected), max_events)), , drop = FALSE]
+  }
+  selected_events <- selected %>% dplyr::transmute(event_idx = .data$.event_idx,
+    n_classes_missing = .data$n_classes_missing,
+    missingness_stratum = .data$missingness_stratum,
+    observed_pattern_stratum = .data$observed_pattern_stratum,
+    !!fitted_model$upper_re_col := .data[[fitted_model$upper_re_col]],
+    !!fitted_model$pathogen_col := .data[[fitted_model$pathogen_col]])
+
+  if (!requireNamespace("posterior", quietly = TRUE)) {
+    stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
+  }
+  total_draws <- nrow(posterior::as_draws_matrix(fitted_model$draws))
+  set.seed(as.integer(seed) + 1L)
+  n_use <- min(as.integer(n_posterior_draws), total_draws)
+  draw_idx <- if (n_use < total_draws) sort(sample.int(total_draws, n_use)) else seq_len(total_draws)
+
+  # Resetting to the same seed makes each schedule consume the same initial RNG
+  # stream.  Together with explicit `draw_idx`/event IDs this is common-random-
+  # number comparison; only burn-in/retained Gibbs iterations differ.
+  outputs <- lapply(names(schedules), function(nm) {
+    set.seed(as.integer(seed) + 2L)
+    compute_event_profile_probabilities(fitted_model,
+      seed = as.integer(seed) + 2L, n_gibbs_burnin = schedules[[nm]]$burnin,
+      n_gibbs_kept = schedules[[nm]]$kept, posterior_draw_indices = draw_idx,
+      event_indices = selected_events$event_idx)
+  })
+  names(outputs) <- names(schedules)
+  compare <- function(a, b, label) {
+    ae <- outputs[[a]]$event_profiles %>%
+      dplyr::select(event_idx, profile_class_set, profile_delta, p_a = profile_probability) %>%
+      dplyr::inner_join(outputs[[b]]$event_profiles %>%
+        dplyr::select(event_idx, profile_class_set, profile_delta, p_b = profile_probability),
+        by = c("event_idx", "profile_class_set", "profile_delta")) %>%
+      dplyr::group_by(.data$event_idx, .data$profile_class_set) %>%
+      dplyr::summarise(comparison = label, max_abs_diff = max(abs(.data$p_a - .data$p_b)),
+        mean_abs_diff = mean(abs(.data$p_a - .data$p_b)), l1_distance = sum(abs(.data$p_a - .data$p_b)),
+        .groups = "drop")
+    aa <- outputs[[a]]$aggregate_draws %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(c(fitted_model$upper_re_col, fitted_model$pathogen_col,
+        "profile_class_set", "profile_delta")))) %>%
+      dplyr::summarise(p_a = mean(.data$R_ALL_s), .groups = "drop") %>%
+      dplyr::inner_join(outputs[[b]]$aggregate_draws %>%
+        dplyr::group_by(dplyr::across(dplyr::all_of(c(fitted_model$upper_re_col, fitted_model$pathogen_col,
+          "profile_class_set", "profile_delta")))) %>%
+        dplyr::summarise(p_b = mean(.data$R_ALL_s), .groups = "drop"),
+        by = c(fitted_model$upper_re_col, fitted_model$pathogen_col, "profile_class_set", "profile_delta")) %>%
+      dplyr::transmute(dplyr::across(dplyr::all_of(c(fitted_model$upper_re_col, fitted_model$pathogen_col,
+        "profile_class_set", "profile_delta"))), comparison = label, abs_diff = abs(.data$p_a - .data$p_b))
+    list(event = ae, aggregate = aa)
+  }
+  bl <- compare("baseline", "long", "baseline_vs_long")
+  ml <- compare("medium", "long", "medium_vs_long")
+  event_comparison <- dplyr::bind_rows(bl$event, ml$event)
+  aggregate_comparison <- dplyr::bind_rows(bl$aggregate, ml$aggregate)
+  max_agg <- max(bl$aggregate$abs_diff, na.rm = TRUE)
+  status <- if (max_agg <= tolerance) "pass" else if (max_agg <= 2 * tolerance) "warning" else "fail"
+  summary <- schedule_summary %>% dplyr::mutate(
+    n_selected_events = nrow(selected_events), n_posterior_draws = length(draw_idx),
+    max_abs_aggregate_difference_baseline_long = max_agg,
+    mean_abs_aggregate_difference_baseline_long = mean(bl$aggregate$abs_diff),
+    max_abs_aggregate_difference_medium_long = max(ml$aggregate$abs_diff, na.rm = TRUE),
+    mean_abs_aggregate_difference_medium_long = mean(ml$aggregate$abs_diff),
+    p95_event_max_abs_diff_baseline_long = stats::quantile(bl$event$max_abs_diff, 0.95, names = FALSE),
+    max_event_max_abs_diff_baseline_long = max(bl$event$max_abs_diff), gibbs_stability_status = status)
+  list(summary = summary, event_comparison = event_comparison,
+    aggregate_comparison = aggregate_comparison, selected_events = selected_events,
+    schedules_used = schedules, posterior_draw_indices = draw_idx, seed = as.integer(seed),
+    tolerance = tolerance, status = status,
+    rng_scheme = "Shared explicit posterior draw indices/event IDs; RNG reset to seed + 2 before each schedule.")
 }
 
 #' Aggregate Posterior Profile Draws into R_ALL / R_KNOWN_OUTCOME / R_NF Summaries
@@ -6291,8 +6720,11 @@ aggregate_profiles_for_daly <- function(
 #' @param panel_map Named list or \code{NULL}. Pathway 1 only.
 #' @param class_cols Character vector. Pathway 2 only. Required.
 #' @param fixed_effects Character vector. Pathway 2 only. Required.
-#' @param random_effects Character vector (1-3 elements). Pathway 2 only.
-#'   Required. Elements: hospital; [+patient]; [+admission].
+#' @param random_effects Character vector or named list of random-intercept
+#'   blocks. Pathway 2 only. Use \code{list()} for a fixed-effects-only model.
+#' @param profile_group_col Character scalar or \code{NULL}. Pathway 2 only.
+#'   Grouping column for profile aggregation and validation. Required when
+#'   \code{random_effects} is empty.
 #' @param pathogen Character or \code{NULL}. Pathway 2 only. When supplied,
 #'   filters data to a single pathogen before fitting.
 #' @param pathogen_col Character. Default \code{"pathogen"}.
@@ -6326,7 +6758,8 @@ estimate_resistance_profiles <- function(
   # Pathway 2 -- required with no defaults
   class_cols = NULL,
   fixed_effects = NULL,
-  random_effects = NULL,
+  random_effects = list(),
+  profile_group_col = NULL,
   pathogen = NULL,
   pathogen_col = "pathogen",
   eligible_pairs = NULL,
@@ -6350,6 +6783,8 @@ estimate_resistance_profiles <- function(
     pathogen_col                   = pathogen_col,
     pathogen                       = pathogen,
     residual_structure             = residual_structure,
+    random_effects                 = random_effects,
+    profile_group_col              = profile_group_col,
     estimand                       = estimand,
     n_posterior_draws_for_profiles = n_posterior_draws_for_profiles,
     prior_config                   = prior_config,
@@ -6399,15 +6834,13 @@ estimate_resistance_profiles <- function(
   if (is.null(fixed_effects)) {
     stop("`fixed_effects` is required for method = 'bayesian'.", call. = FALSE)
   }
-  if (is.null(random_effects)) {
-    stop("`random_effects` is required for method = 'bayesian'.", call. = FALSE)
-  }
 
   fitted_mod <- fit_bayesian_multivariate_probit(
     event_class_data   = data,
     class_cols         = class_cols,
     fixed_effects      = fixed_effects,
     random_effects     = random_effects,
+    profile_group_col  = profile_group_col,
     pathogen           = pathogen,
     pathogen_col       = pathogen_col,
     eligible_pairs     = eligible_pairs,
