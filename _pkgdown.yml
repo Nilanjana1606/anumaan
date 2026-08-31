@@ -235,23 +235,37 @@ reference:
   desc: >
     Bayesian hierarchical multivariate probit model for estimating resistance-profile
     distributions from facility-level AST data. Fits a Stan model (via cmdstanr)
-    with an arbitrary, user-declared number of named random-intercept blocks
+    with zero or an arbitrary, user-declared number of named random-intercept blocks
     (see \code{prepare_random_effects()} -- e.g. hospital, patient, admission,
     or any other grouping the analysis layer declares; the package does not
     hardcode which blocks are scientifically appropriate for a given dataset).
+    Use \code{random_effects = list()} for a fixed-effects-only model and
+    supply \code{profile_group_col} when profiles are to be grouped.
     Two residual structures are supported: identity (default, no residual
     correlation) and correlated (full LKJ-Cholesky residual covariance).
+    CPU and OpenCL backends are both supported as execution choices; backend
+    selection changes compilation/sampling only, not the underlying model.
     Run once per pathogen; orchestrate across pathogens in the analysis repository.
     Use \code{estimate_resistance_profiles(method = "bayesian")} as the top-level
     entry point.
   contents:
   - fit_bayesian_multivariate_probit
+  - validate_compute_backend
   - prepare_random_effects
   - re_contribution
   - compute_event_profile_probabilities
+  - assess_gibbs_profile_stability
   - aggregate_profiles_for_daly
   - summarize_fit_correlation_matrix
   - plot_probit_diagnostics
+  - plot_omega_correlation_heatmap
+  - plot_omega_convergence_heatmap
+  - plot_omega_summary_table
+  - plot_omega_degeneracy_diagnostic
+  - plot_probit_fixed_effect_diagnostics
+  - plot_probit_beta_family_diagnostics
+  - plot_probit_worst_parameters
+  - plot_probit_worst_offender_diagnostics
 
 - title: "Pathway 2: Model Validation"
   desc: >
@@ -260,7 +274,10 @@ reference:
     estimation above ("does the fitted model reproduce the resistance
     patterns actually observed?" rather than "what is the observed-plus-
     imputed resistance profile?"). Kept as a distinct status
-    (\code{profile_validation_status}) from sampler diagnostics.
+    (\code{profile_validation_status}) from sampler diagnostics. Gibbs
+    profile-completion stability is a separate numerical status
+    (\code{gibbs_stability_status}) assessed with
+    \code{assess_gibbs_profile_stability()}.
   contents:
   - validate_marginal_calibration
   - validate_pairwise_calibration
@@ -282,7 +299,8 @@ reference:
     \code{diagnostic_status} and \code{profile_validation_status} -- never
     merged into one generic status anywhere in this package. Mixed predictive
     checking (new random-effect levels, retaining fitted hyperparameters) is
-    implemented for a single random-effect block at a time.
+    available only when fitted random-effect blocks exist; fixed-only models
+    use posterior predictive checking instead.
   contents:
   - simulate_probit_posterior_predictive
   - compute_probit_ppc_statistics
@@ -346,6 +364,10 @@ reference:
   desc: "Generic AMR plotting utilities"
   contents:
   - eda_theme
+  - class_display_label
+  - class_short_label
+  - class_pair_label
+  - hospital_display_label
 
 - title: "Validation and reporting"
   desc: "Data quality checks and reports"

@@ -15,7 +15,8 @@
 .ppc_build_test_fit <- function(X_event, re_data, random_effects, class_cols,
                                  beta_states, re_effect_states,
                                  L_omega_states = NULL,
-                                 obs_ast, residual_structure = "identity") {
+                                 obs_ast, residual_structure = "identity",
+                                 profile_group_col = NULL) {
   S <- length(beta_states)
   K <- ncol(X_event)
   D <- length(class_cols)
@@ -49,7 +50,8 @@
     draws = draws,
     class_cols = class_cols,
     event_metadata = event_meta,
-    upper_re_col = re_prep$group_cols[1],
+    upper_re_col = profile_group_col %||% re_prep$group_cols[1],
+    profile_group_col = profile_group_col %||% re_prep$group_cols[1],
     pathogen_col = "pathogen",
     random_effects_prep = re_prep,
     residual_structure = residual_structure,
@@ -57,7 +59,8 @@
     X_event = X_event,
     event_re_idx = re_prep$flat_group_index,
     data_long = data.frame(ev_idx = seq_len(N_ev)),
-    eligibility_report = NULL
+    eligibility_report = NULL,
+    prior_config_used = list(beta_sd = 1.5, tau_sd = 1, lkj_eta = 2)
   )
 }
 
@@ -220,6 +223,27 @@ test_that("reconstructed mu correctly sums RE contributions for 1, 2, 3, and 4 a
   }
 })
 
+test_that("fixed-only posterior and identity prior predictive use eta = X beta", {
+  re_data <- data.frame(profile_group = c("H1", "H1", "H2"))
+  X_event <- cbind(1, c(-1, 0, 1))
+  beta_state <- matrix(c(0.2, -0.1, 0.3, 0.4), nrow = 2, ncol = 2)
+  obs_ast <- matrix(c(1, 0, NA, 0, 1, 1), nrow = 3, ncol = 2)
+  fit <- .ppc_build_test_fit(
+    X_event, re_data, list(), c("classA", "classB"),
+    beta_states = list(beta_state), re_effect_states = list(), obs_ast = obs_ast,
+    profile_group_col = "profile_group"
+  )
+
+  setup <- anumaan:::.probit_predictive_draws_setup(fit, n_states = 1L, seed = 1L)
+  expect_equal(setup$mu_all_for_draw(1L), X_event %*% beta_state)
+
+  prior <- simulate_probit_prior_predictive(fit, n_states = 2L, seed = 1L)
+  expect_identical(prior$setup$R, 0L)
+  expect_true(all(vapply(seq_len(2L), function(s) {
+    all(dim(prior$generate_state(s)$mu) == c(3L, 2L))
+  }, logical(1L))))
+})
+
 # ---------------------------------------------------------------------------
 # Part 18F: reproducibility
 # ---------------------------------------------------------------------------
@@ -272,6 +296,16 @@ test_that("neither generic Stan model variant emits a full y_rep generated quant
   correlated_code <- anumaan:::.amr_probit_stan_generic_correlated()
   expect_false(grepl("y_rep", identity_code, fixed = TRUE))
   expect_false(grepl("y_rep", correlated_code, fixed = TRUE))
+})
+
+test_that("fixed-only Stan variants omit random-effect parameters", {
+  identity_code <- anumaan:::.amr_probit_stan_fixed_identity()
+  correlated_code <- anumaan:::.amr_probit_stan_fixed_correlated()
+  for (code in list(identity_code, correlated_code)) {
+    expect_false(grepl("z_re|tau_re|L_corr_re|re_effect|R_block", code))
+  }
+  expect_false(grepl("L_Omega", identity_code, fixed = TRUE))
+  expect_true(grepl("L_Omega", correlated_code, fixed = TRUE))
 })
 
 # ---------------------------------------------------------------------------

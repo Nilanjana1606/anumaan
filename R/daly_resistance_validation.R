@@ -60,7 +60,7 @@
     array(draws_mat[, cols, drop = FALSE], dim = c(S, d1, d2))
   }
   beta_arr <- .arr("beta", K, D)
-  re_eff_arr <- .arr("re_effect", D, re_prep$total_re_levels)
+  re_eff_arr <- if (re_prep$R > 0L) .arr("re_effect", D, re_prep$total_re_levels) else NULL
   residual_structure <- .null_default(fitted_model$residual_structure, "identity")
   L_omega_arr <- if (identical(residual_structure, "correlated")) .arr("L_Omega", D, D) else NULL
   # Omega is a single global correlation matrix (LKJ prior on L_Omega), the
@@ -72,6 +72,17 @@
       Om <- tcrossprod(matrix(L_omega_arr[s, , ], nrow = D, ncol = D))
       (Om + t(Om)) / 2 + diag(1e-9, D)
     }
+  } else {
+    NULL
+  }
+  # Stan's own posterior draw of the Cholesky factor of Omega (the SAME
+  # parameterisation .ppc_generate_correlated() uses for posterior predictive
+  # simulation) -- exposed directly so correlated-residual validators can
+  # simulate Z ~ MVN(mu, Omega) via Z = mu + L_Omega %*% eps without
+  # re-deriving a Cholesky factor from Omega_for_draw()'s reconstructed
+  # correlation matrix.
+  L_Omega_for_draw <- if (identical(residual_structure, "correlated")) {
+    function(s) matrix(L_omega_arr[s, , ], nrow = D, ncol = D)
   } else {
     NULL
   }
@@ -91,8 +102,11 @@
   # declared blocks via the shared re_contribution() helper.
   mu_all_for_draw <- function(s) {
     beta_s <- matrix(beta_arr[s, , ], nrow = K, ncol = D)
-    re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
-    (X_event %*% beta_s) + re_contribution(re_eff_s, flat_re_idx_obs)
+    re_term <- if (re_prep$R > 0L) {
+      re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
+      re_contribution(re_eff_s, flat_re_idx_obs)
+    } else matrix(0, nrow = N_ev, ncol = D)
+    (X_event %*% beta_s) + re_term
   }
 
   list(
@@ -101,7 +115,8 @@
     upper_re_col = upper_re_col, pathogen_col = pathogen_col,
     residual_structure = residual_structure,
     mu_all_for_draw = mu_all_for_draw,
-    Omega_for_draw = Omega_for_draw
+    Omega_for_draw = Omega_for_draw,
+    L_Omega_for_draw = L_Omega_for_draw
   )
 }
 
@@ -476,9 +491,11 @@ validate_pairwise_calibration <- function(
 #' \code{min_complete_events} events that have \strong{every} panel class
 #' actually observed (no imputation involved), compares the empirical
 #' complete-profile frequency distribution against the model-implied profile
-#' probability distribution for that same event cohort (product of per-class
-#' \eqn{\Phi(\mu_{ed})}, as if the classes had not been observed -- i.e. the
-#' model's unconditional prediction, deliberately NOT using
+#' probability distribution for that same event cohort.  With identity residuals
+#' it uses the analytic product of per-class \eqn{\Phi(\mu_{ed})}; with
+#' correlated residuals it uses correlated MVN simulation with \eqn{L_\Omega},
+#' as if the classes had not been observed -- i.e. the model's unconditional
+#' prediction, deliberately NOT using
 #' \code{compute_event_profile_probabilities()}'s observed-cell-preserving
 #' logic, since the point here is to check whether the model's predictions
 #' agree with what was actually measured). Panels without enough complete
@@ -494,13 +511,26 @@ validate_pairwise_calibration <- function(
 #'   \code{model_frequency_mean/lower/upper}, \code{absolute_error},
 #'   \code{interval_contains_observed}) and one row per skipped panel
 #'   (\code{status} starts with \code{"skipped_"}, numeric columns \code{NA}).
+#' @param n_mc_profile_replicates Integer. Correlated residual structure only:
+#'   inner Monte Carlo replicate count \code{M} used per posterior draw per
+#'   complete event to estimate model-implied full-profile probabilities via
+#'   \eqn{Z = \mu + L_\Omega \epsilon}, \eqn{Y = I(Z > 0)} (the same simulation
+#'   mechanism \code{.ppc_generate_correlated()} uses). Worst-case Monte Carlo
+#'   SE on a cohort of \code{n} complete events is approximately
+#'   \eqn{0.5/\sqrt{Mn}}; the default \code{200} keeps that under ~0.7pp even
+#'   at the \code{min_complete_events} floor of 30, while remaining far
+#'   cheaper than reusing \code{n_posterior_draws_for_validation} (e.g. 2000)
+#'   as the inner replicate count would be. Ignored for identity residual
+#'   structure, where profile probabilities are computed exactly (the
+#'   independent product of \eqn{\Phi(\mu_d)} terms), not simulated.
 #' @export
 validate_complete_profile_calibration <- function(
   fitted_model,
   n_posterior_draws_for_validation = 2000L,
   seed = 123L,
   ci_level = 0.95,
-  min_complete_events = 30L
+  min_complete_events = 30L,
+  n_mc_profile_replicates = 200L
 ) {
   setup <- .probit_validation_draws_setup(fitted_model, n_posterior_draws_for_validation, seed)
   upper_re_col <- setup$upper_re_col
@@ -580,28 +610,89 @@ validate_complete_profile_calibration <- function(
   }
   emp_tbl <- dplyr::bind_rows(emp_rows)
 
+  is_correlated <- identical(setup$residual_structure, "correlated")
+  M <- as.integer(n_mc_profile_replicates)
+
   draw_rows <- vector("list", S)
   for (s in seq_len(S)) {
-    p_all <- stats::pnorm(setup$mu_all_for_draw(s))
+    mu_all <- setup$mu_all_for_draw(s)
     per_key <- list()
-    for (key in names(eligible_info)) {
-      ci <- eligible_info[[key]]
-      p_sub <- p_all[ci$ev_idx, ci$d_idx, drop = FALSE]
-      enum_df <- enumerate_binary_profiles(ci$classes)
-      profile_bin <- as.matrix(enum_df[, ci$classes, drop = FALSE])
-      n_profiles <- nrow(profile_bin)
-      prob_mat <- matrix(1, nrow(p_sub), n_profiles)
-      for (d in seq_len(ncol(p_sub))) {
-        col_is1 <- profile_bin[, d] == 1L
-        f_d <- matrix(NA_real_, nrow(p_sub), n_profiles)
-        if (any(col_is1)) f_d[, col_is1] <- p_sub[, d]
-        if (any(!col_is1)) f_d[, !col_is1] <- 1 - p_sub[, d]
-        prob_mat <- prob_mat * f_d
+
+    if (is_correlated) {
+      # Correlated residual: profile probabilities are a multivariate-normal
+      # orthant probability, NOT the independent product of Phi(mu_d) used
+      # below for identity -- P(Y_1=1,...,Y_D=1) != prod_d Phi(mu_d) once
+      # Omega has off-diagonal correlation. Estimated here via the SAME
+      # simulation mechanism .ppc_generate_correlated() already uses and
+      # validates: Z = mu + L_Omega %*% eps, Y = I(Z > 0), using Stan's own
+      # posterior draw of L_Omega. M inner Monte Carlo replicates per event
+      # integrate out simulation noise WITHIN this posterior draw s; s itself
+      # still indexes posterior parameter uncertainty, summarised below
+      # exactly as before -- s and m are never pooled together.
+      Omega_s <- setup$Omega_for_draw(s)
+      for (key in names(eligible_info)) {
+        ci <- eligible_info[[key]]
+        mu_sub <- mu_all[ci$ev_idx, ci$d_idx, drop = FALSE]
+        n_ev <- nrow(mu_sub)
+        D_panel <- ncol(mu_sub)
+        Omega_sub <- Omega_s[ci$d_idx, ci$d_idx, drop = FALSE]
+        Omega_sub <- (Omega_sub + t(Omega_sub)) / 2 + diag(1e-9, D_panel)
+        L_sub <- t(chol(Omega_sub))
+        eps <- matrix(stats::rnorm(D_panel * n_ev * M), nrow = D_panel, ncol = n_ev * M)
+        z <- t(L_sub %*% eps) + mu_sub[rep(seq_len(n_ev), each = M), , drop = FALSE]
+        y_rep <- z > 0
+        # Vectorized label tabulation: pack each simulated row's D_panel-length
+        # 0/1 pattern into an integer code (column 1 = most-significant bit,
+        # matching the left-to-right "R"/"S" string order enumerate_binary_
+        # profiles() uses), then tabulate directly on the integer codes.
+        # Avoids apply()-ing a per-row paste() over n_ev*M rows, which
+        # otherwise dominates runtime once M or the complete-event cohort
+        # size grow (n_ev*M can reach the hundreds of thousands per draw).
+        weights <- 2L^((D_panel - 1L):0L)
+        codes <- as.vector(y_rep %*% weights)
+        n_codes <- 2L^D_panel
+        bit_matrix <- vapply(0:(n_codes - 1L), function(code) {
+          vapply(seq_len(D_panel), function(b) as.integer((code %/% 2L^(D_panel - b)) %% 2L), integer(1L))
+        }, integer(D_panel))
+        code_labels <- apply(matrix(bit_matrix, nrow = D_panel), 2L,
+                              function(bits) paste(ifelse(bits == 1L, "R", "S"), collapse = ""))
+        tab_counts <- tabulate(codes + 1L, nbins = n_codes)
+        names(tab_counts) <- code_labels
+        enum_df <- enumerate_binary_profiles(ci$classes)
+        freqs <- vapply(
+          enum_df$profile_delta,
+          function(lbl) {
+            idx <- match(lbl, code_labels)
+            if (is.na(idx)) 0 else tab_counts[[idx]]
+          },
+          numeric(1L)
+        ) / (n_ev * M)
+        per_key[[key]] <- tibble::tibble(
+          key = key, profile_delta = enum_df$profile_delta,
+          model_frequency_s = freqs
+        )
       }
-      per_key[[key]] <- tibble::tibble(
-        key = key, profile_delta = enum_df$profile_delta,
-        model_frequency_s = colMeans(prob_mat)
-      )
+    } else {
+      p_all <- stats::pnorm(mu_all)
+      for (key in names(eligible_info)) {
+        ci <- eligible_info[[key]]
+        p_sub <- p_all[ci$ev_idx, ci$d_idx, drop = FALSE]
+        enum_df <- enumerate_binary_profiles(ci$classes)
+        profile_bin <- as.matrix(enum_df[, ci$classes, drop = FALSE])
+        n_profiles <- nrow(profile_bin)
+        prob_mat <- matrix(1, nrow(p_sub), n_profiles)
+        for (d in seq_len(ncol(p_sub))) {
+          col_is1 <- profile_bin[, d] == 1L
+          f_d <- matrix(NA_real_, nrow(p_sub), n_profiles)
+          if (any(col_is1)) f_d[, col_is1] <- p_sub[, d]
+          if (any(!col_is1)) f_d[, !col_is1] <- 1 - p_sub[, d]
+          prob_mat <- prob_mat * f_d
+        }
+        per_key[[key]] <- tibble::tibble(
+          key = key, profile_delta = enum_df$profile_delta,
+          model_frequency_s = colMeans(prob_mat)
+        )
+      }
     }
     draw_rows[[s]] <- dplyr::bind_rows(per_key)
   }
@@ -733,8 +824,9 @@ validate_complete_profile_calibration <- function(
 #' @param min_tested_after_mask,min_resistant_after_mask,min_susceptible_after_mask
 #'   Integer. Panel-eligibility floors enforced during masking. Default
 #'   \code{30L}, \code{5L}, \code{5L}.
-#' @param panel_eligibility Named list. Forwarded to
-#'   \code{fit_bayesian_multivariate_probit()} when \code{refit = TRUE}.
+#' @param panel_eligibility Named list or \code{NULL}. When \code{NULL}, a
+#'   masked refit inherits \code{fitted_model$panel_eligibility_used}; a
+#'   non-\code{NULL} value explicitly overrides those resolved thresholds.
 #' @param prior_config,sampler_config Named list or \code{NULL}. Forwarded
 #'   when \code{refit = TRUE}; default to the original fit's
 #'   \code{prior_config_used}/\code{sampler_config_used}.
@@ -764,7 +856,7 @@ mask_and_validate_ast <- function(
   min_tested_after_mask = 30L,
   min_resistant_after_mask = 5L,
   min_susceptible_after_mask = 5L,
-  panel_eligibility = list(),
+  panel_eligibility = NULL,
   prior_config = NULL,
   sampler_config = NULL,
   n_gibbs_burnin = 10L,
@@ -849,6 +941,11 @@ mask_and_validate_ast <- function(
   ))
 
   refit_model <- NULL
+  panel_eligibility_used <- if (is.null(panel_eligibility)) {
+    .null_default(fitted_model$panel_eligibility_used, list())
+  } else {
+    panel_eligibility
+  }
   if (isTRUE(refit)) {
     if (is.null(fixed_effects)) {
       stop("[mask_and_validate_ast] `fixed_effects` must be supplied when refit = TRUE ",
@@ -872,11 +969,12 @@ mask_and_validate_ast <- function(
       class_cols         = class_cols,
       fixed_effects      = fixed_effects,
       random_effects     = random_effects,
+      profile_group_col  = fitted_model$profile_group_col %||% fitted_model$upper_re_col,
       pathogen           = fitted_model$pathogen_fitted,
       pathogen_col       = pathogen_col,
       event_id_col       = event_id_col,
       outcome_col        = outcome_col,
-      panel_eligibility  = panel_eligibility,
+      panel_eligibility  = panel_eligibility_used,
       residual_structure = .null_default(fitted_model$residual_structure, "identity"),
       estimand           = .null_default(fitted_model$estimand, "observed_stewardship_event_mix"),
       prior_config       = .null_default(prior_config, .null_default(fitted_model$prior_config_used, list())),
@@ -978,7 +1076,8 @@ mask_and_validate_ast <- function(
     accuracy_at_threshold_0_5 = round(mean(predicted_class == true_value), 6L),
     auroc = round(.auroc(true_value, predicted_p), 6L),
     fraction_to_mask = fraction_to_mask,
-    seed = as.integer(seed)
+    seed = as.integer(seed),
+    panel_eligibility_used = list(panel_eligibility_used)
   )
 
   list(predictions = predictions, summary = summary_tbl, refit_model = refit_model)
