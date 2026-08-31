@@ -141,12 +141,13 @@ plot_probit_diagnostics <- function(
     "UNKNOWN"
   }
   verdict_colour <- c(FAIL = "#B2182B", WARNING = "#E08214", PASS = "#1A9850", UNKNOWN = "grey40")[[verdict]]
+  .health_thresholds <- .probit_diagnostic_thresholds()
   health_lines <- c(
     sprintf("Diagnostic status: %s", status_str),
     sprintf("Divergent transitions: %s", .fmt_or_na(diag$n_divergent, "%d")),
     sprintf("Treedepth saturations: %s", .fmt_or_na(diag$n_treedepth_sat, "%d")),
-    sprintf("Min E-BFMI: %s (warn below 0.3)", .fmt_or_na(diag$ebfmi_min, "%.3f")),
-    sprintf("Max Rhat (structural): %s (warn above 1.01)", .fmt_or_na(diag$max_rhat_structural, "%.4f")),
+    sprintf("Min E-BFMI: %s (warn below %.2f)", .fmt_or_na(diag$ebfmi_min, "%.3f"), .health_thresholds$ebfmi_min),
+    sprintf("Max Rhat (structural): %s (warn above %.2f)", .fmt_or_na(diag$max_rhat_structural, "%.4f"), .health_thresholds$rhat_max),
     sprintf("Min ESS bulk (structural): %s (warn below 100)", .fmt_or_na(diag$min_ess_bulk_structural, "%.0f")),
     sprintf("Min ESS tail (structural): %s (warn below 100)", .fmt_or_na(diag$min_ess_tail_structural, "%.0f")),
     sprintf("Converged (structural): %s", .fmt_or_na(diag$converged_structural, "%s"))
@@ -411,19 +412,26 @@ plot_probit_diagnostics <- function(
   degeneracy_stats <- if (!is.null(corr_summary)) {
     tryCatch(.omega_degeneracy_stats(fit_obj, fit_obj$class_cols), error = function(e) NULL)
   } else NULL
+  interp_thresholds <- .probit_diagnostic_thresholds()
   interp_lines <- .probit_interpretation_text(
     diag, status_str, verdict,
     beta_summary = beta_family_plots$summary,
     degeneracy_stats = degeneracy_stats,
     residual_structure = fit_obj$residual_structure,
-    corr_summary = corr_summary
+    corr_summary = corr_summary,
+    grouped_diag = fit_obj$diagnostics_detail$grouped,
+    thresholds = interp_thresholds
   )
-  wrapped <- unlist(lapply(interp_lines, function(l) c(strwrap(l, width = 95), "")))
-  wrapped <- utils::head(wrapped, -1L)
+  table_lines <- .probit_diagnostic_table_lines(
+    diag, degeneracy_stats, fit_obj$residual_structure, interp_thresholds
+  )
+  wrapped_narrative <- unlist(lapply(interp_lines, function(l) c(strwrap(l, width = 88), "")))
+  wrapped_narrative <- utils::head(wrapped_narrative, -1L)
+  wrapped <- c(table_lines, "", wrapped_narrative)
   .try_plot(
     ggplot2::ggplot() +
       ggplot2::annotate("text", x = 0, y = rev(seq_along(wrapped)), label = wrapped,
-                        hjust = 0, size = 3.6) +
+                        hjust = 0, size = 3.3, family = "mono") +
       ggplot2::xlim(0, 1) + ggplot2::ylim(0, length(wrapped) + 1) +
       ggplot2::labs(
         title = paste(title_base, "-- Interpretation Summary"),
@@ -440,24 +448,25 @@ plot_probit_diagnostics <- function(
 
 .probit_interpretation_text <- function(diag, status_str, verdict, beta_summary,
                                         degeneracy_stats, residual_structure,
-                                        corr_summary = NULL) {
+                                        corr_summary = NULL, grouped_diag = NULL,
+                                        thresholds = .probit_diagnostic_thresholds()) {
   lines <- character(0)
 
   if (!is.null(beta_summary) && nrow(beta_summary) > 0L) {
     worst_family <- beta_summary[which.max(beta_summary$pct_rhat_gt_1_01), ]
     lines <- c(lines, if (worst_family$pct_rhat_gt_1_01 > 0) {
       sprintf(
-        "Primary fitting concern: %.1f%% of %s fixed-effect coefficients exceed Rhat 1.01 (worst Rhat = %.4f, min bulk ESS = %.0f in this family).",
-        worst_family$pct_rhat_gt_1_01, worst_family$family, worst_family$worst_rhat, worst_family$min_ess_bulk
+        "Fixed-effect detail: %.1f%% of %s coefficients exceed Rhat %.2f (worst Rhat = %.4f, min bulk ESS = %.0f in this family).",
+        worst_family$pct_rhat_gt_1_01, worst_family$family, thresholds$rhat_max, worst_family$worst_rhat, worst_family$min_ess_bulk
       )
     } else {
-      "No fixed-effect coefficient family shows elevated Rhat (all families at or below 1.01)."
+      "No fixed-effect coefficient family shows elevated Rhat (all families at or below the threshold)."
     })
   }
 
   ebfmi_min <- diag$ebfmi_min[[1L]]
-  ebfmi_txt <- if (!is.null(ebfmi_min) && !is.na(ebfmi_min) && ebfmi_min < 0.3) {
-    sprintf("Energy exploration is a concern (minimum E-BFMI = %.3f, below the 0.3 warning threshold).", ebfmi_min)
+  ebfmi_txt <- if (!is.null(ebfmi_min) && !is.na(ebfmi_min) && ebfmi_min < thresholds$ebfmi_min) {
+    sprintf("Energy exploration is a concern (minimum E-BFMI = %.3f, below the %.2f warning threshold).", ebfmi_min, thresholds$ebfmi_min)
   } else if (!is.null(ebfmi_min) && !is.na(ebfmi_min)) {
     sprintf("Energy exploration is healthy (minimum E-BFMI = %.3f).", ebfmi_min)
   } else {
@@ -465,7 +474,7 @@ plot_probit_diagnostics <- function(
   }
   n_divergent <- diag$n_divergent[[1L]]
   div_txt <- if (!is.null(n_divergent) && !is.na(n_divergent) && n_divergent > 0) {
-    sprintf("%d divergent transition(s) were observed -- treat the posterior as untrustworthy until adapt_delta is increased or the model is simplified.", n_divergent)
+    sprintf("%d divergent transition(s) were observed.", n_divergent)
   } else {
     "There were no divergent transitions."
   }
@@ -491,7 +500,7 @@ plot_probit_diagnostics <- function(
     # not just that "Omega has convergence problems" in general.
     if (!is.null(corr_summary) && nrow(corr_summary) > 0L && "rhat" %in% names(corr_summary)) {
       worst_pair <- corr_summary[which.max(corr_summary$rhat), ]
-      if (!is.na(worst_pair$rhat[[1L]]) && worst_pair$rhat[[1L]] > 1.01) {
+      if (!is.na(worst_pair$rhat[[1L]]) && worst_pair$rhat[[1L]] > thresholds$rhat_max) {
         omega_line <- paste(omega_line, sprintf(
           "The least-converged Omega element is %s x %s (Rhat = %.4f) -- treat that specific correlation as unsettled.",
           class_short_label(worst_pair$class_1[[1L]]), class_short_label(worst_pair$class_2[[1L]]), worst_pair$rhat[[1L]]
@@ -499,17 +508,42 @@ plot_probit_diagnostics <- function(
       }
     }
     lines <- c(lines, omega_line)
+    if (!is.null(degeneracy_stats) && identical(residual_structure, "correlated") &&
+        !is.na(degeneracy_stats$pct_near_degenerate) && degeneracy_stats$pct_near_degenerate > 50 &&
+        !is.null(corr_summary) && all(corr_summary$correlation_median > 0.7, na.rm = TRUE)) {
+      lines <- c(lines, "Posterior correlations are uniformly very high across every class pair -- the model is effectively estimating an almost common latent resistance dimension. This describes the latent residual Z, not an empirical correlation of the observed AST results.")
+    }
   }
 
-  pattern_txt <- if (grepl("^fail_divergent|^fail_energy", status_str)) {
-    "This pattern suggests a geometry/energy problem with the sampler, not simply slow mixing of a subset of coefficients -- consider increasing adapt_delta or simplifying the model before trusting any downstream profile."
-  } else if (grepl("^warning_rhat|^warning_low_bulk_ess|^warning_low_tail_ess|^fail_rhat", status_str) &&
-             !is.null(beta_summary) && nrow(beta_summary) > 0L && max(beta_summary$pct_rhat_gt_1_01) > 0) {
-    "This pattern suggests slow/inconsistent mixing concentrated in a subset of the mean-structure coefficients (see the fixed-effect family breakdown above) rather than a global HMC energy failure."
-  } else if (identical(verdict, "PASS")) {
-    "No convergence, energy, or divergence concerns were found for this fit."
-  } else {
-    "See the sampler health, fixed-effect family, and Omega pages above for the specific parameters driving this status."
+  # Ranked, failure-mode-specific recommendation (replaces a single generic
+  # "increase adapt_delta or simplify the model" line -- see
+  # .probit_classify_fitting_issues() for why that was a category error).
+  issues <- .probit_classify_fitting_issues(
+    diag, grouped_diag, degeneracy_stats, residual_structure, beta_summary, thresholds
+  )
+  if (length(issues$primary) > 0L) {
+    lines <- c(lines, paste("PRIMARY ISSUE:", issues$primary))
   }
-  c(lines, pattern_txt)
+  if (length(issues$secondary) > 0L) {
+    lines <- c(lines, paste("SECONDARY ISSUE:", issues$secondary))
+  }
+  if (length(issues$not_indicated) > 0L) {
+    lines <- c(lines, paste("NOT CURRENTLY INDICATED:", issues$not_indicated))
+  }
+
+  # Candidate next steps are phrased as candidates, never a required fix --
+  # this page cannot know whether an as-yet-unreviewed follow-up experiment
+  # (e.g. a planned mean-structure isolation test) already addresses it.
+  next_step <- if (identical(issues$bucket, "divergence")) {
+    "Candidate next investigation: inspect divergent transitions directly (e.g. bayesplot::mcmc_parcoord() on the divergent draws) before changing sampler settings further."
+  } else if (identical(issues$bucket, "energy_or_omega_geometry")) {
+    "Candidate next investigations: the residual correlation parameterization or prior, after any planned mean-structure isolation experiment is completed. Good posterior-predictive calibration (if seen elsewhere in this report) does not make these numerical parameter estimates trustworthy."
+  } else if (identical(issues$bucket, "treedepth")) {
+    "Candidate next investigation: whether treedepth saturation recurs after raising max_treedepth for diagnosis, or whether it is symptomatic of a deeper parameterization issue."
+  } else if (identical(issues$bucket, "beta_rhat")) {
+    "Candidate next investigations: sparse or near-separated factor levels in the implicated fixed-effect family; recoding or pooling unsupported categorical levels."
+  } else {
+    "No candidate next investigation is indicated by sampler diagnostics alone."
+  }
+  c(lines, next_step)
 }
