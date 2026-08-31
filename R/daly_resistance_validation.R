@@ -15,6 +15,13 @@
 # DALY estimand (never overwrite what was actually measured) and wrong here
 # (a validation check that can't disagree with the data is not a check).
 
+.probit_check_probability <- function(x) {
+  if (any(!is.finite(x)) || any(x < -1e-12 | x > 1 + 1e-12)) {
+    stop("[validate_pairwise_calibration] Materially invalid four-cell probability encountered.", call. = FALSE)
+  }
+  pmin(1, pmax(0, x))
+}
+
 # ---------------------------------------------------------------------------
 # Internal: shared posterior-draw setup for validation functions
 # ---------------------------------------------------------------------------
@@ -373,32 +380,55 @@ validate_pairwise_calibration <- function(
       Omega_s <- setup$Omega_for_draw(s)
       draw_rows[[s]] <- tibble::tibble(
         key = keys, draw_s = s,
-        model_pairwise_s = vapply(cell_meta, function(cm) {
+        model_RR_s = vapply(cell_meta, function(cm) {
           rho <- Omega_s[cm$d1, cm$d2]
           mean(pbivnorm::pbivnorm(mu_all[cm$ev_idx, cm$d1], mu_all[cm$ev_idx, cm$d2], rho = rho))
-        }, numeric(1L))
+        }, numeric(1L)),
+        p1_s = vapply(cell_meta, function(cm) mean(stats::pnorm(mu_all[cm$ev_idx, cm$d1])), numeric(1L)),
+        p2_s = vapply(cell_meta, function(cm) mean(stats::pnorm(mu_all[cm$ev_idx, cm$d2])), numeric(1L))
       )
     } else {
       p_all <- stats::pnorm(mu_all)
       draw_rows[[s]] <- tibble::tibble(
         key = keys, draw_s = s,
-        model_pairwise_s = vapply(cell_meta, function(cm) {
-          mean(p_all[cm$ev_idx, cm$d1] * p_all[cm$ev_idx, cm$d2])
-        }, numeric(1L))
+        model_RR_s = vapply(cell_meta, function(cm) mean(p_all[cm$ev_idx, cm$d1] * p_all[cm$ev_idx, cm$d2]), numeric(1L)),
+        model_RS_s = vapply(cell_meta, function(cm) mean(p_all[cm$ev_idx, cm$d1] * (1 - p_all[cm$ev_idx, cm$d2])), numeric(1L)),
+        model_SR_s = vapply(cell_meta, function(cm) mean((1 - p_all[cm$ev_idx, cm$d1]) * p_all[cm$ev_idx, cm$d2]), numeric(1L)),
+        model_SS_s = vapply(cell_meta, function(cm) mean((1 - p_all[cm$ev_idx, cm$d1]) * (1 - p_all[cm$ev_idx, cm$d2])), numeric(1L))
       )
     }
   }
   draws_tbl <- dplyr::bind_rows(draw_rows)
+  if (is_correlated) {
+    # These identities are applied event-wise in the correlated model.  The
+    # means below are equivalent by linearity, and preserve RR semantics.
+    draws_tbl <- draws_tbl %>% dplyr::mutate(
+      model_RS_s = .probit_check_probability(.data$p1_s - .data$model_RR_s),
+      model_SR_s = .probit_check_probability(.data$p2_s - .data$model_RR_s),
+      model_SS_s = .probit_check_probability(1 - .data$p1_s - .data$p2_s + .data$model_RR_s)
+    )
+  }
+  draws_tbl <- draws_tbl %>% dplyr::mutate(
+    model_RR_s = .probit_check_probability(.data$model_RR_s),
+    four_cell_sum = .data$model_RR_s + .data$model_RS_s + .data$model_SR_s + .data$model_SS_s
+  )
+  if (any(abs(draws_tbl$four_cell_sum - 1) > 1e-8)) {
+    stop("[validate_pairwise_calibration] Four pairwise probabilities do not sum to one.", call. = FALSE)
+  }
 
   lo_q <- (1 - ci_level) / 2
   hi_q <- 1 - lo_q
   summary_tbl <- draws_tbl %>%
     dplyr::group_by(.data$key) %>%
     dplyr::summarise(
-      model_pairwise_mean = mean(.data$model_pairwise_s),
-      model_pairwise_lower = stats::quantile(.data$model_pairwise_s, lo_q),
-      model_pairwise_upper = stats::quantile(.data$model_pairwise_s, hi_q),
+      dplyr::across(dplyr::all_of(c("model_RR_s", "model_RS_s", "model_SR_s", "model_SS_s")),
+        list(mean = mean, lower = ~ stats::quantile(.x, lo_q), upper = ~ stats::quantile(.x, hi_q)),
+        .names = "{sub('_s$', '', .col)}_{.fn}"),
       .groups = "drop"
+    ) %>% dplyr::rename(
+      model_pairwise_mean = .data$model_RR_mean,
+      model_pairwise_lower = .data$model_RR_lower,
+      model_pairwise_upper = .data$model_RR_upper
     )
 
   meta_tbl <- dplyr::bind_rows(lapply(keys, function(key) {
@@ -408,7 +438,9 @@ validate_pairwise_calibration <- function(
       !!upper_re_col := cm$h, !!pathogen_col := cm$k,
       class_1 = cm$c1, class_2 = cm$c2, n_cotested = cm$n_cotested,
       observed_RR = cm$n_RR, observed_RS = cm$n_RS, observed_SR = cm$n_SR, observed_SS = cm$n_SS,
-      observed_pairwise_resistance = cm$n_RR / cm$n_cotested
+      observed_pairwise_resistance = cm$n_RR / cm$n_cotested,
+      observed_RR_prop = cm$n_RR / cm$n_cotested, observed_RS_prop = cm$n_RS / cm$n_cotested,
+      observed_SR_prop = cm$n_SR / cm$n_cotested, observed_SS_prop = cm$n_SS / cm$n_cotested
     )
   }))
 
@@ -417,7 +449,17 @@ validate_pairwise_calibration <- function(
       absolute_error = abs(.data$observed_pairwise_resistance - .data$model_pairwise_mean),
       interval_contains_observed =
         .data$observed_pairwise_resistance >= .data$model_pairwise_lower &
-          .data$observed_pairwise_resistance <= .data$model_pairwise_upper
+          .data$observed_pairwise_resistance <= .data$model_pairwise_upper,
+      absolute_error_RR = abs(.data$observed_RR_prop - .data$model_pairwise_mean),
+      absolute_error_RS = abs(.data$observed_RS_prop - .data$model_RS_mean),
+      absolute_error_SR = abs(.data$observed_SR_prop - .data$model_SR_mean),
+      absolute_error_SS = abs(.data$observed_SS_prop - .data$model_SS_mean),
+      interval_contains_RR = .data$observed_RR_prop >= .data$model_pairwise_lower & .data$observed_RR_prop <= .data$model_pairwise_upper,
+      interval_contains_RS = .data$observed_RS_prop >= .data$model_RS_lower & .data$observed_RS_prop <= .data$model_RS_upper,
+      interval_contains_SR = .data$observed_SR_prop >= .data$model_SR_lower & .data$observed_SR_prop <= .data$model_SR_upper,
+      interval_contains_SS = .data$observed_SS_prop >= .data$model_SS_lower & .data$observed_SS_prop <= .data$model_SS_upper,
+      mean_absolute_error_4cell = (.data$absolute_error_RR + .data$absolute_error_RS + .data$absolute_error_SR + .data$absolute_error_SS) / 4,
+      max_absolute_error_4cell = pmax(.data$absolute_error_RR, .data$absolute_error_RS, .data$absolute_error_SR, .data$absolute_error_SS)
     ) %>%
     dplyr::select(-"key") %>%
     dplyr::mutate(dplyr::across(dplyr::where(is.numeric), ~ round(.x, 6L)))
