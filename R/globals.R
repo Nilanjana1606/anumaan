@@ -140,6 +140,11 @@ utils::globalVariables(c(
   "profile_class_set", "profile_delta", "profile_probability",
   "draw_s", "R_ALL_s", "R_NF_s",
 
+  # Pathway 2 — assess_gibbs_profile_stability()
+  "n_classes_missing", "missingness_stratum", "observed_pattern_stratum",
+  "event_idx", "comparison", "max_abs_diff", "mean_abs_diff", "l1_distance",
+  "abs_diff", "p_a", "p_b",
+
   # Pathway 2 — aggregate_profiles_for_daly()
   "R_ALL_mean", "R_ALL_lower", "R_ALL_upper",
   "R_NF_mean", "R_NF_lower", "R_NF_upper",
@@ -158,6 +163,16 @@ utils::globalVariables(c(
   "eligible_for_joint_profile_YLD", "exclusion_reason_joint_profile_YLD",
   "low_draws_all_flag", "low_draws_known_outcome_flag",
   "low_draws_nf_flag", "low_events_flag",
+
+  # Pathway 2 — four-cell pairwise calibration
+  "model_RR_s", "model_RS_s", "model_SR_s", "model_SS_s",
+  "model_RR_mean", "model_RS_mean", "model_SR_mean", "model_SS_mean",
+  "model_RR_lower", "model_RS_lower", "model_SR_lower", "model_SS_lower",
+  "model_RR_upper", "model_RS_upper", "model_SR_upper", "model_SS_upper",
+  "observed_RR_prop", "observed_RS_prop", "observed_SR_prop", "observed_SS_prop",
+  "absolute_error_RR", "absolute_error_RS", "absolute_error_SR", "absolute_error_SS",
+  "interval_contains_RR", "interval_contains_RS", "interval_contains_SR", "interval_contains_SS",
+  "mean_absolute_error_4cell", "max_absolute_error_4cell", "four_cell_sum",
 
   # Pathway 2 — summarize_reserve_drugs()
   "n_total", "n_tested", "n_resistant",

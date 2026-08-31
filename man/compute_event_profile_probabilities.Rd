@@ -12,7 +12,9 @@ compute_event_profile_probabilities(
     "alive"),
   seed = 123L,
   n_gibbs_burnin = 10L,
-  n_gibbs_kept = 20L
+  n_gibbs_kept = 20L,
+  posterior_draw_indices = NULL,
+  event_indices = NULL
 )
 }
 \arguments{
@@ -35,6 +37,12 @@ cohort (R_NF). Default covers common discharge/survival labels.}
 \item{n_gibbs_burnin, n_gibbs_kept}{Integer. Only used when
 \code{fitted_model$residual_structure == "correlated"} -- see
 \code{.gibbs_conditional_profile_probs()}. Defaults \code{10L}/\code{20L}.}
+
+\item{posterior_draw_indices}{Optional unique indices into the fitted
+posterior draws. When supplied, these replace random draw subsampling.}
+
+\item{event_indices}{Optional canonical event indices to include. When
+supplied, only observed events with these indices are processed.}
 }
 \value{
 Named list: \code{event_profiles} (event-level posterior mean

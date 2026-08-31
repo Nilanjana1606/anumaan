@@ -135,6 +135,8 @@ generated quantities {
   default_pc <- list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0)
   pc <- utils::modifyList(default_pc, .null_default(fitted_model$prior_config_used, list()))
   pc <- utils::modifyList(pc, .null_default(prior_config_override, list()))
+  pc$lkj_eta_residual <- .null_default(pc$lkj_eta_residual, pc$lkj_eta)
+  pc$lkj_eta_random_effect <- .null_default(pc$lkj_eta_random_effect, pc$lkj_eta)
 
   list(
     N_ev = N_ev, D = D, K = K, R = re_prep$R,
@@ -155,8 +157,12 @@ generated quantities {
 #' the Stan fitting model's transformed-parameters block EXACTLY:
 #' \code{re_effect[, lo:hi] = diag_pre_multiply(tau_re[r], L_corr_re[r]) * z_re[, lo:hi]},
 #' \code{mu = X_event beta + re_contribution(re_effect, flat_re_idx)}.
+#' @param setup Resolved prior-predictive setup.
+#' @param lkj_re_arr LKJ Cholesky draws for random-effect correlation blocks.
+#' @param lkj_residual_arr LKJ Cholesky draws for the residual correlation.
+#' @param s Prior-state draw index.
 #' @keywords internal
-.prior_draw_state <- function(setup, lkj_arr, s) {
+.prior_draw_state <- function(setup, lkj_re_arr, lkj_residual_arr, s) {
   K <- setup$K; D <- setup$D; R <- setup$R
   pc <- setup$prior_config
 
@@ -166,13 +172,13 @@ generated quantities {
   for (r in seq_len(R)) {
     lo <- setup$level_start[r]; hi <- lo + setup$n_levels[r] - 1L
     tau_r <- abs(stats::rnorm(D, mean = 0, sd = pc$tau_sd))     # half-normal
-    L_r <- matrix(lkj_arr[s, r, , ], nrow = D, ncol = D)
+    L_r <- matrix(lkj_re_arr[s, r, , ], nrow = D, ncol = D)
     z_r <- matrix(stats::rnorm(D * setup$n_levels[r]), nrow = D, ncol = setup$n_levels[r])
     re_effect[, lo:hi] <- (diag(tau_r, nrow = D) %*% L_r) %*% z_r
   }
 
   L_Omega <- if (identical(setup$residual_structure, "correlated")) {
-    matrix(lkj_arr[s, R + 1L, , ], nrow = D, ncol = D)
+    matrix(lkj_residual_arr[s, 1L, , ], nrow = D, ncol = D)
   } else NULL
 
   re_term <- if (R > 0L) re_contribution(re_effect, setup$flat_re_idx_obs) else {
@@ -245,7 +251,10 @@ simulate_probit_prior_predictive <- function(
   if (is.na(S) || S < 1L) stop("`n_states` must resolve to a positive integer.", call. = FALSE)
 
   n_matrices <- setup$R + if (identical(setup$residual_structure, "correlated")) 1L else 0L
-  lkj_arr <- .draw_lkj_cholesky_prior(setup$D, setup$prior_config$lkj_eta, n_matrices, S, seed)
+  lkj_re_arr <- .draw_lkj_cholesky_prior(setup$D, setup$prior_config$lkj_eta_random_effect,
+    setup$R, S, seed)
+  lkj_residual_arr <- .draw_lkj_cholesky_prior(setup$D, setup$prior_config$lkj_eta_residual,
+    if (identical(setup$residual_structure, "correlated")) 1L else 0L, S, seed + 1L)
 
   generate_state <- local({
     cache <- new.env(parent = emptyenv())
@@ -255,7 +264,7 @@ simulate_probit_prior_predictive <- function(
       if (!is.null(cached)) return(cached)
 
       val <- .ppc_with_local_seed(.ppc_state_seed(seed, s), {
-        theta <- .prior_draw_state(setup, lkj_arr, s)
+        theta <- .prior_draw_state(setup, lkj_re_arr, lkj_residual_arr, s)
         Y_complete <- if (identical(setup$residual_structure, "correlated")) {
           .ppc_generate_correlated(theta$mu, theta$L_Omega)
         } else {

@@ -4249,7 +4249,8 @@ data {
 
   real<lower=0> prior_beta_sd;
   real<lower=0> prior_tau_sd;
-  real<lower=1> lkj_eta;
+  real<lower=1> lkj_eta_residual;
+  real<lower=1> lkj_eta_random_effect;
 }
 parameters {
   matrix[K, D] beta;
@@ -4274,9 +4275,9 @@ model {
     int hi = level_start[r] + n_levels[r] - 1;
     tau_re[r]                    ~ normal(0, prior_tau_sd);
     to_vector(z_re[, lo:hi])     ~ std_normal();
-    L_corr_re[r]                 ~ lkj_corr_cholesky(lkj_eta);
+    L_corr_re[r]                 ~ lkj_corr_cholesky(lkj_eta_random_effect);
   }
-  L_Omega ~ lkj_corr_cholesky(lkj_eta);
+  L_Omega ~ lkj_corr_cholesky(lkj_eta_residual);
 
   {
     // exp() only at the N observed cells -- masking after exp() risks 0 * Inf = NaN.
@@ -4336,7 +4337,7 @@ data {
 
   real<lower=0> prior_beta_sd;
   real<lower=0> prior_tau_sd;
-  real<lower=1> lkj_eta;
+  real<lower=1> lkj_eta_random_effect;
 }
 
 parameters {
@@ -4361,7 +4362,7 @@ model {
     int hi = level_start[r] + n_levels[r] - 1;
     tau_re[r]                    ~ normal(0, prior_tau_sd);
     to_vector(z_re[, lo:hi])     ~ std_normal();
-    L_corr_re[r]                 ~ lkj_corr_cholesky(lkj_eta);
+    L_corr_re[r]                 ~ lkj_corr_cholesky(lkj_eta_random_effect);
   }
 
   {
@@ -4406,7 +4407,7 @@ data {
   array[N] real<lower=-1,upper=1> sign_obs;
   array[N] int<lower=1,upper=N_events*D> obs_idx;
   real<lower=0> prior_beta_sd;
-  real<lower=1> lkj_eta;
+  real<lower=1> lkj_eta_residual;
 }
 parameters {
   matrix[K, D] beta;
@@ -4415,7 +4416,7 @@ parameters {
 }
 model {
   to_vector(beta) ~ normal(0, prior_beta_sd);
-  L_Omega ~ lkj_corr_cholesky(lkj_eta);
+  L_Omega ~ lkj_corr_cholesky(lkj_eta_residual);
   {
     matrix[N_events, D] z_aug = z_free;
     for (n in 1:N)
@@ -4562,7 +4563,9 @@ model {
 #' @param estimand Character. Identifies the target quantity. Only
 #'   \code{"observed_stewardship_event_mix"} is currently supported.
 #' @param prior_config Named list. Any subset of \code{beta_sd} (default 1.5),
-#'   \code{tau_sd} (default 1.0), \code{lkj_eta} (default 2.0).
+#'   \code{tau_sd} (default 1.0), legacy \code{lkj_eta} (default 2.0), or
+#'   separate \code{lkj_eta_residual} and \code{lkj_eta_random_effect}.
+#'   Legacy \code{lkj_eta} resolves to both values for exact backward compatibility.
 #' @param sampler_config Named list. Sampler settings forwarded to
 #'   \code{cmdstanr::sample()}: \code{chains} (4), \code{iter_warmup} (1000),
 #'   \code{iter_sampling} (1000), \code{adapt_delta} (NULL, uses Stan default),
@@ -4772,14 +4775,19 @@ fit_bayesian_multivariate_probit <- function(
   # -- Resolve prior_config ---------------------------------------------------
   pc <- list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0)
   for (nm in names(prior_config)) pc[[nm]] <- prior_config[[nm]]
+  # Legacy lkj_eta deliberately resolves to both controls, reproducing the
+  # historical prior exactly. Explicit controls may subsequently differ.
+  pc$lkj_eta_residual <- .null_default(pc$lkj_eta_residual, pc$lkj_eta)
+  pc$lkj_eta_random_effect <- .null_default(pc$lkj_eta_random_effect, pc$lkj_eta)
   if (!is.numeric(pc$beta_sd) || pc$beta_sd <= 0) {
     stop("`prior_config$beta_sd` must be a positive number.", call. = FALSE)
   }
   if (!is.numeric(pc$tau_sd) || pc$tau_sd <= 0) {
     stop("`prior_config$tau_sd` must be a positive number.", call. = FALSE)
   }
-  if (!is.numeric(pc$lkj_eta) || pc$lkj_eta < 1) {
-    stop("`prior_config$lkj_eta` must be >= 1.", call. = FALSE)
+  if (!is.numeric(pc$lkj_eta_residual) || pc$lkj_eta_residual < 1 ||
+      !is.numeric(pc$lkj_eta_random_effect) || pc$lkj_eta_random_effect < 1) {
+    stop("Resolved residual and random-effect LKJ eta values must be >= 1.", call. = FALSE)
   }
 
   # -- Resolve sampler_config -------------------------------------------------
@@ -4792,8 +4800,8 @@ fit_bayesian_multivariate_probit <- function(
   sc <- sc_defaults
 
   message(sprintf(
-    "[fit_bayesian_multivariate_probit] Priors: beta~N(0,%.2g) | tau~HN(0,%.2g) | LKJ(%.2g)",
-    pc$beta_sd, pc$tau_sd, pc$lkj_eta
+    "[fit_bayesian_multivariate_probit] Priors: beta~N(0,%.2g) | tau~HN(0,%.2g) | LKJ residual(%.2g) | LKJ RE(%.2g)",
+    pc$beta_sd, pc$tau_sd, pc$lkj_eta_residual, pc$lkj_eta_random_effect
   ))
 
   # -- Remove reserve drug columns --------------------------------------------
@@ -5075,10 +5083,11 @@ fit_bayesian_multivariate_probit <- function(
       level_start     = as.array(as.integer(re_prep$level_start)),
       re_idx          = matrix(as.integer(re_idx_mat), nrow = N_events),
       prior_tau_sd    = as.numeric(pc$tau_sd),
-      lkj_eta         = as.numeric(pc$lkj_eta)
+      lkj_eta_random_effect = as.numeric(pc$lkj_eta_random_effect)
     ))
-  } else if (identical(residual_structure, "correlated")) {
-    stan_data$lkj_eta <- as.numeric(pc$lkj_eta)
+  }
+  if (identical(residual_structure, "correlated")) {
+    stan_data$lkj_eta_residual <- as.numeric(pc$lkj_eta_residual)
   }
 
   # -- Parameter-count preflight -----------------------------------------------
@@ -5624,6 +5633,7 @@ fit_bayesian_multivariate_probit <- function(
     residual_structure = residual_structure,
     estimand = estimand,
     prior_config_used = pc,
+    panel_eligibility_used = pe,
     sampler_config_used = sc,
     compute_config_used = list(
       requested_backend = compute_cfg$backend,
@@ -5872,6 +5882,10 @@ fit_bayesian_multivariate_probit <- function(
 #' @param n_gibbs_burnin,n_gibbs_kept Integer. Only used when
 #'   \code{fitted_model$residual_structure == "correlated"} -- see
 #'   \code{.gibbs_conditional_profile_probs()}. Defaults \code{10L}/\code{20L}.
+#' @param posterior_draw_indices Optional unique indices into the fitted
+#'   posterior draws. When supplied, these replace random draw subsampling.
+#' @param event_indices Optional canonical event indices to include. When
+#'   supplied, only observed events with these indices are processed.
 #'
 #' @return Named list: \code{event_profiles} (event-level posterior mean
 #'   observed-plus-imputed profile probabilities, with
@@ -5893,7 +5907,9 @@ compute_event_profile_probabilities <- function(
   ),
   seed = 123L,
   n_gibbs_burnin = 10L,
-  n_gibbs_kept = 20L
+  n_gibbs_kept = 20L,
+  posterior_draw_indices = NULL,
+  event_indices = NULL
 ) {
   if (!requireNamespace("posterior", quietly = TRUE)) {
     stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
@@ -5922,8 +5938,16 @@ compute_event_profile_probabilities <- function(
   # -- Thin draws to n_posterior_draws_for_profiles ---------------------------
   draws_mat <- posterior::as_draws_matrix(draws)
   n_total <- nrow(draws_mat)
-  S <- min(as.integer(n_posterior_draws_for_profiles), n_total)
-  draw_idx <- if (S < n_total) sort(sample.int(n_total, S)) else seq_len(n_total)
+  if (is.null(posterior_draw_indices)) {
+    S <- min(as.integer(n_posterior_draws_for_profiles), n_total)
+    draw_idx <- if (S < n_total) sort(sample.int(n_total, S)) else seq_len(n_total)
+  } else {
+    draw_idx <- as.integer(posterior_draw_indices)
+    if (length(draw_idx) < 1L || anyNA(draw_idx) || any(draw_idx < 1L | draw_idx > n_total) || anyDuplicated(draw_idx)) {
+      stop("`posterior_draw_indices` must be unique valid indices into fitted_model$draws.", call. = FALSE)
+    }
+    S <- length(draw_idx)
+  }
   draws_mat <- draws_mat[draw_idx, , drop = FALSE]
 
   # -- Helper: extract [S, d1, d2] array from draws ---------------------------
@@ -5953,6 +5977,13 @@ compute_event_profile_probabilities <- function(
   # Use event_meta to identify which events appear in data_long (have observations)
   has_obs <- event_meta$.event_idx %in% fitted_model$data_long$ev_idx
   event_meta_obs <- event_meta[has_obs, , drop = FALSE]
+  if (!is.null(event_indices)) {
+    event_indices <- as.integer(event_indices)
+    event_meta_obs <- event_meta_obs[event_meta_obs$.event_idx %in% event_indices, , drop = FALSE]
+    if (nrow(event_meta_obs) == 0L) {
+      stop("`event_indices` selects no events with observed AST data.", call. = FALSE)
+    }
+  }
   N_ev <- nrow(event_meta_obs)
 
   # Event-level design matrix and RE indices (from stored event_re_idx, the
@@ -6226,6 +6257,197 @@ compute_event_profile_probabilities <- function(
     event_profiles  = dplyr::bind_rows(event_profile_rows),
     aggregate_draws = dplyr::bind_rows(aggregate_draw_rows)
   )
+}
+
+#' Assess Numerical Stability of Correlated Profile Completion
+#'
+#' Repeats the existing conditional truncated-MVN Gibbs profile completion for
+#' fixed posterior draws and a fixed, reproducibly selected subset of incomplete
+#' events.  It does not refit Stan or alter the fitted model.  The comparison
+#' therefore isolates finite Gibbs-chain length.  The conditional completion
+#' algorithm is the correct profile-completion algorithm; this diagnostic checks
+#' whether its finite Monte Carlo run length is adequate for a particular fit,
+#' especially when posterior residual correlations are high.
+#'
+#' The default 0.01/0.02 thresholds are numerical-stability conventions for
+#' this diagnostic, not universal statistical thresholds.
+#'
+#' @param fitted_model Object returned by [fit_bayesian_multivariate_probit()].
+#' @param schedules Named list of `list(burnin=, kept=)` schedules.  It must
+#'   contain `baseline`, `medium`, and `long`.
+#' @param n_posterior_draws Number of fixed posterior draws to use.
+#' @param max_events Maximum number of incomplete events to assess.
+#' @param seed Seed used once to select draws/events and then reset before each
+#'   schedule.  Thus schedules share posterior draws, events, and RNG streams.
+#' @param tolerance Maximum aggregate difference for status `"pass"`; twice
+#'   this value is the `"warning"` upper bound.
+#' @param event_selection Currently `"stratified"` or `"all"`.
+#' @return A structured list with summary, event/aggregate comparisons, selected
+#'   events, schedules, posterior draw indices, and a separate stability status.
+#' @export
+assess_gibbs_profile_stability <- function(
+  fitted_model,
+  schedules = list(
+    baseline = list(burnin = 30L, kept = 50L),
+    medium = list(burnin = 60L, kept = 100L),
+    long = list(burnin = 100L, kept = 250L)
+  ),
+  n_posterior_draws = 200L,
+  max_events = 250L,
+  seed = 123L,
+  tolerance = 0.01,
+  event_selection = c("stratified", "all")
+) {
+  event_selection <- match.arg(event_selection)
+  required <- c("baseline", "medium", "long")
+  if (!all(required %in% names(schedules))) {
+    stop("`schedules` must contain named baseline, medium, and long schedules.", call. = FALSE)
+  }
+  schedules <- schedules[required]
+  for (nm in required) {
+    x <- schedules[[nm]]
+    if (!is.list(x) || !all(c("burnin", "kept") %in% names(x)) ||
+        length(x$burnin) != 1L || length(x$kept) != 1L ||
+        is.na(x$burnin) || is.na(x$kept) || x$burnin < 0 || x$kept < 1) {
+      stop(sprintf("Schedule `%s` must supply non-negative `burnin` and positive `kept`.", nm), call. = FALSE)
+    }
+    schedules[[nm]] <- list(burnin = as.integer(x$burnin), kept = as.integer(x$kept))
+  }
+  if (!is.numeric(tolerance) || length(tolerance) != 1L || is.na(tolerance) || tolerance <= 0) {
+    stop("`tolerance` must be one positive number.", call. = FALSE)
+  }
+
+  residual_structure <- .null_default(fitted_model$residual_structure, "identity")
+  empty <- tibble::tibble()
+  schedule_summary <- tibble::tibble(
+    residual_structure = residual_structure,
+    n_selected_events = 0L,
+    n_posterior_draws = 0L,
+    baseline_burnin = schedules$baseline$burnin, baseline_kept = schedules$baseline$kept,
+    medium_burnin = schedules$medium$burnin, medium_kept = schedules$medium$kept,
+    long_burnin = schedules$long$burnin, long_kept = schedules$long$kept,
+    max_abs_aggregate_difference_baseline_long = NA_real_,
+    mean_abs_aggregate_difference_baseline_long = NA_real_,
+    max_abs_aggregate_difference_medium_long = NA_real_,
+    mean_abs_aggregate_difference_medium_long = NA_real_,
+    p95_event_max_abs_diff_baseline_long = NA_real_,
+    max_event_max_abs_diff_baseline_long = NA_real_,
+    gibbs_stability_status = "not_applicable"
+  )
+  if (!identical(residual_structure, "correlated")) {
+    return(list(summary = schedule_summary, event_comparison = empty,
+      aggregate_comparison = empty, selected_events = empty,
+      schedules_used = schedules, posterior_draw_indices = integer(), seed = as.integer(seed),
+      tolerance = tolerance, status = "not_applicable",
+      rng_scheme = "Not applicable: identity-residual completion is analytic."))
+  }
+
+  event_meta <- fitted_model$event_metadata
+  class_cols <- fitted_model$class_cols
+  has_obs <- event_meta$.event_idx %in% fitted_model$data_long$ev_idx
+  candidate <- event_meta[has_obs, , drop = FALSE]
+  n_missing <- rowSums(is.na(candidate[, class_cols, drop = FALSE]))
+  candidate <- candidate[n_missing > 0L, , drop = FALSE]
+  n_missing <- n_missing[n_missing > 0L]
+  if (!nrow(candidate)) {
+    return(list(summary = schedule_summary, event_comparison = empty,
+      aggregate_comparison = empty, selected_events = empty,
+      schedules_used = schedules, posterior_draw_indices = integer(), seed = as.integer(seed),
+      tolerance = tolerance, status = "not_applicable",
+      rng_scheme = "Not applicable: no incomplete observed events."))
+  }
+  observed_n <- rowSums(!is.na(candidate[, class_cols, drop = FALSE]))
+  observed_r <- rowSums(candidate[, class_cols, drop = FALSE] == 1, na.rm = TRUE)
+  pattern <- ifelse(observed_n == 0L, "no_observed_class",
+    ifelse(observed_r / observed_n > 0.5, "mostly_R",
+      ifelse(observed_r / observed_n < 0.5, "mostly_S", "mixed_RS")))
+  selected <- tibble::as_tibble(candidate) %>%
+    dplyr::mutate(n_classes_missing = n_missing,
+      missingness_stratum = ifelse(.data$n_classes_missing == 1L, "missing_1", "missing_2_plus"),
+      observed_pattern_stratum = pattern)
+  if (event_selection == "stratified" && nrow(selected) > max_events) {
+    grp_cols <- c(fitted_model$upper_re_col, "missingness_stratum", "observed_pattern_stratum")
+    key <- do.call(paste, c(selected[grp_cols], sep = "||"))
+    groups <- split(seq_len(nrow(selected)), key)
+    set.seed(as.integer(seed))
+    quota <- max(1L, floor(max_events / length(groups)))
+    take <- unlist(lapply(groups, function(ii) sample(ii, min(length(ii), quota))), use.names = FALSE)
+    if (length(take) < max_events) {
+      rest <- setdiff(seq_len(nrow(selected)), take)
+      take <- c(take, sample(rest, min(length(rest), max_events - length(take))))
+    }
+    selected <- selected[sort(take), , drop = FALSE]
+  } else if (nrow(selected) > max_events) {
+    set.seed(as.integer(seed)); selected <- selected[sort(sample.int(nrow(selected), max_events)), , drop = FALSE]
+  }
+  selected_events <- selected %>% dplyr::transmute(event_idx = .data$.event_idx,
+    n_classes_missing = .data$n_classes_missing,
+    missingness_stratum = .data$missingness_stratum,
+    observed_pattern_stratum = .data$observed_pattern_stratum,
+    !!fitted_model$upper_re_col := .data[[fitted_model$upper_re_col]],
+    !!fitted_model$pathogen_col := .data[[fitted_model$pathogen_col]])
+
+  if (!requireNamespace("posterior", quietly = TRUE)) {
+    stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
+  }
+  total_draws <- nrow(posterior::as_draws_matrix(fitted_model$draws))
+  set.seed(as.integer(seed) + 1L)
+  n_use <- min(as.integer(n_posterior_draws), total_draws)
+  draw_idx <- if (n_use < total_draws) sort(sample.int(total_draws, n_use)) else seq_len(total_draws)
+
+  # Resetting to the same seed makes each schedule consume the same initial RNG
+  # stream.  Together with explicit `draw_idx`/event IDs this is common-random-
+  # number comparison; only burn-in/retained Gibbs iterations differ.
+  outputs <- lapply(names(schedules), function(nm) {
+    set.seed(as.integer(seed) + 2L)
+    compute_event_profile_probabilities(fitted_model,
+      seed = as.integer(seed) + 2L, n_gibbs_burnin = schedules[[nm]]$burnin,
+      n_gibbs_kept = schedules[[nm]]$kept, posterior_draw_indices = draw_idx,
+      event_indices = selected_events$event_idx)
+  })
+  names(outputs) <- names(schedules)
+  compare <- function(a, b, label) {
+    ae <- outputs[[a]]$event_profiles %>%
+      dplyr::select(event_idx, profile_class_set, profile_delta, p_a = profile_probability) %>%
+      dplyr::inner_join(outputs[[b]]$event_profiles %>%
+        dplyr::select(event_idx, profile_class_set, profile_delta, p_b = profile_probability),
+        by = c("event_idx", "profile_class_set", "profile_delta")) %>%
+      dplyr::group_by(.data$event_idx, .data$profile_class_set) %>%
+      dplyr::summarise(comparison = label, max_abs_diff = max(abs(.data$p_a - .data$p_b)),
+        mean_abs_diff = mean(abs(.data$p_a - .data$p_b)), l1_distance = sum(abs(.data$p_a - .data$p_b)),
+        .groups = "drop")
+    aa <- outputs[[a]]$aggregate_draws %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(c(fitted_model$upper_re_col, fitted_model$pathogen_col,
+        "profile_class_set", "profile_delta")))) %>%
+      dplyr::summarise(p_a = mean(.data$R_ALL_s), .groups = "drop") %>%
+      dplyr::inner_join(outputs[[b]]$aggregate_draws %>%
+        dplyr::group_by(dplyr::across(dplyr::all_of(c(fitted_model$upper_re_col, fitted_model$pathogen_col,
+          "profile_class_set", "profile_delta")))) %>%
+        dplyr::summarise(p_b = mean(.data$R_ALL_s), .groups = "drop"),
+        by = c(fitted_model$upper_re_col, fitted_model$pathogen_col, "profile_class_set", "profile_delta")) %>%
+      dplyr::transmute(dplyr::across(dplyr::all_of(c(fitted_model$upper_re_col, fitted_model$pathogen_col,
+        "profile_class_set", "profile_delta"))), comparison = label, abs_diff = abs(.data$p_a - .data$p_b))
+    list(event = ae, aggregate = aa)
+  }
+  bl <- compare("baseline", "long", "baseline_vs_long")
+  ml <- compare("medium", "long", "medium_vs_long")
+  event_comparison <- dplyr::bind_rows(bl$event, ml$event)
+  aggregate_comparison <- dplyr::bind_rows(bl$aggregate, ml$aggregate)
+  max_agg <- max(bl$aggregate$abs_diff, na.rm = TRUE)
+  status <- if (max_agg <= tolerance) "pass" else if (max_agg <= 2 * tolerance) "warning" else "fail"
+  summary <- schedule_summary %>% dplyr::mutate(
+    n_selected_events = nrow(selected_events), n_posterior_draws = length(draw_idx),
+    max_abs_aggregate_difference_baseline_long = max_agg,
+    mean_abs_aggregate_difference_baseline_long = mean(bl$aggregate$abs_diff),
+    max_abs_aggregate_difference_medium_long = max(ml$aggregate$abs_diff, na.rm = TRUE),
+    mean_abs_aggregate_difference_medium_long = mean(ml$aggregate$abs_diff),
+    p95_event_max_abs_diff_baseline_long = stats::quantile(bl$event$max_abs_diff, 0.95, names = FALSE),
+    max_event_max_abs_diff_baseline_long = max(bl$event$max_abs_diff), gibbs_stability_status = status)
+  list(summary = summary, event_comparison = event_comparison,
+    aggregate_comparison = aggregate_comparison, selected_events = selected_events,
+    schedules_used = schedules, posterior_draw_indices = draw_idx, seed = as.integer(seed),
+    tolerance = tolerance, status = status,
+    rng_scheme = "Shared explicit posterior draw indices/event IDs; RNG reset to seed + 2 before each schedule.")
 }
 
 #' Aggregate Posterior Profile Draws into R_ALL / R_KNOWN_OUTCOME / R_NF Summaries

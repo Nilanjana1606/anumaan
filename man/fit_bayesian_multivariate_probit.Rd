@@ -86,7 +86,9 @@ mainly by the LKJ prior and adds identifiability risk.}
 \code{"observed_stewardship_event_mix"} is currently supported.}
 
 \item{prior_config}{Named list. Any subset of \code{beta_sd} (default 1.5),
-\code{tau_sd} (default 1.0), \code{lkj_eta} (default 2.0).}
+\code{tau_sd} (default 1.0), legacy \code{lkj_eta} (default 2.0), or
+separate \code{lkj_eta_residual} and \code{lkj_eta_random_effect}.
+Legacy \code{lkj_eta} resolves to both values for exact backward compatibility.}
 
 \item{sampler_config}{Named list. Sampler settings forwarded to
 \code{cmdstanr::sample()}: \code{chains} (4), \code{iter_warmup} (1000),
