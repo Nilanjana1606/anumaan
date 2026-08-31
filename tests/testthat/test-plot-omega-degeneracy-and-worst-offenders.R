@@ -87,21 +87,32 @@ test_that("plot_probit_worst_offender_diagnostics() returns NULL when monitored_
   expect_null(plot_probit_worst_offender_diagnostics(broken_fit, broken_fit$draws, "test"))
 })
 
-test_that(".probit_interpretation_text() picks the energy-failure branch over the rhat-mixing branch when both apply", {
+test_that(".probit_interpretation_text() picks the energy-failure issue as primary and the fixed-effect Rhat issue as secondary when both apply", {
   diag <- list(ebfmi_min = 0.1, n_divergent = 0)
   beta_summary <- data.frame(family = "Hospital", pct_rhat_gt_1_01 = 90, worst_rhat = 1.05, min_ess_bulk = 50)
-  txt <- .probit_interpretation_text(diag, "fail_energy", "FAIL", beta_summary, NULL, "identity")
-  expect_true(any(grepl("geometry/energy problem", txt)))
-  expect_false(any(grepl("slow/inconsistent mixing", txt)))
+  grouped_diag <- data.frame(parameter_group = "beta", n_parameters = 10, pct_rhat_above_1_01 = 90,
+                             max_rhat = 1.05, min_ess_bulk = 50, stringsAsFactors = FALSE)
+  txt <- .probit_interpretation_text(diag, "fail_energy", "FAIL", beta_summary, NULL, "identity",
+                                     grouped_diag = grouped_diag)
+  primary_line <- txt[grepl("^PRIMARY ISSUE:", txt)]
+  secondary_line <- txt[grepl("^SECONDARY ISSUE:", txt)]
+  expect_true(any(grepl("energy exploration", primary_line)))
+  expect_true(any(grepl("Hospital", secondary_line)))
+  expect_false(any(grepl("Hospital", primary_line)))
 })
 
-test_that(".probit_interpretation_text() picks the rhat-mixing branch and mentions Omega only for correlated fits", {
+test_that(".probit_interpretation_text() picks the fixed-effect Rhat issue as primary when energy/Omega are clean, and mentions Omega detail only for correlated fits", {
   diag <- list(ebfmi_min = 0.8, n_divergent = 0)
   beta_summary <- data.frame(family = "Hospital", pct_rhat_gt_1_01 = 40, worst_rhat = 1.03, min_ess_bulk = 200)
   degeneracy_stats <- list(pct_near_degenerate = 5, med_condition_number = 10, degenerate_threshold = 0.05)
+  grouped_diag <- data.frame(parameter_group = c("beta", "Omega"), n_parameters = c(10, 6),
+                             pct_rhat_above_1_01 = c(40, 0), max_rhat = c(1.03, 1.005),
+                             min_ess_bulk = c(200, 300), stringsAsFactors = FALSE)
 
-  txt_corr <- .probit_interpretation_text(diag, "warning_rhat", "WARNING", beta_summary, degeneracy_stats, "correlated")
-  expect_true(any(grepl("slow/inconsistent mixing", txt_corr)))
+  txt_corr <- .probit_interpretation_text(diag, "warning_rhat", "WARNING", beta_summary, degeneracy_stats, "correlated",
+                                          grouped_diag = grouped_diag)
+  primary_line <- txt_corr[grepl("^PRIMARY ISSUE:", txt_corr)]
+  expect_true(any(grepl("Hospital", primary_line)))
   expect_true(any(grepl("^Omega", txt_corr)))
 
   txt_identity <- .probit_interpretation_text(diag, "warning_rhat", "WARNING", beta_summary, NULL, "identity")
@@ -134,5 +145,5 @@ test_that(".probit_interpretation_text() reports a clean pass with no concerns",
   beta_summary <- data.frame(family = c("Hospital", "Age"), pct_rhat_gt_1_01 = c(0, 0),
                              worst_rhat = c(1.0, 1.0), min_ess_bulk = c(900, 900))
   txt <- .probit_interpretation_text(diag, "pass", "PASS", beta_summary, NULL, "identity")
-  expect_true(any(grepl("No convergence, energy, or divergence concerns", txt)))
+  expect_true(any(grepl("No divergence, energy, treedepth, or Rhat concerns", txt)))
 })
