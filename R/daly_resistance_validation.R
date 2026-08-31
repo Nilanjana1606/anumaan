@@ -465,11 +465,11 @@ validate_pairwise_calibration <- function(
       interval_contains_observed =
         .data$observed_pairwise_resistance >= .data$model_pairwise_lower &
           .data$observed_pairwise_resistance <= .data$model_pairwise_upper,
-      absolute_error_RR = abs(.data$observed_RR_prop - .data$model_RR_mean),
+      absolute_error_RR = abs(.data$observed_RR_prop - .data$model_pairwise_mean),
       absolute_error_RS = abs(.data$observed_RS_prop - .data$model_RS_mean),
       absolute_error_SR = abs(.data$observed_SR_prop - .data$model_SR_mean),
       absolute_error_SS = abs(.data$observed_SS_prop - .data$model_SS_mean),
-      interval_contains_RR = .data$observed_RR_prop >= .data$model_RR_lower & .data$observed_RR_prop <= .data$model_RR_upper,
+      interval_contains_RR = .data$observed_RR_prop >= .data$model_pairwise_lower & .data$observed_RR_prop <= .data$model_pairwise_upper,
       interval_contains_RS = .data$observed_RS_prop >= .data$model_RS_lower & .data$observed_RS_prop <= .data$model_RS_upper,
       interval_contains_SR = .data$observed_SR_prop >= .data$model_SR_lower & .data$observed_SR_prop <= .data$model_SR_upper,
       interval_contains_SS = .data$observed_SS_prop >= .data$model_SS_lower & .data$observed_SS_prop <= .data$model_SS_upper,
