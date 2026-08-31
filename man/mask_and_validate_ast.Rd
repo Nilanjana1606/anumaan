@@ -17,7 +17,7 @@ mask_and_validate_ast(
   min_tested_after_mask = 30L,
   min_resistant_after_mask = 5L,
   min_susceptible_after_mask = 5L,
-  panel_eligibility = list(),
+  panel_eligibility = NULL,
   prior_config = NULL,
   sampler_config = NULL,
   n_gibbs_burnin = 10L,
@@ -56,8 +56,9 @@ subsampling). Default \code{123L}.}
 \item{min_tested_after_mask, min_resistant_after_mask, min_susceptible_after_mask}{Integer. Panel-eligibility floors enforced during masking. Default
 \code{30L}, \code{5L}, \code{5L}.}
 
-\item{panel_eligibility}{Named list. Forwarded to
-\code{fit_bayesian_multivariate_probit()} when \code{refit = TRUE}.}
+\item{panel_eligibility}{Named list or \code{NULL}. When \code{NULL}, a
+masked refit inherits \code{fitted_model$panel_eligibility_used}; a
+non-\code{NULL} value explicitly overrides those resolved thresholds.}
 
 \item{prior_config, sampler_config}{Named list or \code{NULL}. Forwarded
 when \code{refit = TRUE}; default to the original fit's

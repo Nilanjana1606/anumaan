@@ -15,6 +15,13 @@
 # DALY estimand (never overwrite what was actually measured) and wrong here
 # (a validation check that can't disagree with the data is not a check).
 
+.probit_check_probability <- function(x) {
+  if (any(!is.finite(x)) || any(x < -1e-12 | x > 1 + 1e-12)) {
+    stop("[validate_pairwise_calibration] Materially invalid four-cell probability encountered.", call. = FALSE)
+  }
+  pmin(1, pmax(0, x))
+}
+
 # ---------------------------------------------------------------------------
 # Internal: shared posterior-draw setup for validation functions
 # ---------------------------------------------------------------------------
@@ -211,12 +218,6 @@ validate_marginal_calibration <- function(
   }
 
   keys <- names(cell_meta)
-  .check_prob <- function(x) {
-    if (any(!is.finite(x)) || any(x < -1e-12 | x > 1 + 1e-12)) {
-      stop("[validate_pairwise_calibration] Materially invalid four-cell probability encountered.", call. = FALSE)
-    }
-    pmin(1, pmax(0, x))
-  }
   draw_rows <- vector("list", S)
   for (s in seq_len(S)) {
     p_all <- stats::pnorm(setup$mu_all_for_draw(s))
@@ -417,13 +418,13 @@ validate_pairwise_calibration <- function(
     # These identities are applied event-wise in the correlated model.  The
     # means below are equivalent by linearity, and preserve RR semantics.
     draws_tbl <- draws_tbl %>% dplyr::mutate(
-      model_RS_s = .check_prob(.data$p1_s - .data$model_RR_s),
-      model_SR_s = .check_prob(.data$p2_s - .data$model_RR_s),
-      model_SS_s = .check_prob(1 - .data$p1_s - .data$p2_s + .data$model_RR_s)
+      model_RS_s = .probit_check_probability(.data$p1_s - .data$model_RR_s),
+      model_SR_s = .probit_check_probability(.data$p2_s - .data$model_RR_s),
+      model_SS_s = .probit_check_probability(1 - .data$p1_s - .data$p2_s + .data$model_RR_s)
     )
   }
   draws_tbl <- draws_tbl %>% dplyr::mutate(
-    model_RR_s = .check_prob(.data$model_RR_s),
+    model_RR_s = .probit_check_probability(.data$model_RR_s),
     four_cell_sum = .data$model_RR_s + .data$model_RS_s + .data$model_SR_s + .data$model_SS_s
   )
   if (any(abs(draws_tbl$four_cell_sum - 1) > 1e-8)) {
@@ -823,8 +824,9 @@ validate_complete_profile_calibration <- function(
 #' @param min_tested_after_mask,min_resistant_after_mask,min_susceptible_after_mask
 #'   Integer. Panel-eligibility floors enforced during masking. Default
 #'   \code{30L}, \code{5L}, \code{5L}.
-#' @param panel_eligibility Named list. Forwarded to
-#'   \code{fit_bayesian_multivariate_probit()} when \code{refit = TRUE}.
+#' @param panel_eligibility Named list or \code{NULL}. When \code{NULL}, a
+#'   masked refit inherits \code{fitted_model$panel_eligibility_used}; a
+#'   non-\code{NULL} value explicitly overrides those resolved thresholds.
 #' @param prior_config,sampler_config Named list or \code{NULL}. Forwarded
 #'   when \code{refit = TRUE}; default to the original fit's
 #'   \code{prior_config_used}/\code{sampler_config_used}.

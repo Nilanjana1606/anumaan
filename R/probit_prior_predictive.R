@@ -157,6 +157,10 @@ generated quantities {
 #' the Stan fitting model's transformed-parameters block EXACTLY:
 #' \code{re_effect[, lo:hi] = diag_pre_multiply(tau_re[r], L_corr_re[r]) * z_re[, lo:hi]},
 #' \code{mu = X_event beta + re_contribution(re_effect, flat_re_idx)}.
+#' @param setup Resolved prior-predictive setup.
+#' @param lkj_re_arr LKJ Cholesky draws for random-effect correlation blocks.
+#' @param lkj_residual_arr LKJ Cholesky draws for the residual correlation.
+#' @param s Prior-state draw index.
 #' @keywords internal
 .prior_draw_state <- function(setup, lkj_re_arr, lkj_residual_arr, s) {
   K <- setup$K; D <- setup$D; R <- setup$R

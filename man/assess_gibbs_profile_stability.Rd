@@ -16,22 +16,37 @@ assess_gibbs_profile_stability(
 )
 }
 \arguments{
-\item{fitted_model}{Object returned by \code{fit_bayesian_multivariate_probit()}.}
-\item{schedules}{Named list of \code{list(burnin=, kept=)} schedules containing
-\code{baseline}, \code{medium}, and \code{long}.}
+\item{fitted_model}{Object returned by [fit_bayesian_multivariate_probit()].}
+
+\item{schedules}{Named list of `list(burnin=, kept=)` schedules.  It must
+contain `baseline`, `medium`, and `long`.}
+
 \item{n_posterior_draws}{Number of fixed posterior draws to use.}
+
 \item{max_events}{Maximum number of incomplete events to assess.}
-\item{seed}{Seed used to select draws and events, and reset for each schedule.}
-\item{tolerance}{Maximum aggregate difference for status \code{"pass"}; twice
-this value is the \code{"warning"} upper bound.}
-\item{event_selection}{Either \code{"stratified"} or \code{"all"}.}
+
+\item{seed}{Seed used once to select draws/events and then reset before each
+schedule.  Thus schedules share posterior draws, events, and RNG streams.}
+
+\item{tolerance}{Maximum aggregate difference for status `"pass"`; twice
+this value is the `"warning"` upper bound.}
+
+\item{event_selection}{Currently `"stratified"` or `"all"`.}
 }
-\value{A list containing summary, event and aggregate comparisons, selected
-events, schedules, posterior draw indices, seed, tolerance, and status.}
-\description{Repeats the existing conditional truncated-MVN Gibbs profile
-completion for fixed posterior draws and a fixed subset of incomplete events.
-It does not refit Stan or alter the fitted model; it checks whether finite
-Gibbs-chain length is adequate for a particular correlated-residual fit.}
-\details{The default thresholds are numerical-stability conventions for this
-diagnostic, not universal statistical thresholds. Identity-residual models
-return \code{"not_applicable"} because their completion is analytic.}
+\value{
+A structured list with summary, event/aggregate comparisons, selected
+  events, schedules, posterior draw indices, and a separate stability status.
+}
+\description{
+Repeats the existing conditional truncated-MVN Gibbs profile completion for
+fixed posterior draws and a fixed, reproducibly selected subset of incomplete
+events.  It does not refit Stan or alter the fitted model.  The comparison
+therefore isolates finite Gibbs-chain length.  The conditional completion
+algorithm is the correct profile-completion algorithm; this diagnostic checks
+whether its finite Monte Carlo run length is adequate for a particular fit,
+especially when posterior residual correlations are high.
+}
+\details{
+The default 0.01/0.02 thresholds are numerical-stability conventions for
+this diagnostic, not universal statistical thresholds.
+}
