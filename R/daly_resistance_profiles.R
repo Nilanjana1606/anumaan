@@ -5882,6 +5882,10 @@ fit_bayesian_multivariate_probit <- function(
 #' @param n_gibbs_burnin,n_gibbs_kept Integer. Only used when
 #'   \code{fitted_model$residual_structure == "correlated"} -- see
 #'   \code{.gibbs_conditional_profile_probs()}. Defaults \code{10L}/\code{20L}.
+#' @param posterior_draw_indices Optional unique indices into the fitted
+#'   posterior draws. When supplied, these replace random draw subsampling.
+#' @param event_indices Optional canonical event indices to include. When
+#'   supplied, only observed events with these indices are processed.
 #'
 #' @return Named list: \code{event_profiles} (event-level posterior mean
 #'   observed-plus-imputed profile probabilities, with

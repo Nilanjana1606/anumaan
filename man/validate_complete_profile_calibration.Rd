@@ -52,9 +52,11 @@ the same approved-eligibility panel used for DALY profiles) with at least
 \code{min_complete_events} events that have \strong{every} panel class
 actually observed (no imputation involved), compares the empirical
 complete-profile frequency distribution against the model-implied profile
-probability distribution for that same event cohort (product of per-class
-\eqn{\Phi(\mu_{ed})}, as if the classes had not been observed -- i.e. the
-model's unconditional prediction, deliberately NOT using
+probability distribution for that same event cohort.  With identity residuals
+it uses the analytic product of per-class \eqn{\Phi(\mu_{ed})}; with
+correlated residuals it uses correlated MVN simulation with \eqn{L_\Omega},
+as if the classes had not been observed -- i.e. the model's unconditional
+prediction, deliberately NOT using
 \code{compute_event_profile_probabilities()}'s observed-cell-preserving
 logic, since the point here is to check whether the model's predictions
 agree with what was actually measured). Panels without enough complete

@@ -7,7 +7,16 @@ the Stan fitting model's transformed-parameters block EXACTLY:
 \code{re_effect[, lo:hi] = diag_pre_multiply(tau_re[r], L_corr_re[r]) * z_re[, lo:hi]},
 \code{mu = X_event beta + re_contribution(re_effect, flat_re_idx)}.}
 \usage{
-.prior_draw_state(setup, lkj_arr, s)
+.prior_draw_state(setup, lkj_re_arr, lkj_residual_arr, s)
+}
+\arguments{
+\item{setup}{Resolved prior-predictive setup.}
+
+\item{lkj_re_arr}{LKJ Cholesky draws for random-effect correlation blocks.}
+
+\item{lkj_residual_arr}{LKJ Cholesky draws for the residual correlation.}
+
+\item{s}{Prior-state draw index.}
 }
 \description{
 Draw one prior predictive parameter state and reconstruct mu, mirroring

@@ -142,7 +142,7 @@ utils::globalVariables(c(
 
   # Pathway 2 — assess_gibbs_profile_stability()
   "n_classes_missing", "missingness_stratum", "observed_pattern_stratum",
-  "comparison", "max_abs_diff", "mean_abs_diff", "l1_distance",
+  "event_idx", "comparison", "max_abs_diff", "mean_abs_diff", "l1_distance",
   "abs_diff", "p_a", "p_b",
 
   # Pathway 2 — aggregate_profiles_for_daly()
