@@ -254,6 +254,7 @@ reference:
   - prepare_random_effects
   - re_contribution
   - compute_event_profile_probabilities
+  - assess_gibbs_profile_stability
   - aggregate_profiles_for_daly
   - summarize_fit_correlation_matrix
   - plot_probit_diagnostics
@@ -273,7 +274,10 @@ reference:
     estimation above ("does the fitted model reproduce the resistance
     patterns actually observed?" rather than "what is the observed-plus-
     imputed resistance profile?"). Kept as a distinct status
-    (\code{profile_validation_status}) from sampler diagnostics.
+    (\code{profile_validation_status}) from sampler diagnostics. Gibbs
+    profile-completion stability is a separate numerical status
+    (\code{gibbs_stability_status}) assessed with
+    \code{assess_gibbs_profile_stability()}.
   contents:
   - validate_marginal_calibration
   - validate_pairwise_calibration
