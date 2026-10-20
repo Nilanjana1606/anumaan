@@ -1,6 +1,6 @@
 # Category 1: prep_dates.R
 
-# prep_parse_date_column -------------------------------------------------------
+# prep_parse_date_column
 
 test_that("prep_parse_date_column: valid behavior", {
   x <- c("43831", "1577836800000", "2020-12-31")
@@ -30,7 +30,7 @@ test_that("prep_parse_date_column: error handling", {
   expect_true(all(is.na(out)))
 })
 
-# prep_coerce_dates ------------------------------------------------------------
+# prep_coerce_dates
 
 test_that("prep_coerce_dates: valid behavior", {
   dat <- data.frame(date_of_culture = c("2020-01-01", "2020-01-02"), event_date = c("43831", "43832"), stringsAsFactors = FALSE)
@@ -57,7 +57,7 @@ test_that("prep_coerce_dates: error handling", {
   expect_identical(out, dat)
 })
 
-# prep_validate_date_logic -----------------------------------------------------
+# prep_validate_date_logic
 
 test_that("prep_validate_date_logic: valid behavior", {
   dat <- cat1_min_dates()

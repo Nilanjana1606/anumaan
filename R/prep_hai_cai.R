@@ -84,7 +84,7 @@ prep_derive_hai_cai <- function(data,
   }
 
   message("\nInfection type distribution:")
-  print(dplyr::arrange(
+  .msg_print(dplyr::arrange(
     dplyr::count(data, !!rlang::sym(infection_type_col), infection_type_method),
     dplyr::desc(n)
   ))
@@ -93,9 +93,7 @@ prep_derive_hai_cai <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # New functions (Layer 6b)
-# ---------------------------------------------------------------------------
 
 # prep_check_hai_inputs removed: its admission <= culture check is now covered
 # by prep_validate_date_logic() in prep_dates.R.
@@ -135,7 +133,7 @@ prep_flag_hai_inferred <- function(data,
 
   dist <- table(data$infection_type_src, useNA = "ifany")
   message("[prep_flag_hai_inferred] infection_type_src distribution:")
-  print(dist)
+  .msg_print(dist)
 
   return(data)
 }

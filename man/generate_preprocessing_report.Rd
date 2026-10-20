@@ -37,14 +37,22 @@ during preprocessing, including column mappings, data quality metrics,
 and transformation summaries.
 }
 \examples{
-\dontrun{
-# Generate report
-report <- generate_preprocessing_report(
-  raw_data = my_raw_data,
-  processed_data = result$data,
-  preprocessing_log = result$log,
-  config = result$config,
-  output_file = "preprocessing_report.html"
+raw <- data.frame(
+  PID = c("pt_001", "pt_001", "pt_002", "pt_003"),
+  Date.of.admission = c("2021-01-01", "2021-01-01", "2021-01-05", "2021-01-10"),
+  CultureDate = c("2021-01-03", "2021-01-03", "2021-01-08", "2021-01-11"),
+  Final.outcome = c("alive", "alive", "expired", "Discharged Alive"),
+  Organism = c("E. coli", "E. coli", "Klebsiella pneumoniae", "Staphylococcus aureus"),
+  Sample_type1_name = c("Blood", "Blood", "Urine", "Blood"),
+  Antibiotic = c("Amikacin", "Ciprofloxacin", "Meropenem", "Vancomycin"),
+  Result = c("Resistant", "Susceptible", "R", "S"),
+  Gender = c("M", "M", "female", "F"),
+  Age = c(34, 34, 61, 47)
 )
-}
+result <- run_preprocess(raw, verbose = FALSE, generate_report = FALSE)
+report <- generate_preprocessing_report(raw, result$data, result$log,
+  result$config,
+  include_plots = FALSE
+)
+report
 }

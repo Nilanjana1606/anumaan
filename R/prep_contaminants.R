@@ -35,7 +35,7 @@ prep_get_contaminant_list <- function(syndrome = NULL,
   commensals_data <- readr::read_csv(commensals_path, show_col_types = FALSE)
 
   if (!is.null(syndrome) && !return_all) {
-    commensals_data <- dplyr::filter(commensals_data, Syndrome == syndrome)
+    commensals_data <- dplyr::filter(commensals_data, .name_key(Syndrome) == .name_key(syndrome))
   }
   if (!is.null(specimen_type) && !return_all) {
     commensals_data <- dplyr::filter(commensals_data, `Type of culture/specimen` == specimen_type)
@@ -298,9 +298,7 @@ prep_flag_contaminants <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # New functions (Layer 6c)
-# ---------------------------------------------------------------------------
 
 #' Filter Fungal Organisms
 #'

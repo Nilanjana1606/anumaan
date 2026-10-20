@@ -73,9 +73,7 @@
 # scenarios (test-probit-predictive-synthetic-recovery.R), and should be
 # recalibrated once real multi-pathogen experiment results are available.
 
-# ---------------------------------------------------------------------------
 # Internal: shared posterior-draw setup for predictive-check functions
-# ---------------------------------------------------------------------------
 
 #' Shared posterior-draw setup for posterior predictive simulation
 #'
@@ -89,41 +87,45 @@
 #' \code{daly_resistance_validation.R} currently has zero test coverage, so
 #' keeping predictive-check code isolated from it avoids introducing any risk
 #' of silently changing existing validation behaviour.
-#' @keywords internal
+#' @noRd
 .probit_predictive_draws_setup <- function(fitted_model, n_states, seed) {
-  if (!requireNamespace("posterior", quietly = TRUE))
+  if (!requireNamespace("posterior", quietly = TRUE)) {
     stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
+  }
 
-  set.seed(as.integer(seed))
+  .local_seed(as.integer(seed), envir = parent.frame()) # caller keeps drawing
 
-  draws        <- fitted_model$draws
-  class_cols   <- fitted_model$class_cols
-  event_meta   <- fitted_model$event_metadata
+  draws <- fitted_model$draws
+  class_cols <- fitted_model$class_cols
+  event_meta <- fitted_model$event_metadata
   upper_re_col <- fitted_model$upper_re_col
   pathogen_col <- fitted_model$pathogen_col
-  re_prep      <- fitted_model$random_effects_prep
+  re_prep <- fitted_model$random_effects_prep
   residual_structure <- .null_default(fitted_model$residual_structure, "identity")
 
   D <- length(fitted_model$index_maps$class_levels)
-  X_event_sim  <- if (!is.null(fitted_model$X_event)) fitted_model$X_event else fitted_model$X_design
-  event_re_idx <- fitted_model$event_re_idx    # N_events x R flattened level index
+  X_event_sim <- if (!is.null(fitted_model$X_event)) fitted_model$X_event else fitted_model$X_design
+  event_re_idx <- fitted_model$event_re_idx # N_events x R flattened level index
   K <- ncol(X_event_sim)
 
   draws_mat <- posterior::as_draws_matrix(draws)
-  n_total   <- nrow(draws_mat)
+  n_total <- nrow(draws_mat)
   S <- min(as.integer(n_states), n_total)
-  if (is.na(S) || S < 1L)
+  if (is.na(S) || S < 1L) {
     stop("`n_states` must resolve to a positive integer.", call. = FALSE)
+  }
   draw_idx <- if (S < n_total) sort(sample.int(n_total, S)) else seq_len(n_total)
   draws_mat <- draws_mat[draw_idx, , drop = FALSE]
 
   .arr <- function(prefix, d1, d2) {
-    cols <- as.vector(outer(seq_len(d1), seq_len(d2),
-                            function(a, b) sprintf("%s[%d,%d]", prefix, a, b)))
+    cols <- as.vector(outer(
+      seq_len(d1), seq_len(d2),
+      function(a, b) sprintf("%s[%d,%d]", prefix, a, b)
+    ))
     array(draws_mat[, cols, drop = FALSE], dim = c(S, d1, d2))
   }
-  beta_arr    <- .arr("beta", K, D)
-  re_eff_arr  <- if (re_prep$R > 0L) .arr("re_effect", D, re_prep$total_re_levels) else NULL
+  beta_arr <- .arr("beta", K, D)
+  re_eff_arr <- if (re_prep$R > 0L) .arr("re_effect", D, re_prep$total_re_levels) else NULL
   L_omega_arr <- if (identical(residual_structure, "correlated")) .arr("L_Omega", D, D) else NULL
 
   stopifnot(".event_idx" %in% names(event_meta))
@@ -132,7 +134,7 @@
   N_ev <- nrow(event_meta_obs)
   ev_row_idx <- event_meta_obs$.event_idx
   X_event <- X_event_sim[ev_row_idx, , drop = FALSE]
-  flat_re_idx_obs <- event_re_idx[ev_row_idx, , drop = FALSE]   # N_ev x R
+  flat_re_idx_obs <- event_re_idx[ev_row_idx, , drop = FALSE] # N_ev x R
 
   obs_ast_mat <- as.matrix(event_meta_obs[, class_cols, drop = FALSE])
   storage.mode(obs_ast_mat) <- "double"
@@ -146,11 +148,13 @@
   # declared blocks via the shared re_contribution() helper -- never
   # hardcodes hospital/admission/patient.
   mu_all_for_draw <- function(s) {
-    beta_s   <- matrix(beta_arr[s, , ],   nrow = K, ncol = D)
+    beta_s <- matrix(beta_arr[s, , ], nrow = K, ncol = D)
     re_term <- if (re_prep$R > 0L) {
       re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
       re_contribution(re_eff_s, flat_re_idx_obs)
-    } else matrix(0, nrow = N_ev, ncol = D)
+    } else {
+      matrix(0, nrow = N_ev, ncol = D)
+    }
     (X_event %*% beta_s) + re_term
   }
   # Raw stored Cholesky factor of the residual correlation matrix (a Stan
@@ -158,7 +162,9 @@
   # tcrossprod()/re-Cholesky reconstruction needed for generative sampling).
   L_omega_for_draw <- if (identical(residual_structure, "correlated")) {
     function(s) matrix(L_omega_arr[s, , ], nrow = D, ncol = D)
-  } else NULL
+  } else {
+    NULL
+  }
 
   list(
     S = S, N_ev = N_ev, D = D, K = K,
@@ -175,9 +181,7 @@
   )
 }
 
-# ---------------------------------------------------------------------------
 # Internal: unconditional generative draws (identity / correlated residual)
-# ---------------------------------------------------------------------------
 
 #' Identity-residual posterior predictive draw: Y_rep ~ Bernoulli(Phi(mu))
 #'
@@ -185,7 +189,7 @@
 #' but avoids materialising the unneeded N_events x D latent Z matrix and
 #' mirrors what \code{validate_marginal_calibration()} already does with
 #' \code{stats::pnorm(mu)} for the identity case.
-#' @keywords internal
+#' @noRd
 .ppc_generate_identity <- function(mu_s) {
   p <- stats::pnorm(as.vector(mu_s))
   matrix(stats::rbinom(length(p), 1L, p), nrow = nrow(mu_s), ncol = ncol(mu_s))
@@ -198,10 +202,10 @@
 #' directly (one Cholesky per state, per Part 20's performance requirement)
 #' via a single D x N_events matrix multiply, vectorised across every event
 #' in that state -- no per-event loop.
-#' @keywords internal
+#' @noRd
 .ppc_generate_correlated <- function(mu_s, L_omega_s) {
   N_ev <- nrow(mu_s)
-  D    <- ncol(mu_s)
+  D <- ncol(mu_s)
   eps <- matrix(stats::rnorm(D * N_ev), nrow = D, ncol = N_ev)
   z <- mu_s + t(L_omega_s %*% eps)
   matrix(as.integer(z > 0), nrow = N_ev, ncol = D)
@@ -217,7 +221,7 @@
 #' passed to \code{set.seed()} produce uncorrelated Mersenne Twister
 #' streams, so a simple affine combination is sufficient here (this is not
 #' a cryptographic hash, just a reproducible index-to-seed map).
-#' @keywords internal
+#' @noRd
 .ppc_state_seed <- function(seed, s) {
   as.integer((as.numeric(seed) * 1000003 + as.numeric(s)) %% 2147483647L)
 }
@@ -226,7 +230,7 @@
 #' caller's global RNG state (\code{.Random.seed}) afterwards -- so a
 #' predictive-check generator never disturbs any OTHER stochastic code
 #' running in the same session before or after it is used.
-#' @keywords internal
+#' @noRd
 .ppc_with_local_seed <- function(seed, expr) {
   has_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
   old_seed <- if (has_seed) get(".Random.seed", envir = .GlobalEnv) else NULL
@@ -241,9 +245,7 @@
   force(expr)
 }
 
-# ---------------------------------------------------------------------------
 # simulate_probit_posterior_predictive()
-# ---------------------------------------------------------------------------
 
 #' Simulate posterior predictive replicate datasets from a fitted probit model
 #'
@@ -327,13 +329,13 @@
 #' User's Guide. \url{https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html}
 #' @export
 simulate_probit_posterior_predictive <- function(
-    fitted_model,
-    n_states = 500L,
-    seed = 123L,
-    preserve_observation_mask = TRUE,
-    return_replicates = FALSE,
-    replicate_random_effects = FALSE,
-    random_effect_blocks_to_replicate = NULL
+  fitted_model,
+  n_states = 500L,
+  seed = 123L,
+  preserve_observation_mask = TRUE,
+  return_replicates = FALSE,
+  replicate_random_effects = FALSE,
+  random_effect_blocks_to_replicate = NULL
 ) {
   if (isTRUE(replicate_random_effects) || !is.null(random_effect_blocks_to_replicate)) {
     stop(
@@ -353,7 +355,9 @@ simulate_probit_posterior_predictive <- function(
     function(s) {
       key <- as.character(as.integer(s))
       cached <- cache[[key]]
-      if (!is.null(cached)) return(cached)
+      if (!is.null(cached)) {
+        return(cached)
+      }
 
       val <- .ppc_with_local_seed(.ppc_state_seed(seed, s), {
         mu_s <- setup$mu_all_for_draw(s)
@@ -401,7 +405,7 @@ simulate_probit_posterior_predictive <- function(
         n_elements, setup$S, setup$N_ev, setup$D, max_elements
       ), call. = FALSE)
     }
-    Y_rep_array          <- array(NA_integer_, dim = c(setup$S, setup$N_ev, setup$D))
+    Y_rep_array <- array(NA_integer_, dim = c(setup$S, setup$N_ev, setup$D))
     Y_rep_complete_array <- array(NA_integer_, dim = c(setup$S, setup$N_ev, setup$D))
     for (s in seq_len(setup$S)) {
       st <- generate_state(s)
@@ -416,9 +420,7 @@ simulate_probit_posterior_predictive <- function(
   out
 }
 
-# ---------------------------------------------------------------------------
 # compute_probit_ppc_statistics(): AMR-specific discrepancy statistics
-# ---------------------------------------------------------------------------
 #
 # Architecture: a one-time "spec-building" pass (.ppc_build_spec()) resolves,
 # for every requested statistic family, a fixed list of "items" -- one per
@@ -448,9 +450,9 @@ simulate_probit_posterior_predictive <- function(
 #' the two-sided value is \code{min(1, 2 * min(lower_tail, upper_tail))}, with
 #' the lower tail calculated analogously. These finite-replicate corrected
 #' summaries are NOT classical calibrated p-values.
-#' @keywords internal
+#' @noRd
 .ppc_summarize_statistic <- function(statistic_name, stratum, observed_value, T_rep,
-                                      support_status, ci_level) {
+                                     support_status, ci_level) {
   lo_q <- (1 - ci_level) / 2
   hi_q <- 1 - lo_q
   T_rep <- T_rep[!is.na(T_rep)]
@@ -476,20 +478,21 @@ simulate_probit_posterior_predictive <- function(
     observed_value = observed_value,
     replicated_mean = mean(T_rep), replicated_sd = stats::sd(T_rep),
     replicated_q025 = .ppc_quantile(T_rep, lo_q),
-    replicated_q50  = .ppc_quantile(T_rep, 0.5),
+    replicated_q50 = .ppc_quantile(T_rep, 0.5),
     replicated_q975 = .ppc_quantile(T_rep, hi_q),
     ppc_tail_probability = upper_tail, ppc_two_sided = two_sided,
     n_replications = n_rep, support_status = support_status
   )
 }
 
-# --- Part 5A: marginal resistance -------------------------------------------
-
+# Part 5A: marginal resistance
 #' @keywords internal
 .ppc_items_marginal <- function(setup) {
   items <- list()
-  D <- setup$D; class_cols <- setup$class_cols
-  obs <- setup$obs_ast_mat; mask <- setup$obs_mask
+  D <- setup$D
+  class_cols <- setup$class_cols
+  obs <- setup$obs_ast_mat
+  mask <- setup$obs_mask
 
   # Global (pooled, dataset-wide) per-class marginal -- support thresholds
   # mirror .validate_panel_eligibility()'s own defaults (30/5/5).
@@ -502,7 +505,8 @@ simulate_probit_posterior_predictive <- function(
     supported <- n_tested >= 30L && n_res >= 5L && n_sus >= 5L
     obs_val <- if (n_tested > 0L) n_res / n_tested else NA_real_
     items[[length(items) + 1L]] <- local({
-      idx <- tested_idx; dd <- d
+      idx <- tested_idx
+      dd <- d
       list(
         statistic_name = "marginal_resistance", stratum = sprintf("class:%s", cc),
         observed_value = obs_val,
@@ -516,11 +520,13 @@ simulate_probit_posterior_predictive <- function(
   # as validate_marginal_calibration() does.
   elig <- setup$eligibility_report$marginal
   if (!is.null(elig) && nrow(elig) > 0L) {
-    upper_re_col <- setup$upper_re_col; pathogen_col <- setup$pathogen_col
+    upper_re_col <- setup$upper_re_col
+    pathogen_col <- setup$pathogen_col
     event_meta <- setup$event_meta_obs
     elig_rows <- elig[elig$eligible, , drop = FALSE]
     for (r in seq_len(nrow(elig_rows))) {
-      h <- elig_rows[[upper_re_col]][r]; k <- elig_rows[[pathogen_col]][r]
+      h <- elig_rows[[upper_re_col]][r]
+      k <- elig_rows[[pathogen_col]][r]
       cc <- elig_rows$antibiotic_class[r]
       d <- match(cc, class_cols)
       if (is.na(d)) next
@@ -530,7 +536,8 @@ simulate_probit_posterior_predictive <- function(
       n_res <- sum(obs[sub_idx, d] == 1)
       obs_val <- n_res / n_tested
       items[[length(items) + 1L]] <- local({
-        idx <- sub_idx; dd <- d
+        idx <- sub_idx
+        dd <- d
         list(
           statistic_name = "marginal_resistance",
           stratum = sprintf("hospital:%s|class:%s", h, cc),
@@ -543,18 +550,20 @@ simulate_probit_posterior_predictive <- function(
   items
 }
 
-# --- Part 5B: resistant classes per event -----------------------------------
-
+# Part 5B: resistant classes per event
 #' @keywords internal
 .ppc_items_resistant_count <- function(setup, min_complete_profile_events) {
   items <- list()
   N_ev <- setup$N_ev
-  obs <- setup$obs_ast_mat; mask <- setup$obs_mask
+  obs <- setup$obs_ast_mat
+  mask <- setup$obs_mask
 
   tested_list <- lapply(seq_len(N_ev), function(i) which(mask[i, ]))
   C_obs <- vapply(seq_len(N_ev), function(i) {
     idx <- tested_list[[i]]
-    if (length(idx) == 0L) return(NA_real_)
+    if (length(idx) == 0L) {
+      return(NA_real_)
+    }
     sum(obs[i, idx] == 1)
   }, numeric(1L))
   has_tested <- !is.na(C_obs)
@@ -569,7 +578,9 @@ simulate_probit_posterior_predictive <- function(
   for (nm in names(summary_fns)) {
     fn <- summary_fns[[nm]]
     items[[length(items) + 1L]] <- local({
-      fn2 <- fn; tl <- tested_list; ht <- has_tested
+      fn2 <- fn
+      tl <- tested_list
+      ht <- has_tested
       list(
         statistic_name = nm, stratum = "all_events",
         observed_value = fn2(C_obs[ht]),
@@ -589,7 +600,8 @@ simulate_probit_posterior_predictive <- function(
   # (the "true full count distribution" for fully-observed events only).
   hp_pairs <- unique(setup$event_meta_obs[, c(setup$upper_re_col, setup$pathogen_col), drop = FALSE])
   for (r in seq_len(nrow(hp_pairs))) {
-    h <- hp_pairs[[setup$upper_re_col]][r]; k <- hp_pairs[[setup$pathogen_col]][r]
+    h <- hp_pairs[[setup$upper_re_col]][r]
+    k <- hp_pairs[[setup$pathogen_col]][r]
     panel <- .resolve_profile_class_panel(
       class_cols = setup$class_cols, hospital = h, pathogen = k,
       eligibility_report = setup$eligibility_report,
@@ -601,7 +613,7 @@ simulate_probit_posterior_predictive <- function(
     if (Dp == 0L) next
     d_idx <- match(panel_classes, setup$class_cols)
     hp_idx <- which(setup$event_meta_obs[[setup$upper_re_col]] == h &
-                     setup$event_meta_obs[[setup$pathogen_col]] == k)
+      setup$event_meta_obs[[setup$pathogen_col]] == k)
     complete_idx <- hp_idx[rowSums(mask[hp_idx, d_idx, drop = FALSE]) == Dp]
     n_complete <- length(complete_idx)
     supported <- n_complete >= min_complete_profile_events
@@ -609,14 +621,18 @@ simulate_probit_posterior_predictive <- function(
     for (cnt in 0:Dp) {
       obs_val <- if (supported) mean(C_obs_complete == cnt) else NA_real_
       items[[length(items) + 1L]] <- local({
-        idx <- complete_idx; di <- d_idx; cc <- cnt
+        idx <- complete_idx
+        di <- d_idx
+        cc <- cnt
         list(
           statistic_name = "resistant_count_proportion",
           stratum = sprintf("hospital:%s|pathogen:%s|panel_size:%d|C=%d", h, k, Dp, cc),
           observed_value = obs_val,
           support_status = if (supported) "supported" else "insufficient_support",
           compute = function(Y_rep, Y_rep_complete) {
-            if (length(idx) == 0L) return(NA_real_)
+            if (length(idx) == 0L) {
+              return(NA_real_)
+            }
             Crep <- rowSums(Y_rep[idx, di, drop = FALSE] == 1, na.rm = TRUE)
             mean(Crep == cc)
           }
@@ -627,47 +643,60 @@ simulate_probit_posterior_predictive <- function(
   items
 }
 
-# --- Part 5C: pairwise co-resistance -----------------------------------------
-
+# Part 5C: pairwise co-resistance
 #' @keywords internal
 .ppc_items_pairwise <- function(setup) {
   items <- list()
   D <- setup$D
-  if (D < 2L) return(items)
+  if (D < 2L) {
+    return(items)
+  }
   class_cols <- setup$class_cols
-  obs <- setup$obs_ast_mat; mask <- setup$obs_mask
+  obs <- setup$obs_ast_mat
+  mask <- setup$obs_mask
   pw <- setup$eligibility_report$pairwise
-  if (is.null(pw) || nrow(pw) == 0L) return(items)
+  if (is.null(pw) || nrow(pw) == 0L) {
+    return(items)
+  }
   upper_re_col <- setup$upper_re_col
   event_meta <- setup$event_meta_obs
   sufficient_rows <- pw[pw$sufficient, , drop = FALSE]
 
   for (r in seq_len(nrow(sufficient_rows))) {
     h <- sufficient_rows[[upper_re_col]][r]
-    c1 <- sufficient_rows$class_1[r]; c2 <- sufficient_rows$class_2[r]
-    d1 <- match(c1, class_cols); d2 <- match(c2, class_cols)
+    c1 <- sufficient_rows$class_1[r]
+    c2 <- sufficient_rows$class_2[r]
+    d1 <- match(c1, class_cols)
+    d2 <- match(c2, class_cols)
     if (is.na(d1) || is.na(d2)) next
     sub_idx <- which(event_meta[[upper_re_col]] == h)
     cotested_idx <- sub_idx[mask[sub_idx, d1] & mask[sub_idx, d2]]
     n_cotested <- length(cotested_idx)
     if (n_cotested == 0L) next
-    v1 <- obs[cotested_idx, d1]; v2 <- obs[cotested_idx, d2]
+    v1 <- obs[cotested_idx, d1]
+    v2 <- obs[cotested_idx, d2]
     obs_props <- c(
       RR = mean(v1 == 1 & v2 == 1), RS = mean(v1 == 1 & v2 == 0),
       SR = mean(v1 == 0 & v2 == 1), SS = mean(v1 == 0 & v2 == 0)
     )
     for (lab in c("RR", "RS", "SR", "SS")) {
       items[[length(items) + 1L]] <- local({
-        idx <- cotested_idx; dd1 <- d1; dd2 <- d2; l <- lab
+        idx <- cotested_idx
+        dd1 <- d1
+        dd2 <- d2
+        l <- lab
         list(
           statistic_name = sprintf("pairwise_%s", l),
           stratum = sprintf("hospital:%s|%s_x_%s", h, c1, c2),
           observed_value = unname(obs_props[l]), support_status = "supported",
           compute = function(Y_rep, Y_rep_complete) {
-            a <- Y_rep[idx, dd1]; b <- Y_rep[idx, dd2]
+            a <- Y_rep[idx, dd1]
+            b <- Y_rep[idx, dd2]
             switch(l,
-              RR = mean(a == 1 & b == 1), RS = mean(a == 1 & b == 0),
-              SR = mean(a == 0 & b == 1), SS = mean(a == 0 & b == 0)
+              RR = mean(a == 1 & b == 1),
+              RS = mean(a == 1 & b == 0),
+              SR = mean(a == 0 & b == 1),
+              SS = mean(a == 0 & b == 0)
             )
           }
         )
@@ -677,21 +706,25 @@ simulate_probit_posterior_predictive <- function(
   items
 }
 
-# --- Part 5D: complete-profile statistics ------------------------------------
-
+# Part 5D: complete-profile statistics
 #' @keywords internal
 .ppc_items_complete_profile <- function(setup, min_complete_profile_events) {
   items <- list()
   hp_pairs <- unique(setup$event_meta_obs[, c(setup$upper_re_col, setup$pathogen_col), drop = FALSE])
-  obs <- setup$obs_ast_mat; mask <- setup$obs_mask
+  obs <- setup$obs_ast_mat
+  mask <- setup$obs_mask
   label_of <- function(mat_slice) {
     apply(mat_slice, 1L, function(row) paste0(ifelse(row == 1, "R", "S"), collapse = ""))
   }
-  shannon <- function(p) { p <- p[p > 0]; -sum(p * log(p)) }
+  shannon <- function(p) {
+    p <- p[p > 0]
+    -sum(p * log(p))
+  }
   simpson <- function(p) sum(p^2)
 
   for (r in seq_len(nrow(hp_pairs))) {
-    h <- hp_pairs[[setup$upper_re_col]][r]; k <- hp_pairs[[setup$pathogen_col]][r]
+    h <- hp_pairs[[setup$upper_re_col]][r]
+    k <- hp_pairs[[setup$pathogen_col]][r]
     panel <- .resolve_profile_class_panel(
       class_cols = setup$class_cols, hospital = h, pathogen = k,
       eligibility_report = setup$eligibility_report,
@@ -703,21 +736,26 @@ simulate_probit_posterior_predictive <- function(
     if (Dp == 0L) next
     d_idx <- match(panel_classes, setup$class_cols)
     hp_idx <- which(setup$event_meta_obs[[setup$upper_re_col]] == h &
-                     setup$event_meta_obs[[setup$pathogen_col]] == k)
+      setup$event_meta_obs[[setup$pathogen_col]] == k)
     complete_idx <- hp_idx[rowSums(mask[hp_idx, d_idx, drop = FALSE]) == Dp]
     n_complete <- length(complete_idx)
     supported <- n_complete >= min_complete_profile_events
     strat_base <- sprintf("hospital:%s|pathogen:%s", h, k)
 
     if (!supported) {
-      for (nm in c("profile_all_susceptible_frequency", "profile_all_resistant_frequency",
-                   "profile_most_common_frequency", "profile_n_distinct",
-                   "profile_shannon_entropy", "profile_simpson_concentration")) {
+      for (nm in c(
+        "profile_all_susceptible_frequency", "profile_all_resistant_frequency",
+        "profile_most_common_frequency", "profile_n_distinct",
+        "profile_shannon_entropy", "profile_simpson_concentration"
+      )) {
         items[[length(items) + 1L]] <- local({
-          nm2 <- nm; sb <- strat_base
-          list(statistic_name = nm2, stratum = sb, observed_value = NA_real_,
-               support_status = "insufficient_support",
-               compute = function(Y_rep, Y_rep_complete) NA_real_)
+          nm2 <- nm
+          sb <- strat_base
+          list(
+            statistic_name = nm2, stratum = sb, observed_value = NA_real_,
+            support_status = "insufficient_support",
+            compute = function(Y_rep, Y_rep_complete) NA_real_
+          )
         })
       }
       next
@@ -738,7 +776,9 @@ simulate_probit_posterior_predictive <- function(
     # retroactively change what an earlier item's compute() sees.
     mk_item <- function(statistic_name, observed_value, reducer) {
       local({
-        idx <- complete_idx; di <- d_idx; red <- reducer
+        idx <- complete_idx
+        di <- d_idx
+        red <- reducer
         list(
           statistic_name = statistic_name, stratum = strat_base,
           observed_value = observed_value, support_status = "supported",
@@ -752,15 +792,24 @@ simulate_probit_posterior_predictive <- function(
 
     items[[length(items) + 1L]] <- mk_item(
       "profile_all_susceptible_frequency", freq_of(obs_labels, all_s_label),
-      local({ lab <- all_s_label; function(labels) mean(labels == lab) })
+      local({
+        lab <- all_s_label
+        function(labels) mean(labels == lab)
+      })
     )
     items[[length(items) + 1L]] <- mk_item(
       "profile_all_resistant_frequency", freq_of(obs_labels, all_r_label),
-      local({ lab <- all_r_label; function(labels) mean(labels == lab) })
+      local({
+        lab <- all_r_label
+        function(labels) mean(labels == lab)
+      })
     )
     items[[length(items) + 1L]] <- mk_item(
       "profile_most_common_frequency", freq_of(obs_labels, mode_label),
-      local({ lab <- mode_label; function(labels) mean(labels == lab) })
+      local({
+        lab <- mode_label
+        function(labels) mean(labels == lab)
+      })
     )
     items[[length(items) + 1L]] <- mk_item(
       "profile_n_distinct", length(unique(obs_labels)),
@@ -768,11 +817,17 @@ simulate_probit_posterior_predictive <- function(
     )
     items[[length(items) + 1L]] <- mk_item(
       "profile_shannon_entropy", shannon(obs_freq),
-      function(labels) { tb <- table(labels); shannon(as.numeric(tb) / length(labels)) }
+      function(labels) {
+        tb <- table(labels)
+        shannon(as.numeric(tb) / length(labels))
+      }
     )
     items[[length(items) + 1L]] <- mk_item(
       "profile_simpson_concentration", simpson(obs_freq),
-      function(labels) { tb <- table(labels); simpson(as.numeric(tb) / length(labels)) }
+      function(labels) {
+        tb <- table(labels)
+        simpson(as.numeric(tb) / length(labels))
+      }
     )
 
     # Top OBSERVED profiles (data-dominant, not a clinical-importance claim):
@@ -788,7 +843,10 @@ simulate_probit_posterior_predictive <- function(
     for (lab in top_labels) {
       items[[length(items) + 1L]] <- mk_item(
         "profile_top_observed_frequency", freq_of(obs_labels, lab),
-        local({ l <- lab; function(labels) mean(labels == l) })
+        local({
+          l <- lab
+          function(labels) mean(labels == l)
+        })
       )
       items[[length(items)]]$stratum <- sprintf("%s|profile:%s", strat_base, lab)
     }
@@ -796,13 +854,14 @@ simulate_probit_posterior_predictive <- function(
   items
 }
 
-# --- Part 5E: hospital heterogeneity -----------------------------------------
-
+# Part 5E: hospital heterogeneity
 #' @keywords internal
 .ppc_items_hospital_heterogeneity <- function(setup, min_hospital_support) {
   items <- list()
-  D <- setup$D; class_cols <- setup$class_cols
-  obs <- setup$obs_ast_mat; mask <- setup$obs_mask
+  D <- setup$D
+  class_cols <- setup$class_cols
+  obs <- setup$obs_ast_mat
+  mask <- setup$obs_mask
   upper_re_col <- setup$upper_re_col
   event_meta <- setup$event_meta_obs
   hospitals <- sort(unique(event_meta[[upper_re_col]]))
@@ -824,18 +883,24 @@ simulate_probit_posterior_predictive <- function(
     supported <- length(hosp_idx_list) >= 2L
     obs_props <- if (supported) {
       vapply(hosp_idx_list, function(idx) mean(obs[idx, d] == 1), numeric(1L))
-    } else numeric(0)
+    } else {
+      numeric(0)
+    }
 
     for (nm in names(spread_fns)) {
       fn <- spread_fns[[nm]]
       items[[length(items) + 1L]] <- local({
-        idx_list <- hosp_idx_list; dd <- d; fn2 <- fn
+        idx_list <- hosp_idx_list
+        dd <- d
+        fn2 <- fn
         list(
           statistic_name = nm, stratum = sprintf("class:%s", cc),
           observed_value = if (supported) fn2(obs_props) else NA_real_,
           support_status = if (supported) "supported" else "insufficient_support",
           compute = function(Y_rep, Y_rep_complete) {
-            if (length(idx_list) < 2L) return(NA_real_)
+            if (length(idx_list) < 2L) {
+              return(NA_real_)
+            }
             props <- vapply(idx_list, function(ix) mean(Y_rep[ix, dd] == 1), numeric(1L))
             fn2(props)
           }
@@ -846,7 +911,7 @@ simulate_probit_posterior_predictive <- function(
   items
 }
 
-# --- Part 6: random-effect-specific PPC statistics (admission/patient) ------
+# Part 6: random-effect-specific PPC statistics (admission/patient)
 #
 # anumaan never hardcodes "hospital"/"admission"/"patient" as DECLARED BLOCK
 # NAMES -- it only recognises those three strings as ROLE values inside the
@@ -872,9 +937,13 @@ simulate_probit_posterior_predictive <- function(
 
 #' @keywords internal
 .ppc_role_column_name <- function(role, random_effect_roles) {
-  if (is.null(random_effect_roles)) return(NULL)
+  if (is.null(random_effect_roles)) {
+    return(NULL)
+  }
   nm <- names(random_effect_roles)[random_effect_roles == role]
-  if (length(nm) == 0L) return(NULL)
+  if (length(nm) == 0L) {
+    return(NULL)
+  }
   nm[1L]
 }
 
@@ -886,22 +955,32 @@ simulate_probit_posterior_predictive <- function(
 
 #' @keywords internal
 .ppc_role_eligible <- function(role, random_effect_eligibility_audit) {
-  if (is.null(random_effect_eligibility_audit)) return(NA)
+  if (is.null(random_effect_eligibility_audit)) {
+    return(NA)
+  }
   aud <- random_effect_eligibility_audit
-  if (!all(c("block", "status") %in% names(aud))) return(NA)
+  if (!all(c("block", "status") %in% names(aud))) {
+    return(NA)
+  }
   row <- aud[aud$block == role, , drop = FALSE]
-  if (nrow(row) == 0L) return(NA)
+  if (nrow(row) == 0L) {
+    return(NA)
+  }
   isTRUE(row$status[1L] %in% c("eligible_primary", "eligible_sensitivity_only"))
 }
 
 #' @keywords internal
 .ppc_cluster_unsupported_items <- function(role, stratum, reason) {
-  nms <- c("cluster_within_group_same_class_agreement",
-           "cluster_within_group_hamming_distance",
-           "cluster_within_between_agreement_diff")
+  nms <- c(
+    "cluster_within_group_same_class_agreement",
+    "cluster_within_group_hamming_distance",
+    "cluster_within_between_agreement_diff"
+  )
   lapply(nms, function(nm) {
-    list(statistic_name = nm, stratum = stratum, observed_value = NA_real_,
-         support_status = reason, compute = function(Y_rep, Y_rep_complete) NA_real_)
+    list(
+      statistic_name = nm, stratum = stratum, observed_value = NA_real_,
+      support_status = reason, compute = function(Y_rep, Y_rep_complete) NA_real_
+    )
   })
 }
 
@@ -919,11 +998,12 @@ simulate_probit_posterior_predictive <- function(
 #' agreement computed over a deterministic random sample of between-group
 #' event pairs (sampling all possible between-group pairs is infeasible for
 #' large N; the sample size scales with the number of within-group pairs).
-#' @keywords internal
+#' @noRd
 .ppc_cluster_pair_stats <- function(setup, role, cluster_id, restrict_diff_id = NULL,
-                                     min_group_events = 2L, max_between_pairs = 5000L) {
+                                    min_group_events = 2L, max_between_pairs = 5000L) {
   N_ev <- setup$N_ev
-  obs <- setup$obs_ast_mat; mask <- setup$obs_mask
+  obs <- setup$obs_ast_mat
+  mask <- setup$obs_mask
   stratum <- sprintf("role:%s", role)
 
   grp <- split(seq_len(N_ev), cluster_id)
@@ -932,7 +1012,9 @@ simulate_probit_posterior_predictive <- function(
   } else {
     grp <- grp[vapply(grp, length, integer(1L)) >= min_group_events]
   }
-  if (length(grp) == 0L) return(.ppc_cluster_unsupported_items(role, stratum, "insufficient_support"))
+  if (length(grp) == 0L) {
+    return(.ppc_cluster_unsupported_items(role, stratum, "insufficient_support"))
+  }
 
   pair_list <- list()
   for (g in grp) {
@@ -943,7 +1025,9 @@ simulate_probit_posterior_predictive <- function(
     }
     pair_list <- c(pair_list, combs)
   }
-  if (length(pair_list) == 0L) return(.ppc_cluster_unsupported_items(role, stratum, "insufficient_support"))
+  if (length(pair_list) == 0L) {
+    return(.ppc_cluster_unsupported_items(role, stratum, "insufficient_support"))
+  }
   within_i <- vapply(pair_list, `[`, integer(1L), 1L)
   within_j <- vapply(pair_list, `[`, integer(1L), 2L)
 
@@ -951,22 +1035,27 @@ simulate_probit_posterior_predictive <- function(
   n_within <- length(within_i)
   n_between_target <- min(max_between_pairs, n_within * 5L)
   between_pairs <- .ppc_with_local_seed(999L, {
-    bi <- integer(0); bj <- integer(0)
+    bi <- integer(0)
+    bj <- integer(0)
     attempts <- 0L
     max_attempts <- max(n_between_target * 20L, 200L)
     while (length(bi) < n_between_target && attempts < max_attempts && length(all_idx) >= 2L) {
       attempts <- attempts + 1L
       pr <- sample(all_idx, 2L)
       if (cluster_id[pr[1]] == cluster_id[pr[2]]) next
-      bi <- c(bi, pr[1]); bj <- c(bj, pr[2])
+      bi <- c(bi, pr[1])
+      bj <- c(bj, pr[2])
     }
     list(bi = bi, bj = bj)
   })
-  between_i <- between_pairs$bi; between_j <- between_pairs$bj
+  between_i <- between_pairs$bi
+  between_j <- between_pairs$bj
 
   .pair_agreement <- function(Y, idx_i, idx_j) {
-    mat_i <- Y[idx_i, , drop = FALSE]; mat_j <- Y[idx_j, , drop = FALSE]
-    mask_i <- mask[idx_i, , drop = FALSE]; mask_j <- mask[idx_j, , drop = FALSE]
+    mat_i <- Y[idx_i, , drop = FALSE]
+    mat_j <- Y[idx_j, , drop = FALSE]
+    mask_i <- mask[idx_i, , drop = FALSE]
+    mask_j <- mask[idx_j, , drop = FALSE]
     both <- mask_i & mask_j
     n_both <- rowSums(both)
     agree <- rowSums((mat_i == mat_j) & both)
@@ -985,22 +1074,30 @@ simulate_probit_posterior_predictive <- function(
       valid_b <- ab$n_both > 0L
       agreement_between <- if (any(valid_b)) sum(ab$agree[valid_b]) / sum(ab$n_both[valid_b]) else NA_real_
     }
-    list(agreement_within = agreement_within, hamming_within = hamming_within,
-         diff = agreement_within - agreement_between)
+    list(
+      agreement_within = agreement_within, hamming_within = hamming_within,
+      diff = agreement_within - agreement_between
+    )
   }
 
   obs_res <- compute_agreement_hamming(obs)
 
   list(
-    list(statistic_name = "cluster_within_group_same_class_agreement", stratum = stratum,
-         observed_value = obs_res$agreement_within, support_status = "supported",
-         compute = function(Y_rep, Y_rep_complete) compute_agreement_hamming(Y_rep)$agreement_within),
-    list(statistic_name = "cluster_within_group_hamming_distance", stratum = stratum,
-         observed_value = obs_res$hamming_within, support_status = "supported",
-         compute = function(Y_rep, Y_rep_complete) compute_agreement_hamming(Y_rep)$hamming_within),
-    list(statistic_name = "cluster_within_between_agreement_diff", stratum = stratum,
-         observed_value = obs_res$diff, support_status = "supported",
-         compute = function(Y_rep, Y_rep_complete) compute_agreement_hamming(Y_rep)$diff)
+    list(
+      statistic_name = "cluster_within_group_same_class_agreement", stratum = stratum,
+      observed_value = obs_res$agreement_within, support_status = "supported",
+      compute = function(Y_rep, Y_rep_complete) compute_agreement_hamming(Y_rep)$agreement_within
+    ),
+    list(
+      statistic_name = "cluster_within_group_hamming_distance", stratum = stratum,
+      observed_value = obs_res$hamming_within, support_status = "supported",
+      compute = function(Y_rep, Y_rep_complete) compute_agreement_hamming(Y_rep)$hamming_within
+    ),
+    list(
+      statistic_name = "cluster_within_between_agreement_diff", stratum = stratum,
+      observed_value = obs_res$diff, support_status = "supported",
+      compute = function(Y_rep, Y_rep_complete) compute_agreement_hamming(Y_rep)$diff
+    )
   )
 }
 
@@ -1008,8 +1105,9 @@ simulate_probit_posterior_predictive <- function(
 .ppc_items_role_clustering <- function(setup, role, random_effect_roles, eligibility_audit) {
   stratum <- sprintf("role:%s", role)
   col_name <- .ppc_role_column_name(role, random_effect_roles)
-  if (is.null(col_name) || !(col_name %in% names(setup$event_meta_obs)))
+  if (is.null(col_name) || !(col_name %in% names(setup$event_meta_obs))) {
     return(.ppc_cluster_unsupported_items(role, stratum, "role_not_mapped"))
+  }
 
   cluster_id <- setup$event_meta_obs[[col_name]]
 
@@ -1020,7 +1118,9 @@ simulate_probit_posterior_predictive <- function(
     # the analysis layer's audit format to function.
     eligible <- .ppc_role_eligible_fallback(cluster_id)
   }
-  if (!isTRUE(eligible)) return(.ppc_cluster_unsupported_items(role, stratum, "insufficient_support"))
+  if (!isTRUE(eligible)) {
+    return(.ppc_cluster_unsupported_items(role, stratum, "insufficient_support"))
+  }
 
   restrict_diff_id <- NULL
   if (identical(role, "patient")) {
@@ -1033,29 +1133,39 @@ simulate_probit_posterior_predictive <- function(
   .ppc_cluster_pair_stats(setup, role, cluster_id, restrict_diff_id = restrict_diff_id)
 }
 
-# --- spec assembly + main entry point ----------------------------------------
-
+# spec assembly + main entry point
 #' @keywords internal
 .ppc_build_spec <- function(setup, statistics, random_effect_roles,
-                             random_effect_eligibility_audit,
-                             min_hospital_support, min_complete_profile_events) {
+                            random_effect_eligibility_audit,
+                            min_hospital_support, min_complete_profile_events) {
   items <- list()
-  if ("marginal" %in% statistics)
+  if ("marginal" %in% statistics) {
     items <- c(items, .ppc_items_marginal(setup))
-  if ("resistant_count" %in% statistics)
+  }
+  if ("resistant_count" %in% statistics) {
     items <- c(items, .ppc_items_resistant_count(setup, min_complete_profile_events))
-  if ("pairwise" %in% statistics)
+  }
+  if ("pairwise" %in% statistics) {
     items <- c(items, .ppc_items_pairwise(setup))
-  if ("complete_profile" %in% statistics)
+  }
+  if ("complete_profile" %in% statistics) {
     items <- c(items, .ppc_items_complete_profile(setup, min_complete_profile_events))
-  if ("hospital_heterogeneity" %in% statistics)
+  }
+  if ("hospital_heterogeneity" %in% statistics) {
     items <- c(items, .ppc_items_hospital_heterogeneity(setup, min_hospital_support))
-  if ("admission_clustering" %in% statistics)
-    items <- c(items, .ppc_items_role_clustering(setup, "admission", random_effect_roles,
-                                                  random_effect_eligibility_audit))
-  if ("patient_clustering" %in% statistics)
-    items <- c(items, .ppc_items_role_clustering(setup, "patient", random_effect_roles,
-                                                  random_effect_eligibility_audit))
+  }
+  if ("admission_clustering" %in% statistics) {
+    items <- c(items, .ppc_items_role_clustering(
+      setup, "admission", random_effect_roles,
+      random_effect_eligibility_audit
+    ))
+  }
+  if ("patient_clustering" %in% statistics) {
+    items <- c(items, .ppc_items_role_clustering(
+      setup, "patient", random_effect_roles,
+      random_effect_eligibility_audit
+    ))
+  }
   items
 }
 
@@ -1157,32 +1267,37 @@ simulate_probit_posterior_predictive <- function(
 #' User's Guide. \url{https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html}
 #' @export
 compute_probit_ppc_statistics <- function(
-    fitted_model_or_ppc_draws,
-    n_states = 500L,
-    seed = 123L,
-    preserve_observation_mask = TRUE,
-    statistics = c("marginal", "resistant_count", "pairwise", "complete_profile",
-                   "hospital_heterogeneity", "admission_clustering", "patient_clustering"),
-    random_effect_roles = NULL,
-    random_effect_eligibility_audit = NULL,
-    min_hospital_support = 30L,
-    min_complete_profile_events = 30L,
-    ci_level = 0.95
+  fitted_model_or_ppc_draws,
+  n_states = 500L,
+  seed = 123L,
+  preserve_observation_mask = TRUE,
+  statistics = c(
+    "marginal", "resistant_count", "pairwise", "complete_profile",
+    "hospital_heterogeneity", "admission_clustering", "patient_clustering"
+  ),
+  random_effect_roles = NULL,
+  random_effect_eligibility_audit = NULL,
+  min_hospital_support = 30L,
+  min_complete_profile_events = 30L,
+  ci_level = 0.95
 ) {
   ppc_draws <- if (inherits(fitted_model_or_ppc_draws, "amr_ppc_draws")) {
     fitted_model_or_ppc_draws
   } else {
     simulate_probit_posterior_predictive(
-      fitted_model_or_ppc_draws, n_states = n_states, seed = seed,
+      fitted_model_or_ppc_draws,
+      n_states = n_states, seed = seed,
       preserve_observation_mask = preserve_observation_mask, return_replicates = FALSE
     )
   }
   setup <- ppc_draws$setup
   S <- ppc_draws$n_states_used
 
-  spec <- .ppc_build_spec(setup, statistics, random_effect_roles,
-                           random_effect_eligibility_audit,
-                           min_hospital_support, min_complete_profile_events)
+  spec <- .ppc_build_spec(
+    setup, statistics, random_effect_roles,
+    random_effect_eligibility_audit,
+    min_hospital_support, min_complete_profile_events
+  )
 
   if (length(spec) == 0L) {
     warning("[compute_probit_ppc_statistics] No statistics were requested or computable.", call. = FALSE)
@@ -1211,7 +1326,6 @@ compute_probit_ppc_statistics <- function(
   dplyr::bind_rows(rows)
 }
 
-# ---------------------------------------------------------------------------
 # Faceted PPC plots (Phase A redesign): replace the single generic
 # .ppc_dotplot_page() -- which put every hospital x class x pair x profile
 # combination on one un-faceted, unparsed `stratum` string axis -- with
@@ -1221,7 +1335,6 @@ compute_probit_ppc_statistics <- function(
 # itself is UNCHANGED and still used by families not yet redesigned
 # (resistant_count_* summary stats, complete-profile statistics, cluster
 # statistics) -- see the phased plan this was built under.
-# ---------------------------------------------------------------------------
 
 #' @keywords internal
 .ppc_common_theme <- function() {
@@ -1236,15 +1349,21 @@ compute_probit_ppc_statistics <- function(
 #' @keywords internal
 .ppc_forest_by_hospital <- function(df, facet_var, title, subtitle, x_label,
                                     facet_ncol = NULL, caption = NULL) {
-  if (is.null(df) || nrow(df) == 0L) return(NULL)
+  if (is.null(df) || nrow(df) == 0L) {
+    return(NULL)
+  }
   df$hospital_display <- factor(hospital_display_label(df$hospital),
-                                levels = sort(unique(hospital_display_label(df$hospital)), decreasing = TRUE))
+    levels = sort(unique(hospital_display_label(df$hospital)), decreasing = TRUE)
+  )
   ggplot2::ggplot(df, ggplot2::aes(y = .data$hospital_display)) +
     ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
-                           height = 0, colour = "#4292C6", alpha = 0.6) +
+      height = 0, colour = "#4292C6", alpha = 0.6
+    ) +
     ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 1.6) +
-    ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
-                        size = 2, stroke = 1) +
+    ggplot2::geom_point(ggplot2::aes(x = .data$observed_value),
+      colour = "red", shape = 4,
+      size = 2, stroke = 1
+    ) +
     ggplot2::facet_wrap(stats::as.formula(paste0("~", facet_var)), ncol = facet_ncol) +
     ggplot2::coord_cartesian(xlim = c(0, 1)) +
     ggplot2::labs(title = title, subtitle = subtitle, x = x_label, y = "Hospital", caption = caption) +
@@ -1257,12 +1376,14 @@ compute_probit_ppc_statistics <- function(
 #' hospital-level rows only; the pooled class-level rows are a separate,
 #' coarser stratum not shown here) and observed/replicated convention (red
 #' cross = observed, blue point + 95\% interval = replicated).
-#' @keywords internal
+#' @noRd
 .ppc_plot_marginal <- function(st, title_base) {
   df <- st[st$statistic_name == "marginal_resistance" &
-             grepl("^hospital:", st$stratum) &
-             st$support_status == "supported", , drop = FALSE]
-  if (nrow(df) == 0L) return(NULL)
+    grepl("^hospital:", st$stratum) &
+    st$support_status == "supported", , drop = FALSE]
+  if (nrow(df) == 0L) {
+    return(NULL)
+  }
   m <- regmatches(df$stratum, regexec("^hospital:(.+)\\|class:(.+)$", df$stratum))
   df$hospital <- vapply(m, `[`, character(1L), 2L)
   df$class <- vapply(m, `[`, character(1L), 3L)
@@ -1279,11 +1400,13 @@ compute_probit_ppc_statistics <- function(
 #' faceted by hospital (panel size shown in the facet label) so C=4 for a
 #' 4-class panel is never plotted alongside C=5 for a 5-class panel as if
 #' they were the same quantity.
-#' @keywords internal
+#' @noRd
 .ppc_plot_resistant_count_distribution <- function(st, title_base) {
   df <- st[st$statistic_name == "resistant_count_proportion" &
-             st$support_status == "supported", , drop = FALSE]
-  if (nrow(df) == 0L) return(NULL)
+    st$support_status == "supported", , drop = FALSE]
+  if (nrow(df) == 0L) {
+    return(NULL)
+  }
   m <- regmatches(df$stratum, regexec("^hospital:(.+)\\|pathogen:(.+)\\|panel_size:(\\d+)\\|C=(\\d+)$", df$stratum))
   df$hospital <- vapply(m, `[`, character(1L), 2L)
   df$panel_size <- as.integer(vapply(m, `[`, character(1L), 4L))
@@ -1291,16 +1414,21 @@ compute_probit_ppc_statistics <- function(
   df$facet_label <- sprintf("%s (panel size = %d)", hospital_display_label(df$hospital), df$panel_size)
   ggplot2::ggplot(df, ggplot2::aes(x = .data$C)) +
     ggplot2::geom_errorbar(ggplot2::aes(ymin = .data$replicated_q025, ymax = .data$replicated_q975),
-                           width = 0.15, colour = "#4292C6", alpha = 0.6) +
+      width = 0.15, colour = "#4292C6", alpha = 0.6
+    ) +
     ggplot2::geom_point(ggplot2::aes(y = .data$replicated_mean), colour = "#4292C6", size = 1.8) +
-    ggplot2::geom_point(ggplot2::aes(y = .data$observed_value), colour = "red", shape = 4,
-                        size = 2.2, stroke = 1.1) +
+    ggplot2::geom_point(ggplot2::aes(y = .data$observed_value),
+      colour = "red", shape = 4,
+      size = 2.2, stroke = 1.1
+    ) +
     ggplot2::facet_wrap(~facet_label) +
     ggplot2::scale_x_continuous(breaks = scales_int_breaks) +
     ggplot2::labs(
       title = paste(title_base, "-- Posterior Predictive Check: Resistant-Class Count Distribution"),
-      subtitle = paste("P(C = c) among fully-observed-panel events, per hospital.",
-                       "Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval."),
+      subtitle = paste(
+        "P(C = c) among fully-observed-panel events, per hospital.",
+        "Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval."
+      ),
       x = "Number of resistant classes (C)", y = "Proportion of fully-observed events"
     ) +
     .ppc_common_theme()
@@ -1313,10 +1441,12 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
 #' four cell types with hospital x class-pair labels on one axis, which was
 #' the single worst page in the report. Each returned plot facets by class
 #' pair (short labels) with hospital on the y-axis.
-#' @keywords internal
+#' @noRd
 .ppc_plot_pairwise <- function(st, title_base) {
   df <- st[grepl("^pairwise_", st$statistic_name) & st$support_status == "supported", , drop = FALSE]
-  if (nrow(df) == 0L) return(NULL)
+  if (nrow(df) == 0L) {
+    return(NULL)
+  }
   m <- regmatches(df$stratum, regexec("^hospital:(.+)\\|(.+)_x_(.+)$", df$stratum))
   df$hospital <- vapply(m, `[`, character(1L), 2L)
   df$class_1 <- vapply(m, `[`, character(1L), 3L)
@@ -1324,8 +1454,10 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
   df$class_pair <- class_pair_label(df$class_1, df$class_2)
   df$cell <- sub("^pairwise_", "", df$statistic_name)
 
-  cell_labels <- c(RR = "Both resistant (R,R)", RS = "First resistant, second susceptible (R,S)",
-                   SR = "First susceptible, second resistant (S,R)", SS = "Both susceptible (S,S)")
+  cell_labels <- c(
+    RR = "Both resistant (R,R)", RS = "First resistant, second susceptible (R,S)",
+    SR = "First susceptible, second resistant (S,R)", SS = "Both susceptible (S,S)"
+  )
   plots <- list()
   for (cell in c("RR", "RS", "SR", "SS")) {
     sub_df <- df[df$cell == cell, , drop = FALSE]
@@ -1333,8 +1465,10 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
     plots[[cell]] <- .ppc_forest_by_hospital(
       sub_df, "class_pair",
       paste(title_base, sprintf("-- Posterior Predictive Check: Pairwise Co-resistance (%s)", cell)),
-      sprintf("%s | Red cross = observed proportion among co-tested events | blue point + bar = posterior-predictive mean and 95%% interval",
-              cell_labels[[cell]]),
+      sprintf(
+        "%s | Red cross = observed proportion among co-tested events | blue point + bar = posterior-predictive mean and 95%% interval",
+        cell_labels[[cell]]
+      ),
       sprintf("Observed/replicated %s proportion", cell)
     )
   }
@@ -1350,33 +1484,42 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
 #' and Panel B (variance). There is no hospital/class dimension here (each
 #' statistic is a single dataset-wide row, stratum == "all_events"), so
 #' neither panel needs faceting.
-#' @keywords internal
+#' @noRd
 .ppc_plot_resistant_count_summary <- function(st, title_base) {
   df <- st[grepl("^resistant_count_", st$statistic_name) & st$stratum == "all_events" &
-             st$support_status == "supported", , drop = FALSE]
-  if (nrow(df) == 0L) return(NULL)
+    st$support_status == "supported", , drop = FALSE]
+  if (nrow(df) == 0L) {
+    return(NULL)
+  }
 
-  metric_labels_a <- c(resistant_count_mean = "Mean", resistant_count_median = "Median",
-                       resistant_count_p90 = "90th percentile", resistant_count_max = "Maximum")
+  metric_labels_a <- c(
+    resistant_count_mean = "Mean", resistant_count_median = "Median",
+    resistant_count_p90 = "90th percentile", resistant_count_max = "Maximum"
+  )
 
   plots <- list()
 
   df_a <- df[df$statistic_name %in% names(metric_labels_a), , drop = FALSE]
   if (nrow(df_a) > 0L) {
     df_a$metric_display <- factor(metric_labels_a[df_a$statistic_name],
-                                  levels = rev(unname(metric_labels_a)))
+      levels = rev(unname(metric_labels_a))
+    )
     plots$location <- ggplot2::ggplot(df_a, ggplot2::aes(y = .data$metric_display)) +
       ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
-                             height = 0, colour = "#4292C6", alpha = 0.6) +
+        height = 0, colour = "#4292C6", alpha = 0.6
+      ) +
       ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 2) +
-      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
-                          size = 2.4, stroke = 1.2) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value),
+        colour = "red", shape = 4,
+        size = 2.4, stroke = 1.2
+      ) +
       ggplot2::expand_limits(x = 0) +
       ggplot2::labs(
         title = paste(title_base, "-- Posterior Predictive Check: Resistant Classes per Event (location)"),
         subtitle = "Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval.",
         x = "Number of resistant classes per event", y = "Summary statistic"
-      ) + .ppc_common_theme()
+      ) +
+      .ppc_common_theme()
   }
 
   df_b <- df[df$statistic_name == "resistant_count_variance", , drop = FALSE]
@@ -1384,17 +1527,23 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
     df_b$metric_display <- "Variance"
     plots$dispersion <- ggplot2::ggplot(df_b, ggplot2::aes(y = .data$metric_display)) +
       ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
-                             height = 0, colour = "#4292C6", alpha = 0.6) +
+        height = 0, colour = "#4292C6", alpha = 0.6
+      ) +
       ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 2) +
-      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
-                          size = 2.4, stroke = 1.2) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value),
+        colour = "red", shape = 4,
+        size = 2.4, stroke = 1.2
+      ) +
       ggplot2::expand_limits(x = 0) +
       ggplot2::labs(
         title = paste(title_base, "-- Posterior Predictive Check: Resistant Classes per Event (dispersion)"),
-        subtitle = paste("Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval.",
-                         "NOT on the same scale as the location/tail-summary page (variance is not a count)."),
+        subtitle = paste(
+          "Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval.",
+          "NOT on the same scale as the location/tail-summary page (variance is not a count)."
+        ),
         x = "Variance of resistant-class count", y = NULL
-      ) + .ppc_common_theme() +
+      ) +
+      .ppc_common_theme() +
       ggplot2::theme(axis.text.y = ggplot2::element_blank())
   }
 
@@ -1408,31 +1557,40 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
 #' side by side (rather than requiring four separate pages) is appropriate
 #' here -- unlike the complete-profile page, where probability, count, and
 #' entropy are genuinely different units.
-#' @keywords internal
+#' @noRd
 .ppc_plot_hospital_heterogeneity <- function(st, title_base) {
   df <- st[grepl("^hospital_heterogeneity_", st$statistic_name) &
-             st$support_status == "supported", , drop = FALSE]
-  if (nrow(df) == 0L) return(NULL)
+    st$support_status == "supported", , drop = FALSE]
+  if (nrow(df) == 0L) {
+    return(NULL)
+  }
   m <- regmatches(df$stratum, regexec("^class:(.+)$", df$stratum))
   df$class <- vapply(m, `[`, character(1L), 2L)
   df$class_display <- class_display_label(df$class)
-  metric_labels <- c(sd = "Standard deviation", iqr = "Interquartile range",
-                     mad = "Median absolute deviation", range = "Range")
+  metric_labels <- c(
+    sd = "Standard deviation", iqr = "Interquartile range",
+    mad = "Median absolute deviation", range = "Range"
+  )
   df$metric <- sub("^hospital_heterogeneity_", "", df$statistic_name)
   df$metric_display <- factor(metric_labels[df$metric], levels = unname(metric_labels))
   df$class_display <- factor(df$class_display, levels = sort(unique(df$class_display), decreasing = TRUE))
 
   ggplot2::ggplot(df, ggplot2::aes(y = .data$class_display)) +
     ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
-                           height = 0, colour = "#4292C6", alpha = 0.6) +
+      height = 0, colour = "#4292C6", alpha = 0.6
+    ) +
     ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 1.8) +
-    ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
-                        size = 2.2, stroke = 1.1) +
+    ggplot2::geom_point(ggplot2::aes(x = .data$observed_value),
+      colour = "red", shape = 4,
+      size = 2.2, stroke = 1.1
+    ) +
     ggplot2::facet_wrap(~metric_display, scales = "free_x") +
     ggplot2::labs(
       title = paste(title_base, "-- Posterior Predictive Check: Between-Hospital Heterogeneity"),
-      subtitle = paste("Observed vs. replicated spread of hospital-specific resistance proportions, by class.",
-                       "Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval."),
+      subtitle = paste(
+        "Observed vs. replicated spread of hospital-specific resistance proportions, by class.",
+        "Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval."
+      ),
       x = "Spread of hospital-specific resistance proportion", y = "Antimicrobial class"
     ) +
     .ppc_common_theme()
@@ -1445,21 +1603,27 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
 #' frequencies + Simpson concentration) is faceted by hospital; group B
 #' (profile count) and group C (entropy) are compact dotplots, since there
 #' is only one statistic each per hospital, not a hospital x metric grid.
-#' @keywords internal
+#' @noRd
 .ppc_plot_complete_profile_statistics <- function(st, title_base) {
   df <- st[grepl("^profile_", st$statistic_name) &
-             st$support_status == "supported" &
-             st$statistic_name != "profile_top_observed_frequency", , drop = FALSE]
-  if (nrow(df) == 0L) return(NULL)
+    st$support_status == "supported" &
+    st$statistic_name != "profile_top_observed_frequency", , drop = FALSE]
+  if (nrow(df) == 0L) {
+    return(NULL)
+  }
   m <- regmatches(df$stratum, regexec("^hospital:(.+)\\|pathogen:(.+)$", df$stratum))
   df$hospital <- vapply(m, `[`, character(1L), 2L)
 
-  prob_names <- c("profile_all_susceptible_frequency", "profile_all_resistant_frequency",
-                  "profile_most_common_frequency", "profile_simpson_concentration")
-  prob_labels <- c(profile_all_susceptible_frequency = "All modelled classes susceptible",
-                   profile_all_resistant_frequency = "All modelled classes resistant",
-                   profile_most_common_frequency = "Most-common observed profile",
-                   profile_simpson_concentration = "Simpson concentration")
+  prob_names <- c(
+    "profile_all_susceptible_frequency", "profile_all_resistant_frequency",
+    "profile_most_common_frequency", "profile_simpson_concentration"
+  )
+  prob_labels <- c(
+    profile_all_susceptible_frequency = "All modelled classes susceptible",
+    profile_all_resistant_frequency = "All modelled classes resistant",
+    profile_most_common_frequency = "Most-common observed profile",
+    profile_simpson_concentration = "Simpson concentration"
+  )
 
   plots <- list()
 
@@ -1471,97 +1635,118 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
       paste(title_base, "-- Posterior Predictive Check: Complete-Profile Frequencies"),
       "Fully-observed-panel events only. Red cross = observed | blue point + bar = posterior-predictive mean and 95% interval.",
       "Proportion / concentration",
-      caption = paste("\"All modelled classes resistant\" is resistance to only the classes in THIS fit's panel,",
-                      "not necessarily every clinically relevant class (e.g. Colistin/Reserve-category agents",
-                      "may be excluded from the modelled panel) -- do not read this as \"pan-resistant\".")
+      caption = paste(
+        "\"All modelled classes resistant\" is resistance to only the classes in THIS fit's panel,",
+        "not necessarily every clinically relevant class (e.g. Colistin/Reserve-category agents",
+        "may be excluded from the modelled panel) -- do not read this as \"pan-resistant\"."
+      )
     )
   }
 
   df_b <- df[df$statistic_name == "profile_n_distinct", , drop = FALSE]
   if (nrow(df_b) > 0L) {
     df_b$hospital_display <- factor(hospital_display_label(df_b$hospital),
-                                    levels = sort(unique(hospital_display_label(df_b$hospital)), decreasing = TRUE))
+      levels = sort(unique(hospital_display_label(df_b$hospital)), decreasing = TRUE)
+    )
     plots$n_distinct <- ggplot2::ggplot(df_b, ggplot2::aes(y = .data$hospital_display)) +
       ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
-                             height = 0, colour = "#4292C6", alpha = 0.6) +
+        height = 0, colour = "#4292C6", alpha = 0.6
+      ) +
       ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 1.8) +
-      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
-                          size = 2.2, stroke = 1.1) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value),
+        colour = "red", shape = 4,
+        size = 2.2, stroke = 1.1
+      ) +
       ggplot2::labs(
         title = paste(title_base, "-- Posterior Predictive Check: Number of Distinct Resistance Profiles"),
         subtitle = "Count of distinct complete profiles observed vs. replicated, per hospital -- NOT on the same scale as the frequency/entropy pages.",
         x = "Number of distinct resistance profiles", y = "Hospital"
-      ) + .ppc_common_theme()
+      ) +
+      .ppc_common_theme()
   }
 
   df_c <- df[df$statistic_name == "profile_shannon_entropy", , drop = FALSE]
   if (nrow(df_c) > 0L) {
     df_c$hospital_display <- factor(hospital_display_label(df_c$hospital),
-                                    levels = sort(unique(hospital_display_label(df_c$hospital)), decreasing = TRUE))
+      levels = sort(unique(hospital_display_label(df_c$hospital)), decreasing = TRUE)
+    )
     plots$entropy <- ggplot2::ggplot(df_c, ggplot2::aes(y = .data$hospital_display)) +
       ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$replicated_q025, xmax = .data$replicated_q975),
-                             height = 0, colour = "#4292C6", alpha = 0.6) +
+        height = 0, colour = "#4292C6", alpha = 0.6
+      ) +
       ggplot2::geom_point(ggplot2::aes(x = .data$replicated_mean), colour = "#4292C6", size = 1.8) +
-      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value), colour = "red", shape = 4,
-                          size = 2.2, stroke = 1.1) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$observed_value),
+        colour = "red", shape = 4,
+        size = 2.2, stroke = 1.1
+      ) +
       ggplot2::labs(
         title = paste(title_base, "-- Posterior Predictive Check: Complete-Profile Entropy"),
         subtitle = "Shannon entropy of the observed complete-profile distribution vs. replicated -- NOT on the same scale as the frequency/count pages.",
         x = "Profile entropy (nats)", y = "Hospital"
-      ) + .ppc_common_theme()
+      ) +
+      .ppc_common_theme()
   }
 
   plots
 }
 
-# ---------------------------------------------------------------------------
 # plot_probit_posterior_predictive_checks(): compact multi-page PDF
-# ---------------------------------------------------------------------------
 
 #' @keywords internal
 .ppc_dotplot_page <- function(df, title, subtitle, value_label = "Value") {
   df <- df[!is.na(df$observed_value) & df$support_status == "supported", , drop = FALSE]
-  if (nrow(df) == 0L) return(NULL)
+  if (nrow(df) == 0L) {
+    return(NULL)
+  }
   df <- df[order(df$stratum), , drop = FALSE]
   df$stratum <- factor(df$stratum, levels = unique(df$stratum))
   ggplot2::ggplot(df, ggplot2::aes(x = .data$stratum)) +
     ggplot2::geom_errorbar(ggplot2::aes(ymin = .data$replicated_q025, ymax = .data$replicated_q975),
-                            width = 0.2, colour = "#4292C6") +
+      width = 0.2, colour = "#4292C6"
+    ) +
     ggplot2::geom_point(ggplot2::aes(y = .data$replicated_mean), colour = "#4292C6", size = 1.6) +
-    ggplot2::geom_point(ggplot2::aes(y = .data$observed_value), colour = "red", shape = 4,
-                        size = 2.2, stroke = 1.1) +
+    ggplot2::geom_point(ggplot2::aes(y = .data$observed_value),
+      colour = "red", shape = 4,
+      size = 2.2, stroke = 1.1
+    ) +
     ggplot2::coord_flip() +
     ggplot2::labs(title = title, subtitle = subtitle, x = NULL, y = value_label) +
     ggplot2::theme_minimal(base_size = 11) +
-    ggplot2::theme(plot.title = ggplot2::element_text(size = 10),
-                   axis.text.y = ggplot2::element_text(size = if (nrow(df) > 25L) 6 else 8))
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 10),
+      axis.text.y = ggplot2::element_text(size = if (nrow(df) > 25L) 6 else 8)
+    )
 }
 
 #' @keywords internal
 .ppc_small_multiples_plot <- function(ppc_replicates, title_base, n_small_multiples, seed) {
   setup <- ppc_replicates$setup
-  Y_arr <- ppc_replicates$Y_rep_array   # S x N_ev x D, masked
+  Y_arr <- ppc_replicates$Y_rep_array # S x N_ev x D, masked
   S <- dim(Y_arr)[1L]
 
   count_per_event <- function(Y) {
     mask <- setup$obs_mask
     vapply(seq_len(nrow(Y)), function(i) {
       idx <- which(mask[i, ])
-      if (length(idx) == 0L) return(NA_real_)
+      if (length(idx) == 0L) {
+        return(NA_real_)
+      }
       sum(Y[i, idx] == 1, na.rm = TRUE)
     }, numeric(1L))
   }
 
   obs_counts <- count_per_event(setup$obs_ast_mat)
-  set.seed(as.integer(seed))
+  .local_seed(as.integer(seed))
   n_pick <- min(as.integer(n_small_multiples), S)
   picked <- sort(sample.int(S, n_pick))
 
   rows <- list(data.frame(panel = "Observed", count = obs_counts[!is.na(obs_counts)]))
   for (s in picked) {
     counts_s <- count_per_event(Y_arr[s, , , drop = FALSE][1L, , ])
-    rows[[length(rows) + 1L]] <- data.frame(panel = sprintf("Replicate %d", s),
-                                             count = counts_s[!is.na(counts_s)])
+    rows[[length(rows) + 1L]] <- data.frame(
+      panel = sprintf("Replicate %d", s),
+      count = counts_s[!is.na(counts_s)]
+    )
   }
   df <- do.call(rbind, rows)
   df$panel <- factor(df$panel, levels = c("Observed", sprintf("Replicate %d", picked)))
@@ -1575,7 +1760,8 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
       title = paste(title_base, "-- Small Multiples: Resistant Classes per Event"),
       subtitle = sprintf(
         "Observed panel (red) vs. %d randomly selected posterior replications (seed=%d)",
-        n_pick, seed),
+        n_pick, seed
+      ),
       x = "Number of resistant classes (among tested)", y = "Count"
     ) +
     ggplot2::theme_minimal(base_size = 10) +
@@ -1611,12 +1797,12 @@ scales_int_breaks <- function(x) unique(round(pretty(x)))
 #'   skipped.
 #' @export
 plot_probit_posterior_predictive_checks <- function(
-    ppc_statistics,
-    ppc_replicates = NULL,
-    output_pdf_path,
-    title_base,
-    n_small_multiples = 10L,
-    small_multiple_seed = 123L
+  ppc_statistics,
+  ppc_replicates = NULL,
+  output_pdf_path,
+  title_base,
+  n_small_multiples = 10L,
+  small_multiple_seed = 123L
 ) {
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     message("[plot_probit_posterior_predictive_checks] 'ggplot2' not installed -- skipping.")
@@ -1632,8 +1818,9 @@ plot_probit_posterior_predictive_checks <- function(
   on.exit(grDevices::dev.off(), add = TRUE)
 
   .try_plot <- function(expr, label) {
-    tryCatch(print(expr), error = function(e)
-      message(sprintf("  [WARN] %s: %s", label, conditionMessage(e))))
+    tryCatch(print(expr), error = function(e) {
+      message(sprintf("  [WARN] %s: %s", label, conditionMessage(e)))
+    })
   }
 
   st <- ppc_statistics
@@ -1684,15 +1871,17 @@ plot_probit_posterior_predictive_checks <- function(
   cl <- st[grepl("^cluster_", st$statistic_name), , drop = FALSE]
   if (nrow(cl) > 0L) {
     cl$stratum <- paste(cl$stratum, cl$statistic_name, sep = "|")
-    p <- .ppc_dotplot_page(cl, paste(title_base, "-- Admission/Patient Clustering"),
-                            "Within-/between-group same-class agreement and Hamming distance",
-                            "Value")
+    p <- .ppc_dotplot_page(
+      cl, paste(title_base, "-- Admission/Patient Clustering"),
+      "Within-/between-group same-class agreement and Hamming distance",
+      "Value"
+    )
     if (!is.null(p)) .try_plot(p, "cluster statistics")
   }
 
   # 6. Small multiples: observed vs n_small_multiples random replicate states
   if (!is.null(ppc_replicates) && inherits(ppc_replicates, "amr_ppc_draws") &&
-      !is.null(ppc_replicates$Y_rep_array)) {
+    !is.null(ppc_replicates$Y_rep_array)) {
     .try_plot(
       .ppc_small_multiples_plot(ppc_replicates, title_base, n_small_multiples, small_multiple_seed),
       "small multiples"
@@ -1703,9 +1892,7 @@ plot_probit_posterior_predictive_checks <- function(
   invisible(output_pdf_path)
 }
 
-# ---------------------------------------------------------------------------
 # compute_posterior_predictive_status()
-# ---------------------------------------------------------------------------
 
 #' Classify overall posterior predictive fit from a discrepancy-statistics table
 #'
@@ -1761,14 +1948,20 @@ compute_posterior_predictive_status <- function(ppc_statistics, thresholds = lis
   )
   th <- utils::modifyList(th_defaults, thresholds)
 
-  if (is.null(ppc_statistics) || nrow(ppc_statistics) == 0L)
-    return(list(status = "insufficient_ppc_support", reasons = character(0),
-                thresholds_used = th, family_status = list()))
+  if (is.null(ppc_statistics) || nrow(ppc_statistics) == 0L) {
+    return(list(
+      status = "insufficient_ppc_support", reasons = character(0),
+      thresholds_used = th, family_status = list()
+    ))
+  }
 
   supported <- ppc_statistics[!is.na(ppc_statistics$ppc_tail_probability), , drop = FALSE]
-  if (nrow(supported) == 0L)
-    return(list(status = "insufficient_ppc_support", reasons = character(0),
-                thresholds_used = th, family_status = list()))
+  if (nrow(supported) == 0L) {
+    return(list(
+      status = "insufficient_ppc_support", reasons = character(0),
+      thresholds_used = th, family_status = list()
+    ))
+  }
 
   # Zero-(near-zero-)variance statistics carry no discriminating information
   # for extreme/severe classification -- see roxygen note above. Excluded
@@ -1776,24 +1969,34 @@ compute_posterior_predictive_status <- function(ppc_statistics, thresholds = lis
   # forced to "not extreme", so they don't dilute a family's fraction_extreme.
   informative <- is.na(supported$replicated_sd) | supported$replicated_sd > 1e-8
   supported <- supported[informative, , drop = FALSE]
-  if (nrow(supported) == 0L)
-    return(list(status = "insufficient_ppc_support", reasons = character(0),
-                thresholds_used = th, family_status = list()))
+  if (nrow(supported) == 0L) {
+    return(list(
+      status = "insufficient_ppc_support", reasons = character(0),
+      thresholds_used = th, family_status = list()
+    ))
+  }
 
   family_of_one <- function(nm) {
-    if (grepl("^marginal_", nm)) "marginal"
-    else if (grepl("^pairwise_", nm)) "pairwise"
-    else if (grepl("^profile_", nm) || grepl("^resistant_count_", nm)) "profile"
-    else if (grepl("^hospital_heterogeneity_", nm)) "hospital_heterogeneity"
-    else if (grepl("^cluster_", nm)) "cluster"
-    else "other"
+    if (grepl("^marginal_", nm)) {
+      "marginal"
+    } else if (grepl("^pairwise_", nm)) {
+      "pairwise"
+    } else if (grepl("^profile_", nm) || grepl("^resistant_count_", nm)) {
+      "profile"
+    } else if (grepl("^hospital_heterogeneity_", nm)) {
+      "hospital_heterogeneity"
+    } else if (grepl("^cluster_", nm)) {
+      "cluster"
+    } else {
+      "other"
+    }
   }
   fam <- vapply(supported$statistic_name, family_of_one, character(1L))
 
   is_extreme <- supported$ppc_tail_probability < th$tail_warning |
-                supported$ppc_tail_probability > (1 - th$tail_warning)
-  is_severe  <- supported$ppc_tail_probability < th$tail_severe |
-                supported$ppc_tail_probability > (1 - th$tail_severe)
+    supported$ppc_tail_probability > (1 - th$tail_warning)
+  is_severe <- supported$ppc_tail_probability < th$tail_severe |
+    supported$ppc_tail_probability > (1 - th$tail_severe)
 
   reasons <- character(0)
   family_status <- list()
@@ -1801,7 +2004,7 @@ compute_posterior_predictive_status <- function(ppc_statistics, thresholds = lis
     idx <- fam == f
     n_f <- sum(idx)
     n_extreme_f <- sum(is_extreme[idx])
-    n_severe_f  <- sum(is_severe[idx])
+    n_severe_f <- sum(is_severe[idx])
     frac_extreme_f <- n_extreme_f / n_f
     fam_status <- "ok"
     if (n_severe_f > 0L) {
@@ -1811,8 +2014,10 @@ compute_posterior_predictive_status <- function(ppc_statistics, thresholds = lis
       fam_status <- sprintf("warning_%s_ppc", f)
       reasons <- c(reasons, fam_status)
     }
-    family_status[[f]] <- list(n = n_f, n_extreme = n_extreme_f, n_severe = n_severe_f,
-                                fraction_extreme = frac_extreme_f, status = fam_status)
+    family_status[[f]] <- list(
+      n = n_f, n_extreme = n_extreme_f, n_severe = n_severe_f,
+      fraction_extreme = frac_extreme_f, status = fam_status
+    )
   }
 
   reasons <- unique(reasons)

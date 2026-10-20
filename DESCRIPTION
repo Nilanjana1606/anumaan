@@ -1,7 +1,7 @@
 Package: anumaan
 Type: Package
 Title: Antimicrobial Resistance Surveillance Preprocessing and Burden Estimation
-Version: 0.1.0.9036
+Version: 0.1.0.9037
 Authors@R: c(
     person(
       "Nilanjana", "Dey",
@@ -24,10 +24,12 @@ Authors@R: c(
       role = c("aut", "cre")
     )
   )
-Description: anumaan provides a preprocessing pipeline for antimicrobial resistance (AMR)
-    surveillance data, exploratory data analysis (EDA) tools for reviewing cohorts prior to
-    modelling, and burden estimation. Supports polymicrobial weighting, MDR/XDR classification,
-    resistance profile estimation, and burden estimation calculations.
+Description: Provides a preprocessing pipeline for antimicrobial resistance
+    (AMR) surveillance data, exploratory data analysis (EDA) tools for
+    reviewing cohorts prior to modelling, and burden estimation. Supports
+    polymicrobial weighting, multidrug-resistant (MDR) and extensively
+    drug-resistant (XDR) classification, resistance profile estimation, and
+    disability-adjusted life year (DALY) calculations.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends:
@@ -74,5 +76,4 @@ Additional_repositories: https://stan-dev.r-universe.dev
 VignetteBuilder: knitr
 URL: https://saketlab.github.io/anumaan/, https://github.com/saketlab/anumaan
 BugReports: https://github.com/saketlab/anumaan/issues
-Config/roxygen2/version: 8.0.0
-RoxygenNote: 7.3.3
+Config/roxygen2/version: 8.1.0

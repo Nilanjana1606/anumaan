@@ -40,6 +40,7 @@ export(daly_calc_infection_fraction)
 export(daly_calc_paf_los)
 export(daly_calc_paf_mortality)
 export(daly_calc_pathogen_fraction_fatal)
+export(daly_calc_pathogen_fraction_nonfatal)
 export(daly_calc_resistance_prevalence_fatal)
 export(daly_calc_syndrome_fraction)
 export(daly_calc_yld_associated)
@@ -207,24 +208,32 @@ export(validate_marginal_calibration)
 export(validate_pairwise_calibration)
 export(validate_profile_inputs)
 export(validate_required_fields)
-importFrom(grDevices,dev.off)
-importFrom(grDevices,pdf)
+importFrom(grDevices,
+  dev.off,
+  pdf
+)
 importFrom(magrittr,"%>%")
-importFrom(rlang,"%||%")
-importFrom(rlang,":=")
-importFrom(rlang,.data)
-importFrom(rlang,.env)
-importFrom(stats,cor)
-importFrom(stats,density)
-importFrom(stats,median)
-importFrom(stats,na.omit)
-importFrom(stats,pnorm)
-importFrom(stats,profile)
-importFrom(stats,quantile)
-importFrom(stats,rbinom)
-importFrom(stats,reorder)
-importFrom(stats,setNames)
-importFrom(utils,adist)
-importFrom(utils,combn)
-importFrom(utils,head)
-importFrom(utils,object.size)
+importFrom(rlang,
+  "%||%",
+  ":=",
+  .data,
+  .env
+)
+importFrom(stats,
+  cor,
+  density,
+  median,
+  na.omit,
+  pnorm,
+  profile,
+  quantile,
+  rbinom,
+  reorder,
+  setNames
+)
+importFrom(utils,
+  adist,
+  combn,
+  head,
+  object.size
+)

@@ -1,6 +1,36 @@
 # daly_pathogen_fraction.R
 # Pathogen fraction and CFR calculations for DALY burden estimation
 
+#' Calculate non-fatal pathogen distribution (P'_\{Lk\})
+#'
+#' Computes the non-fatal pathogen distribution for an infectious syndrome
+#' (L): the fractional contribution of each pathogen (k) among patients who
+#' were discharged alive. Its \code{P_Lk_prime} element is the input expected
+#' by \code{daly_calc_incidence_from_cfr()} and \code{daly_calc_yld()}.
+#'
+#' Weighting mirrors \code{daly_calc_pathogen_fraction_fatal()}: each patient
+#' contributes total weight 1, split equally across their valid pathogens, and
+#' GLASS filtering applies to polymicrobial patients only.
+#'
+#' @inheritParams daly_calc_pathogen_fraction_fatal
+#' @param discharged_value Character. Value of \code{outcome_col} indicating a
+#'   non-fatal (discharged) outcome. Default \code{"Discharged"}.
+#'
+#' @return A list with \code{P_Lk_prime} (pooled distribution, with column
+#'   \code{P_Lk_prime}) and, when \code{facility_col} is supplied without
+#'   \code{facility_name}, \code{facility_level}.
+#'
+#' @export
+#' @examples
+#' fac <- data.frame(
+#'   patient_id = sprintf("P%02d", 1:6), syndrome = "BSI", poly = 0,
+#'   organism = c("E. coli", "E. coli", "E. coli", "K. pneumoniae", "K. pneumoniae", "S. aureus"),
+#'   outcome = c("Discharged", "Discharged", "Death", "Discharged", "Discharged", "Death")
+#' )
+#' daly_calc_pathogen_fraction_nonfatal(fac, "syndrome", "BSI",
+#'   polymicrobial_col = "poly", patient_col = "patient_id",
+#'   pathogen_col = "organism", outcome_col = "outcome"
+#' )
 daly_calc_pathogen_fraction_nonfatal <- function(data,
                                                  syndrome_col,
                                                  syndrome_name,
@@ -38,7 +68,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
   # Step 1: Filter syndrome + specimen (optional) + non-fatal
   df <- data %>%
     dplyr::filter(
-      .data[[syndrome_col]] == syndrome_name,
+      .name_key(.data[[syndrome_col]]) == .name_key(syndrome_name),
       .data[[outcome_col]] == discharged_value
     )
   if (!is.null(specimen_col)) {
@@ -59,7 +89,7 @@ daly_calc_pathogen_fraction_nonfatal <- function(data,
 
   # Step 3: Optional pathogen filter
   if (!is.null(pathogen_name)) {
-    df <- df %>% dplyr::filter(.data[[pathogen_col]] %in% pathogen_name)
+    df <- df %>% dplyr::filter(.name_key(.data[[pathogen_col]]) %in% .name_key(pathogen_name))
     if (nrow(df) == 0) {
       stop(sprintf(
         "No records found for pathogen(s): %s",
@@ -265,7 +295,7 @@ daly_calc_pathogen_fraction_fatal <- function(data,
   # Step 1: Filter syndrome + (optional specimen) + fatal outcome
   df <- data %>%
     dplyr::filter(
-      .data[[syndrome_col]] == syndrome_name,
+      .name_key(.data[[syndrome_col]]) == .name_key(syndrome_name),
       .data[[outcome_col]] == death_value
     )
   if (!is.null(specimen_col)) {
@@ -289,7 +319,7 @@ daly_calc_pathogen_fraction_fatal <- function(data,
 
   # Step 3: Optional pathogen filter
   if (!is.null(pathogen_name)) {
-    df <- df %>% dplyr::filter(.data[[pathogen_col]] %in% pathogen_name)
+    df <- df %>% dplyr::filter(.name_key(.data[[pathogen_col]]) %in% .name_key(pathogen_name))
     if (nrow(df) == 0) {
       stop(sprintf(
         "No fatal records found for pathogen(s): %s",
@@ -484,7 +514,7 @@ daly_calc_case_fatality <- function(data,
   # Step 1: Filter syndrome + specimen
   df <- data %>%
     dplyr::filter(
-      .data[[syndrome_col]] == syndrome_name,
+      .name_key(.data[[syndrome_col]]) == .name_key(syndrome_name),
       .data[[specimen_col]] == specimen_name
     )
   if (nrow(df) == 0) {
@@ -501,7 +531,7 @@ daly_calc_case_fatality <- function(data,
 
   # Step 3: Optional pathogen filter
   if (!is.null(pathogen_name)) {
-    df <- df %>% dplyr::filter(.data[[pathogen_col]] %in% pathogen_name)
+    df <- df %>% dplyr::filter(.name_key(.data[[pathogen_col]]) %in% .name_key(pathogen_name))
     if (nrow(df) == 0) {
       stop(sprintf(
         "No records found for pathogen(s): %s",
@@ -654,7 +684,7 @@ daly_get_top_pathogens <- function(data,
 
   # Optional filters
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    df <- df %>% dplyr::filter(.data[[syndrome_col]] == syndrome_name)
+    df <- df %>% dplyr::filter(.name_key(.data[[syndrome_col]]) == .name_key(syndrome_name))
   }
   if (!is.null(specimen_col) && !is.null(specimen_name)) {
     df <- df %>% dplyr::filter(.data[[specimen_col]] == specimen_name)
@@ -740,7 +770,7 @@ daly_get_top_pathogens <- function(data,
 #'   \code{facility_level} element for facility-level mode.
 #' @param yld_ref         Data frame with columns \code{location_name} and
 #'   \code{DW_sepsis}. Loaded from
-#'   \file{inst/extdata/Proxy_YLD_per_case.xlsx}. Optional if
+#'   \file{inst/extdata/Proxy_YLD_per_case.csv}. Optional if
 #'   \code{DW_sepsis} is provided.
 #' @param DW_sepsis Numeric scalar or NULL. If provided, this value is used
 #'   directly for all rows and \code{yld_ref} is ignored.

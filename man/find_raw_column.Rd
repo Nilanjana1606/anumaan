@@ -6,6 +6,9 @@
 \usage{
 find_raw_column(data, aliases)
 }
+\value{
+The matching column name, or \code{NULL} if none is found.
+}
 \description{
 Find Raw Column by Aliases
 }

@@ -1,6 +1,6 @@
 # Category 2: prep_polymicrobial.R
 
-# prep_flag_polymicrobial ------------------------------------------------------
+# prep_flag_polymicrobial
 
 test_that("prep_flag_polymicrobial: valid behavior", {
   dat <- data.frame(patient_id = c("p1", "p1", "p2"), organism_normalized = c("e coli", "k pn", "e coli"), stringsAsFactors = FALSE)
@@ -27,7 +27,7 @@ test_that("prep_flag_polymicrobial: error handling", {
   expect_error(prep_flag_polymicrobial(dat, facility_name = "NONEXISTENT_CENTRE"), "facility_col must be supplied")
 })
 
-# prep_compute_poly_weights ----------------------------------------------------
+# prep_compute_poly_weights
 
 test_that("prep_compute_poly_weights: valid behavior", {
   dat <- data.frame(episode_id = c("e1", "e1", "e2"), organism_normalized = c("e coli", "k pn", "e coli"), is_polymicrobial = c(1, 1, 0), stringsAsFactors = FALSE)
@@ -54,7 +54,7 @@ test_that("prep_compute_poly_weights: error handling", {
   expect_error(prep_compute_poly_weights(dat, method = "manual"), "weight_map")
 })
 
-# prep_split_poly_episode ------------------------------------------------------
+# prep_split_poly_episode
 
 test_that("prep_split_poly_episode: valid behavior", {
   dat <- data.frame(is_polymicrobial = c(1, 0, 1), x = 1:3)

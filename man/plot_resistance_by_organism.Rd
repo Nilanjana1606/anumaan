@@ -53,6 +53,9 @@ plot_resistance_by_organism(
 
 \item{syndrome_name}{Optional value of \code{syndrome_col} to keep.}
 }
+\value{
+A \code{ggplot} object.
+}
 \description{
 100% stacked horizontal bar showing the proportion of Resistant
   vs Susceptible patients for the top \code{n} organisms (ranked by total

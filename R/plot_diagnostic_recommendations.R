@@ -59,7 +59,9 @@
 }
 
 .probit_num1 <- function(x) {
-  if (is.null(x) || length(x) == 0L) return(NA_real_)
+  if (is.null(x) || length(x) == 0L) {
+    return(NA_real_)
+  }
   v <- suppressWarnings(as.numeric(x[[1L]]))
   if (length(v) == 0L) NA_real_ else v
 }
@@ -103,17 +105,17 @@
   ebfmi_min <- .probit_num1(diag$ebfmi_min)
 
   has_divergence <- !is.na(n_divergent) && n_divergent > thresholds$divergent_max
-  has_treedepth  <- !is.na(n_treedepth_sat) && n_treedepth_sat > thresholds$treedepth_max
-  has_energy     <- !is.na(ebfmi_min) && ebfmi_min < thresholds$ebfmi_min
+  has_treedepth <- !is.na(n_treedepth_sat) && n_treedepth_sat > thresholds$treedepth_max
+  has_energy <- !is.na(ebfmi_min) && ebfmi_min < thresholds$ebfmi_min
 
   omega_row <- .probit_group_row(grouped_diag, "Omega")
-  beta_row  <- .probit_group_row(grouped_diag, "beta")
+  beta_row <- .probit_group_row(grouped_diag, "beta")
 
   omega_rhat_pct <- if (!is.null(omega_row)) .probit_num1(omega_row$pct_rhat_above_1_01) else NA_real_
-  beta_rhat_pct  <- if (!is.null(beta_row))  .probit_num1(beta_row$pct_rhat_above_1_01)  else NA_real_
+  beta_rhat_pct <- if (!is.null(beta_row)) .probit_num1(beta_row$pct_rhat_above_1_01) else NA_real_
 
   omega_rhat_bad <- !is.na(omega_rhat_pct) && omega_rhat_pct > 0
-  beta_rhat_bad  <- !is.na(beta_rhat_pct)  && beta_rhat_pct  > 0
+  beta_rhat_bad <- !is.na(beta_rhat_pct) && beta_rhat_pct > 0
 
   omega_near_singular <- identical(residual_structure, "correlated") && !is.null(degeneracy_stats) &&
     !is.na(degeneracy_stats$pct_near_degenerate) &&
@@ -127,12 +129,16 @@
   # -- adapt_delta / max_treedepth: state explicitly when NOT indicated, so a
   # reader never has to infer their absence from silence. --
   if (!has_divergence) {
-    not_indicated <- c(not_indicated,
-      "Increasing adapt_delta -- not indicated (zero divergent transitions; adapt_delta specifically targets step-size-induced divergences).")
+    not_indicated <- c(
+      not_indicated,
+      "Increasing adapt_delta -- not indicated (zero divergent transitions; adapt_delta specifically targets step-size-induced divergences)."
+    )
   }
   if (!has_treedepth) {
-    not_indicated <- c(not_indicated,
-      "Increasing max_treedepth -- not indicated (no treedepth saturations).")
+    not_indicated <- c(
+      not_indicated,
+      "Increasing max_treedepth -- not indicated (no treedepth saturations)."
+    )
   }
 
   # -- A. Divergence failure: the ONLY case where adapt_delta is a primary remedy --
@@ -163,7 +169,7 @@
         ))
       }
       if (!is.null(degeneracy_stats) && !is.na(degeneracy_stats$med_condition_number) &&
-          degeneracy_stats$med_condition_number > thresholds$omega_condition_number_warning) {
+        degeneracy_stats$med_condition_number > thresholds$omega_condition_number_warning) {
         omega_parts <- c(omega_parts, sprintf("median condition number %.1f", degeneracy_stats$med_condition_number))
       }
       if (omega_rhat_bad) {
@@ -206,10 +212,16 @@
     family_txt <- if (!is.null(beta_summary) && nrow(beta_summary) > 0L) {
       worst_family <- beta_summary[which.max(beta_summary$pct_rhat_gt_1_01), , drop = FALSE]
       if (!is.na(worst_family$pct_rhat_gt_1_01[[1L]]) && worst_family$pct_rhat_gt_1_01[[1L]] > 0) {
-        sprintf("Convergence problems are concentrated in %s fixed effects (%.1f%% of that family exceeds Rhat %.2f, worst Rhat = %.4f).",
-               worst_family$family[[1L]], worst_family$pct_rhat_gt_1_01[[1L]], thresholds$rhat_max, worst_family$worst_rhat[[1L]])
-      } else NA_character_
-    } else NA_character_
+        sprintf(
+          "Convergence problems are concentrated in %s fixed effects (%.1f%% of that family exceeds Rhat %.2f, worst Rhat = %.4f).",
+          worst_family$family[[1L]], worst_family$pct_rhat_gt_1_01[[1L]], thresholds$rhat_max, worst_family$worst_rhat[[1L]]
+        )
+      } else {
+        NA_character_
+      }
+    } else {
+      NA_character_
+    }
     line <- if (!is.na(family_txt)) {
       family_txt
     } else {
@@ -246,14 +258,22 @@
   .verdict <- function(bad) if (isTRUE(bad)) "Fail" else if (isFALSE(bad)) "Pass" else "NA"
 
   rows <- list(
-    list("Divergences", sprintf("%.0f", n_divergent), sprintf(">%d", thresholds$divergent_max),
-        .verdict(!is.na(n_divergent) && n_divergent > thresholds$divergent_max)),
-    list("Treedepth hits", sprintf("%.0f", n_treedepth_sat), sprintf(">%d", thresholds$treedepth_max),
-        .verdict(!is.na(n_treedepth_sat) && n_treedepth_sat > thresholds$treedepth_max)),
-    list("Min E-BFMI", sprintf("%.3f", ebfmi_min), sprintf("<%.2f", thresholds$ebfmi_min),
-        .verdict(!is.na(ebfmi_min) && ebfmi_min < thresholds$ebfmi_min)),
-    list("Max structural Rhat", sprintf("%.4f", max_rhat), sprintf(">%.2f", thresholds$rhat_max),
-        .verdict(!is.na(max_rhat) && max_rhat > thresholds$rhat_max))
+    list(
+      "Divergences", sprintf("%.0f", n_divergent), sprintf(">%d", thresholds$divergent_max),
+      .verdict(!is.na(n_divergent) && n_divergent > thresholds$divergent_max)
+    ),
+    list(
+      "Treedepth hits", sprintf("%.0f", n_treedepth_sat), sprintf(">%d", thresholds$treedepth_max),
+      .verdict(!is.na(n_treedepth_sat) && n_treedepth_sat > thresholds$treedepth_max)
+    ),
+    list(
+      "Min E-BFMI", sprintf("%.3f", ebfmi_min), sprintf("<%.2f", thresholds$ebfmi_min),
+      .verdict(!is.na(ebfmi_min) && ebfmi_min < thresholds$ebfmi_min)
+    ),
+    list(
+      "Max structural Rhat", sprintf("%.4f", max_rhat), sprintf(">%.2f", thresholds$rhat_max),
+      .verdict(!is.na(max_rhat) && max_rhat > thresholds$rhat_max)
+    )
   )
   if (identical(residual_structure, "correlated") && !is.null(degeneracy_stats)) {
     pct <- degeneracy_stats$pct_near_degenerate

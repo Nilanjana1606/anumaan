@@ -330,7 +330,7 @@ validate_required_fields <- function(data,
     for (msg in validation_msgs) message(sprintf("  - %s", msg))
     if (nrow(incomplete_cols) > 0) {
       message("\nCompleteness details:")
-      print(incomplete_cols)
+      .msg_print(incomplete_cols)
     }
   }
 
@@ -442,9 +442,7 @@ validate_data_quality <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # New functions (Layer 1)
-# ---------------------------------------------------------------------------
 
 #' Log Data Source Provenance
 #'

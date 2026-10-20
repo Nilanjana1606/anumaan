@@ -71,55 +71,64 @@
 #' User's Guide. \url{https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html}
 #' @export
 simulate_probit_mixed_predictive <- function(
-    fitted_model,
-    blocks_to_replicate,
-    n_states = 500L,
-    seed = 123L,
-    n_new_levels_per_block = 1L,
-    unreplicated_block_behavior = c("retain_fitted", "error")
+  fitted_model,
+  blocks_to_replicate,
+  n_states = 500L,
+  seed = 123L,
+  n_new_levels_per_block = 1L,
+  unreplicated_block_behavior = c("retain_fitted", "error")
 ) {
   unreplicated_block_behavior <- match.arg(unreplicated_block_behavior)
   re_prep <- fitted_model$random_effects_prep
 
   if (is.null(re_prep) || re_prep$R == 0L) {
     stop("No fitted random-effect blocks are available to replicate. Use simulate_probit_posterior_predictive() for fixed-only models.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
-  if (length(blocks_to_replicate) == 0L)
+  if (length(blocks_to_replicate) == 0L) {
     stop("`blocks_to_replicate` must be non-empty.", call. = FALSE)
+  }
   bad_blocks <- setdiff(blocks_to_replicate, re_prep$block_names)
-  if (length(bad_blocks) > 0L)
+  if (length(bad_blocks) > 0L) {
     stop("blocks_to_replicate must be a subset of fitted_model$random_effects_prep$block_names. ",
-         "Not found: ", paste(bad_blocks, collapse = ", "), call. = FALSE)
+      "Not found: ", paste(bad_blocks, collapse = ", "),
+      call. = FALSE
+    )
+  }
 
   unreplicated <- setdiff(re_prep$block_names, blocks_to_replicate)
-  if (identical(unreplicated_block_behavior, "error") && length(unreplicated) > 0L)
+  if (identical(unreplicated_block_behavior, "error") && length(unreplicated) > 0L) {
     stop("unreplicated_block_behavior = 'error' but the following declared blocks are not in ",
-         "blocks_to_replicate: ", paste(unreplicated, collapse = ", "), call. = FALSE)
+      "blocks_to_replicate: ", paste(unreplicated, collapse = ", "),
+      call. = FALSE
+    )
+  }
 
   n_new <- as.integer(n_new_levels_per_block)
   if (is.na(n_new) || n_new < 1L) stop("`n_new_levels_per_block` must be a positive integer.", call. = FALSE)
 
-  if (!requireNamespace("posterior", quietly = TRUE))
+  if (!requireNamespace("posterior", quietly = TRUE)) {
     stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
+  }
 
-  set.seed(as.integer(seed))
+  .local_seed(as.integer(seed))
 
-  draws        <- fitted_model$draws
-  class_cols   <- fitted_model$class_cols
+  draws <- fitted_model$draws
+  class_cols <- fitted_model$class_cols
   D <- length(fitted_model$index_maps$class_levels)
-  X_event_sim  <- if (!is.null(fitted_model$X_event)) fitted_model$X_event else fitted_model$X_design
+  X_event_sim <- if (!is.null(fitted_model$X_event)) fitted_model$X_event else fitted_model$X_design
   event_re_idx <- fitted_model$event_re_idx
   K <- ncol(X_event_sim)
   residual_structure <- .null_default(fitted_model$residual_structure, "identity")
   R <- re_prep$R
 
   draws_mat <- posterior::as_draws_matrix(draws)
-  n_total   <- nrow(draws_mat)
+  n_total <- nrow(draws_mat)
   S <- min(as.integer(n_states), n_total)
   if (is.na(S) || S < 1L) stop("`n_states` must resolve to a positive integer.", call. = FALSE)
-  draw_idx  <- if (S < n_total) sort(sample.int(n_total, S)) else seq_len(n_total)
+  draw_idx <- if (S < n_total) sort(sample.int(n_total, S)) else seq_len(n_total)
   draws_mat <- draws_mat[draw_idx, , drop = FALSE]
 
   .arr2 <- function(prefix, d1, d2) {
@@ -128,15 +137,19 @@ simulate_probit_mixed_predictive <- function(
   }
   .arr3 <- function(prefix, d1, d2, d3) {
     arr <- array(0, dim = c(S, d1, d2, d3))
-    for (a in seq_len(d1)) for (b in seq_len(d2)) for (cc in seq_len(d3)) {
-      arr[, a, b, cc] <- draws_mat[, sprintf("%s[%d,%d,%d]", prefix, a, b, cc)]
+    for (a in seq_len(d1)) {
+      for (b in seq_len(d2)) {
+        for (cc in seq_len(d3)) {
+          arr[, a, b, cc] <- draws_mat[, sprintf("%s[%d,%d,%d]", prefix, a, b, cc)]
+        }
+      }
     }
     arr
   }
 
-  beta_arr    <- .arr2("beta", K, D)
-  re_eff_arr  <- .arr2("re_effect", D, re_prep$total_re_levels)
-  tau_re_arr  <- .arr2("tau_re", R, D)
+  beta_arr <- .arr2("beta", K, D)
+  re_eff_arr <- .arr2("re_effect", D, re_prep$total_re_levels)
+  tau_re_arr <- .arr2("tau_re", R, D)
   R_block_arr <- .arr3("R_block", R, D, D)
   L_omega_arr <- if (identical(residual_structure, "correlated")) .arr2("L_Omega", D, D) else NULL
 
@@ -154,7 +167,7 @@ simulate_probit_mixed_predictive <- function(
   obs_mask <- !is.na(obs_ast_mat)
 
   replicate_idx <- match(blocks_to_replicate, re_prep$block_names)
-  unrep_idx     <- match(unreplicated, re_prep$block_names)
+  unrep_idx <- match(unreplicated, re_prep$block_names)
 
   # Deterministic (seeded) round-robin assignment of every real event to one
   # of the n_new synthetic new levels, per replicated block.
@@ -169,10 +182,12 @@ simulate_probit_mixed_predictive <- function(
     function(s) {
       key <- as.character(as.integer(s))
       cached <- cache[[key]]
-      if (!is.null(cached)) return(cached)
+      if (!is.null(cached)) {
+        return(cached)
+      }
 
       val <- .ppc_with_local_seed(.ppc_state_seed(seed, s), {
-        beta_s   <- matrix(beta_arr[s, , ],   nrow = K, ncol = D)
+        beta_s <- matrix(beta_arr[s, , ], nrow = K, ncol = D)
         re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
         mu <- X_event %*% beta_s
 
@@ -183,12 +198,12 @@ simulate_probit_mixed_predictive <- function(
         for (i in seq_along(replicate_idx)) {
           r <- replicate_idx[i]
           tau_r <- tau_re_arr[s, r, ]
-          Om_r  <- matrix(R_block_arr[s, r, , ], nrow = D, ncol = D)
-          Om_r  <- (Om_r + t(Om_r)) / 2
+          Om_r <- matrix(R_block_arr[s, r, , ], nrow = D, ncol = D)
+          Om_r <- (Om_r + t(Om_r)) / 2
           L_r <- tryCatch(t(chol(Om_r)), error = function(e) t(chol(Om_r + diag(1e-6, D))))
           z_new <- matrix(stats::rnorm(D * n_new), nrow = D, ncol = n_new)
-          u_new <- (diag(tau_r, nrow = D) %*% L_r) %*% z_new     # D x n_new
-          event_level <- new_level_of_event[[i]]                 # N_ev-length in 1..n_new
+          u_new <- (diag(tau_r, nrow = D) %*% L_r) %*% z_new # D x n_new
+          event_level <- new_level_of_event[[i]] # N_ev-length in 1..n_new
           mu <- mu + t(u_new[, event_level, drop = FALSE])
         }
 

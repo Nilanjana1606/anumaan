@@ -262,14 +262,12 @@ prep_classify_aware <- function(data,
     dplyr::rename(aware_category = Category)
 
   message(sprintf("Classified AWaRe: %d records", sum(!is.na(data$aware_category))))
-  print(table(data$aware_category, useNA = "ifany"))
+  .msg_print(table(data$aware_category, useNA = "ifany"))
   return(data)
 }
 
 
-# ---------------------------------------------------------------------------
 # New function (Layer 4b)
-# ---------------------------------------------------------------------------
 
 #' Decode Antibiotic Short Codes to Full Names
 #'

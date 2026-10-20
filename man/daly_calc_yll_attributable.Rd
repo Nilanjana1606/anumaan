@@ -95,25 +95,24 @@ Takes the per-patient YLL data produced by \code{daly_calc_yll_associated()}
   \text{yll\_contribution}_{i,k} \times \text{PAF}_{k(,\delta)}}
 }
 \examples{
-\dontrun{
-yll_assoc <- daly_calc_yll_associated(data = cohort, ...)
-mort_or <- fit_mortality_rr_logistic(data = rr_data, ...)
-profiles_or <- assign_rr_to_profiles(profiles_out,
-  rr_table = mort_or,
-  rr_col = "OR_death"
+cohort <- data.frame(
+  patient_id    = sprintf("P\%02d", 1:6),
+  final_outcome = c("Death", "Death", "Discharged", "Death", "Discharged", "Death"),
+  organism_name = rep(c("Escherichia coli", "Klebsiella pneumoniae"), 3),
+  age_bin       = c("40-45", "60-65", "20-25", "0-1", "70-75", "85+"),
+  sex           = c("Male", "Female", "Male", "Female", "Male", "Female")
 )
-paf_mort <- daly_calc_paf_mortality(profiles_or)
-
-yll_attr <- daly_calc_yll_attributable(
-  yll_patient_data = yll_assoc$patient_data,
-  paf_mort         = paf_mort,
-  pathogen_col     = "organism_name",
-  patient_col      = "PatientInformation_id",
-  age_bin_col      = "Age_bin",
-  sex_col          = ".sex_norm",
-  facility_col     = "center_name",
-  syndrome_col     = "infectious_syndrome",
-  stratify_by      = c("location", "infectious_syndrome")
+yll <- daly_calc_yll_associated(cohort,
+  outcome_col = "final_outcome", pathogen_col = "organism_name",
+  patient_col = "patient_id", age_bin_col = "age_bin", sex_col = "sex"
 )
-}
+paf_mort <- list(
+  "Escherichia coli"      = list(PAF_k_mort = 0.20),
+  "Klebsiella pneumoniae" = list(PAF_k_mort = 0.35)
+)
+yll_attr <- daly_calc_yll_attributable(yll$patient_data, paf_mort,
+  pathogen_col = "organism_name", patient_col = "patient_id",
+  age_bin_col = "age_bin"
+)
+yll_attr$per_pathogen
 }

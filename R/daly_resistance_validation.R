@@ -22,16 +22,14 @@
   pmin(1, pmax(0, x))
 }
 
-# ---------------------------------------------------------------------------
 # Internal: shared posterior-draw setup for validation functions
-# ---------------------------------------------------------------------------
 #' @keywords internal
 .probit_validation_draws_setup <- function(fitted_model, n_posterior_draws, seed) {
   if (!requireNamespace("posterior", quietly = TRUE)) {
     stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
   }
 
-  set.seed(as.integer(seed))
+  .local_seed(as.integer(seed), envir = parent.frame()) # caller keeps drawing
 
   draws <- fitted_model$draws
   class_cols <- fitted_model$class_cols
@@ -105,7 +103,9 @@
     re_term <- if (re_prep$R > 0L) {
       re_eff_s <- matrix(re_eff_arr[s, , ], nrow = D, ncol = re_prep$total_re_levels)
       re_contribution(re_eff_s, flat_re_idx_obs)
-    } else matrix(0, nrow = N_ev, ncol = D)
+    } else {
+      matrix(0, nrow = N_ev, ncol = D)
+    }
     (X_event %*% beta_s) + re_term
   }
 
@@ -120,9 +120,7 @@
   )
 }
 
-# ---------------------------------------------------------------------------
 # validate_marginal_calibration()
-# ---------------------------------------------------------------------------
 
 #' Observed-versus-Model Marginal Resistance Validation
 #'
@@ -262,9 +260,7 @@ validate_marginal_calibration <- function(
     dplyr::mutate(dplyr::across(dplyr::where(is.numeric), ~ round(.x, 6L)))
 }
 
-# ---------------------------------------------------------------------------
 # validate_pairwise_calibration()
-# ---------------------------------------------------------------------------
 
 #' Observed-versus-Model Pairwise Co-resistance Validation
 #'
@@ -438,9 +434,11 @@ validate_pairwise_calibration <- function(
     dplyr::summarise(
       dplyr::across(dplyr::all_of(c("model_RR_s", "model_RS_s", "model_SR_s", "model_SS_s")),
         list(mean = mean, lower = ~ stats::quantile(.x, lo_q), upper = ~ stats::quantile(.x, hi_q)),
-        .names = "{sub('_s$', '', .col)}_{.fn}"),
+        .names = "{sub('_s$', '', .col)}_{.fn}"
+      ),
       .groups = "drop"
-    ) %>% dplyr::rename(
+    ) %>%
+    dplyr::rename(
       model_pairwise_mean = .data$model_RR_mean,
       model_pairwise_lower = .data$model_RR_lower,
       model_pairwise_upper = .data$model_RR_upper
@@ -480,9 +478,7 @@ validate_pairwise_calibration <- function(
     dplyr::mutate(dplyr::across(dplyr::where(is.numeric), ~ round(.x, 6L)))
 }
 
-# ---------------------------------------------------------------------------
 # validate_complete_profile_calibration()
-# ---------------------------------------------------------------------------
 
 #' Observed-versus-Model Complete-Profile Validation
 #'
@@ -654,8 +650,10 @@ validate_complete_profile_calibration <- function(
         bit_matrix <- vapply(0:(n_codes - 1L), function(code) {
           vapply(seq_len(D_panel), function(b) as.integer((code %/% 2L^(D_panel - b)) %% 2L), integer(1L))
         }, integer(D_panel))
-        code_labels <- apply(matrix(bit_matrix, nrow = D_panel), 2L,
-                              function(bits) paste(ifelse(bits == 1L, "R", "S"), collapse = ""))
+        code_labels <- apply(
+          matrix(bit_matrix, nrow = D_panel), 2L,
+          function(bits) paste(ifelse(bits == 1L, "R", "S"), collapse = "")
+        )
         tab_counts <- tabulate(codes + 1L, nbins = n_codes)
         names(tab_counts) <- code_labels
         enum_df <- enumerate_binary_profiles(ci$classes)
@@ -733,9 +731,7 @@ validate_complete_profile_calibration <- function(
   dplyr::bind_rows(skipped_tbl, evaluated_tbl)
 }
 
-# ---------------------------------------------------------------------------
 # mask_and_validate_ast()
-# ---------------------------------------------------------------------------
 #' @keywords internal
 .auroc <- function(y, p) {
   y <- as.numeric(y)
@@ -871,7 +867,7 @@ mask_and_validate_ast <- function(
     stop("[mask_and_validate_ast] fitted_model$event_metadata is missing `.event_idx`.", call. = FALSE)
   }
 
-  set.seed(as.integer(seed))
+  .local_seed(as.integer(seed))
 
   n_observed_per_event <- rowSums(!is.na(event_meta[, class_cols, drop = FALSE]))
 
@@ -1083,9 +1079,7 @@ mask_and_validate_ast <- function(
   list(predictions = predictions, summary = summary_tbl, refit_model = refit_model)
 }
 
-# ---------------------------------------------------------------------------
 # compute_profile_validation_status()
-# ---------------------------------------------------------------------------
 
 #' Summarise Validation Checks into a Profile-Validation Status
 #'

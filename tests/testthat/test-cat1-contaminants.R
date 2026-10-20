@@ -1,6 +1,6 @@
 # Category 1: prep_contaminants.R (target helper subset)
 
-# prep_get_contaminant_list ----------------------------------------------------
+# prep_get_contaminant_list
 
 test_that("prep_get_contaminant_list: valid behavior", {
   out <- prep_get_contaminant_list(syndrome = "Bloodstream infections")
@@ -28,7 +28,7 @@ test_that("prep_get_contaminant_list: error handling", {
   expect_length(out$patterns, 0)
 })
 
-# prep_is_contaminant ----------------------------------------------------------
+# prep_is_contaminant
 
 test_that("prep_is_contaminant: valid behavior", {
   out <- prep_is_contaminant(

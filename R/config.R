@@ -41,17 +41,9 @@
 #'
 #' @export
 #' @examples
-#' \dontrun{
-#' # Use defaults
 #' config <- amr_config()
-#'
-#' # Customize for specific hospital
-#' config <- amr_config(
-#'   hai_cutoff = 3,
-#'   mdr_definition = 5,
-#'   strict_validation = FALSE
-#' )
-#' }
+#' config <- amr_config(hai_cutoff = 3, mdr_definition = 5)
+#' config
 amr_config <- function(column_mappings = NULL,
                        fuzzy_match = TRUE,
                        strict_validation = FALSE,
@@ -111,6 +103,7 @@ amr_config <- function(column_mappings = NULL,
 #' @param x An amr_config object
 #' @param ... Additional arguments (not used)
 #'
+#' @return The input object \code{x}, invisibly.
 #' @export
 print.amr_config <- function(x, ...) {
   cat("AMR Preprocessing Configuration\n")

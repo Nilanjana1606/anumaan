@@ -110,21 +110,18 @@ replicates will complete in seconds. For \eqn{n \geq 14} classes use
 \code{n_cores > 1} or reduce B.
 }
 \examples{
-\dontrun{
-marg <- compute_marginal_resistance(amr_clean)
-co_res <- compute_pairwise_coresistance(marg)
-
-boot <- bootstrap_profiles_convex(
-  marginals = marg$marginal,
-  coresistance_output = co_res,
-  B = 500,
-  seed = 42
-)
-
-# 95\% intervals for K. pneumoniae
-boot[["Klebsiella pneumoniae"]]
-
-# Point estimate
-attr(boot[["Klebsiella pneumoniae"]], "point_estimate")
+if (requireNamespace("quadprog", quietly = TRUE)) {
+  marginals <- data.frame(
+    pathogen = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 3),
+    antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), 2),
+    n_tested = c(420L, 460L, 390L, 280L, 310L, 265L),
+    n_resistant = c(126L, 299L, 195L, 45L, 155L, 133L)
+  )
+  marginals$marginal_resistance <- marginals$n_resistant / marginals$n_tested
+  boot <- bootstrap_profiles_convex(marginals,
+    B = 20L, seed = 42L,
+    pathogen_col = "pathogen", class_col = "antibiotic_class"
+  )
+  head(boot[["Klebsiella pneumoniae"]])
 }
 }

@@ -281,7 +281,7 @@ prep_deduplicate_events <- function(data,
 
   n_before <- nrow(data)
 
-  # --- Generic mode (key_cols supplied) ---
+  # Generic mode (key_cols supplied)
   if (!is.null(key_cols)) {
     missing_cols <- setdiff(key_cols, names(data))
     if (length(missing_cols) > 0) {
@@ -310,7 +310,7 @@ prep_deduplicate_events <- function(data,
     return(data)
   }
 
-  # --- Event-aware mode ---
+  # Event-aware mode
   missing_cols <- setdiff(c(event_col, organism_col, antibiotic_col), names(data))
   if (length(missing_cols) > 0) {
     stop(sprintf("Missing required columns: %s", paste(missing_cols, collapse = ", ")))
@@ -362,9 +362,7 @@ prep_deduplicate_events <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # New functions (Layer 6a)
-# ---------------------------------------------------------------------------
 
 #' Flag and Classify Readmissions
 #'
@@ -427,7 +425,7 @@ prep_flag_readmission <- function(data,
 
   dist <- table(data_sorted$readmission_class, useNA = "ifany")
   message("[prep_flag_readmission] Readmission classification:")
-  print(dist)
+  .msg_print(dist)
 
   return(data_sorted)
 }
@@ -465,7 +463,7 @@ prep_classify_readmission <- function(data, readmission_col = "readmission_class
 
   dist <- table(data[[readmission_col]], useNA = "ifany")
   message("[prep_classify_readmission] Readmission distribution after standardization:")
-  print(dist)
+  .msg_print(dist)
 
   return(data)
 }

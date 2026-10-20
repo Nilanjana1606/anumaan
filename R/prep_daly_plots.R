@@ -169,7 +169,7 @@ plot_burden_by_hospital <- function(data,
   # 3. syndrome filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -387,7 +387,7 @@ plot_burden_by_organism <- function(data,
   # 3. syndrome filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -614,7 +614,7 @@ plot_yll_heatmap <- function(data,
 
   # 4. syndrome filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
+    data <- data[!is.na(data[[syndrome_col]]) & .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -811,7 +811,7 @@ plot_yld_heatmap <- function(data,
 
   # 4. syndrome filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
+    data <- data[!is.na(data[[syndrome_col]]) & .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }

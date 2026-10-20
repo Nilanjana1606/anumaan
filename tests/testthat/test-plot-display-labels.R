@@ -34,8 +34,7 @@ test_that("class_pair_label() combines two classes with 'x' using short labels b
   )
 })
 
-# --- Structural properties of the Phase A redesigned PPC plots -------------
-
+# Structural properties of the Phase A redesigned PPC plots
 .fake_ppc_marginal <- data.frame(
   statistic_name = "marginal_resistance",
   stratum = c("hospital:AIIMS_trauma_center|class:Carbapenems", "hospital:SGRH|class:Carbapenems"),
@@ -57,8 +56,10 @@ test_that("marginal PPC plot facets by class and shows a proper resistance-propo
 
 .fake_ppc_pairwise <- data.frame(
   statistic_name = c("pairwise_RR", "pairwise_RS"),
-  stratum = c("hospital:AIIMS_trauma_center|Aminoglycosides_x_Carbapenems",
-              "hospital:AIIMS_trauma_center|Aminoglycosides_x_Carbapenems"),
+  stratum = c(
+    "hospital:AIIMS_trauma_center|Aminoglycosides_x_Carbapenems",
+    "hospital:AIIMS_trauma_center|Aminoglycosides_x_Carbapenems"
+  ),
   observed_value = c(0.3, 0.1), replicated_mean = c(0.28, 0.12),
   replicated_q025 = c(0.2, 0.05), replicated_q975 = c(0.35, 0.2),
   support_status = "supported", stringsAsFactors = FALSE
@@ -90,8 +91,10 @@ test_that("resistant-count distribution plot never conflates different panel wid
 })
 
 .fake_ppc_resistant_count_summary <- data.frame(
-  statistic_name = c("resistant_count_mean", "resistant_count_median", "resistant_count_p90",
-                     "resistant_count_max", "resistant_count_variance"),
+  statistic_name = c(
+    "resistant_count_mean", "resistant_count_median", "resistant_count_p90",
+    "resistant_count_max", "resistant_count_variance"
+  ),
   stratum = "all_events",
   observed_value = c(3.4, 4, 5, 5, 3.1), replicated_mean = c(3.3, 3.9, 4.8, 4.9, 2.9),
   replicated_q025 = c(3.0, 3.5, 4.5, 4.5, 2.5), replicated_q975 = c(3.6, 4.2, 5.0, 5.0, 3.3),

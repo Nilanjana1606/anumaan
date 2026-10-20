@@ -1,6 +1,6 @@
 # Category 2: prep_events.R
 
-# prep_create_event_ids --------------------------------------------------------
+# prep_create_event_ids
 
 test_that("prep_create_event_ids: valid behavior", {
   dat <- cat2_events_df()
@@ -90,7 +90,7 @@ test_that("prep_create_event_ids: keep_event_culture='closest_to_admission' keep
   ) %in% names(out)))
 })
 
-# prep_deduplicate_events ------------------------------------------------------
+# prep_deduplicate_events
 
 test_that("prep_deduplicate_events: valid behavior", {
   dat <- data.frame(event_id = c("e1", "e1", "e2"), organism_normalized = c("e coli", "e coli", "k pn"), antibiotic_normalized = c("amikacin", "amikacin", "ampicillin"), x = 1:3, stringsAsFactors = FALSE)
@@ -114,7 +114,7 @@ test_that("prep_deduplicate_events: error handling", {
   expect_error(prep_deduplicate_events(data.frame(x = 1), keep = "bad_mode"), "keep must be")
 })
 
-# prep_flag_readmission --------------------------------------------------------
+# prep_flag_readmission
 
 test_that("prep_flag_readmission: valid behavior", {
   dat <- data.frame(patient_id = c("p1", "p1", "p1"), admission_date = as.Date(c("2020-01-01", "2020-01-10", "2020-05-01")), stringsAsFactors = FALSE)
@@ -140,7 +140,7 @@ test_that("prep_flag_readmission: error handling", {
   expect_true(all(is.na(out$readmission_class)))
 })
 
-# prep_classify_readmission ----------------------------------------------------
+# prep_classify_readmission
 
 test_that("prep_classify_readmission: valid behavior", {
   dat <- data.frame(readmission_class = c("index", "linked", "new", "late"), stringsAsFactors = FALSE)

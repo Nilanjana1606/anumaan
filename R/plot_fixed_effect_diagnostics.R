@@ -30,7 +30,9 @@ plot_probit_fixed_effect_diagnostics <- function(fit, title_base = "", ci_level 
     return(NULL)
   }
   X <- fit$X_event %||% fit$X_design
-  if (is.null(fit$draws) || is.null(X) || is.null(colnames(X))) return(NULL)
+  if (is.null(fit$draws) || is.null(X) || is.null(colnames(X))) {
+    return(NULL)
+  }
 
   covariate_names <- colnames(X)
   class_cols <- fit$class_cols
@@ -39,7 +41,9 @@ plot_probit_fixed_effect_diagnostics <- function(fit, title_base = "", ci_level 
 
   beta_vars <- sprintf("beta[%d,%d]", rep(seq_len(K), D), rep(seq_len(D), each = K))
   beta_vars <- intersect(beta_vars, posterior::variables(fit$draws))
-  if (length(beta_vars) == 0L) return(NULL)
+  if (length(beta_vars) == 0L) {
+    return(NULL)
+  }
 
   summ <- posterior::summarise_draws(
     posterior::subset_draws(fit$draws, variable = beta_vars),
@@ -56,13 +60,17 @@ plot_probit_fixed_effect_diagnostics <- function(fit, title_base = "", ci_level 
   summ$is_hospital <- grepl("^center_name", summ$covariate)
 
   .plot_group <- function(df, subtitle_extra, y_lab) {
-    if (nrow(df) == 0L) return(NULL)
+    if (nrow(df) == 0L) {
+      return(NULL)
+    }
     df$covariate_display <- factor(df$covariate_display,
-                                   levels = sort(unique(df$covariate_display), decreasing = TRUE))
+      levels = sort(unique(df$covariate_display), decreasing = TRUE)
+    )
     ggplot2::ggplot(df, ggplot2::aes(y = .data$covariate_display)) +
       ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
       ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$lower, xmax = .data$upper),
-                             height = 0, colour = "#4292C6", alpha = 0.7) +
+        height = 0, colour = "#4292C6", alpha = 0.7
+      ) +
       ggplot2::geom_point(ggplot2::aes(x = .data$median), colour = "#2166AC", size = 1.6) +
       ggplot2::facet_wrap(~class_display) +
       ggplot2::labs(

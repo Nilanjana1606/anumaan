@@ -105,46 +105,13 @@ Use \code{facility_col} and \code{facility_name} to restrict the facility
 fallback to a specific site.
 }
 \examples{
-\dontrun{
-# Mode 1: pass pre-computed components, all syndromes
-d_j <- daly_calc_deaths_by_cause(pop_data = vr, cause_col = "icd10")
-s_j <- daly_calc_infection_fraction(pop_data = vr, cause_col = "icd10")
-m_lj <- daly_calc_syndrome_fraction(
-  pop_data = vr, cause_col = "icd10", syndrome_col = "syndrome"
+vital_reg <- data.frame(
+  cause_of_death     = c("A41.9", "A41.9", "J18.9", "J18.9", "I21.9", "N39.0"),
+  is_infection_death = c(TRUE, TRUE, TRUE, TRUE, FALSE, TRUE),
+  syndrome           = c("BSI", "BSI", "LRI", "LRI", NA, "UTI")
 )
-d_l <- daly_calc_deaths_by_syndrome(
-  d_j = d_j, s_j = s_j, m_lj = m_lj,
-  cause_col = "icd10", syndrome_col = "syndrome"
-)
-
-# Mode 2: raw population data, filter to one syndrome
-d_l <- daly_calc_deaths_by_syndrome(
-  pop_data     = vital_reg,
-  cause_col    = "icd10_cause",
-  syndrome_col = "infectious_syndrome",
-  syndrome     = "Bloodstream infection"
-)
-
-# Mode 3: facility fallback, one facility, all syndromes
-d_l <- daly_calc_deaths_by_syndrome(
-  facility_data = amr_data,
-  syndrome_col  = "specimen_normalized",
-  outcome_col   = "final_outcome",
-  death_value   = "Died",
-  patient_col   = "patient_id",
-  facility_col  = "location",
-  facility_name = "Mumbai"
-)
-
-# Mode 3: facility fallback, all facilities, one syndrome, stratified by age
-d_l <- daly_calc_deaths_by_syndrome(
-  facility_data = amr_data,
-  syndrome_col  = "specimen_normalized",
-  syndrome      = "Blood",
-  death_value   = "Died",
-  groupby_cols  = c("Age_bin")
-)
-}
+d_l <- daly_calc_deaths_by_syndrome(pop_data = vital_reg)
+d_l
 }
 \references{
 Antimicrobial Resistance Collaborators. Global burden of bacterial

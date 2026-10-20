@@ -48,15 +48,13 @@ available, use \code{daly_calc_deaths_by_syndrome()} with \code{facility_data}
 instead.
 }
 \examples{
-\dontrun{
-m_lj <- daly_calc_syndrome_fraction(
-  pop_data           = vital_reg,
-  cause_col          = "icd10_cause",
-  syndrome_col       = "infectious_syndrome",
-  infection_flag_col = "is_infectious",
-  groupby_cols       = c("Age_bin")
+vital_reg <- data.frame(
+  cause_of_death     = c("A41.9", "A41.9", "J18.9", "J18.9", "I21.9", "N39.0"),
+  is_infection_death = c(TRUE, TRUE, TRUE, TRUE, FALSE, TRUE),
+  syndrome           = c("BSI", "BSI", "LRI", "LRI", NA, "UTI")
 )
-}
+m_lj <- daly_calc_syndrome_fraction(vital_reg)
+m_lj
 }
 \references{
 Antimicrobial Resistance Collaborators. Global burden of bacterial

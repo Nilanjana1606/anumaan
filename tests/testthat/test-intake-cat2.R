@@ -1,6 +1,6 @@
 # Category 2: prep_intake.R
 
-# prep_check_columns -----------------------------------------------------------
+# prep_check_columns
 
 test_that("prep_check_columns: valid behavior", {
   dat <- cat2_intake_df()
@@ -33,7 +33,7 @@ test_that("prep_check_columns: error handling", {
   expect_error(prep_check_columns(1:3), "must be a data frame")
 })
 
-# prep_check_keys --------------------------------------------------------------
+# prep_check_keys
 
 test_that("prep_check_keys: valid behavior", {
   dat <- cat2_intake_df()
@@ -81,7 +81,7 @@ test_that("prep_check_keys: error handling", {
   expect_null(out)
 })
 
-# prep_validate_table ----------------------------------------------------------
+# prep_validate_table
 
 test_that("prep_validate_table: valid behavior", {
   dat <- cat2_intake_df()
@@ -129,7 +129,7 @@ test_that("prep_validate_table: error handling", {
   expect_error(prep_validate_table(dat, required_cols = c("missing_col"), stop_on_missing = TRUE), "Missing required")
 })
 
-# validate_required_fields -----------------------------------------------------
+# validate_required_fields
 
 test_that("validate_required_fields: valid behavior", {
   dat <- cat2_intake_df()
@@ -158,7 +158,7 @@ test_that("validate_required_fields: error handling", {
   expect_error(validate_required_fields(dat, required_cols = c("a", "b"), stop_on_failure = TRUE), "validation failed")
 })
 
-# validate_data_quality --------------------------------------------------------
+# validate_data_quality
 
 test_that("validate_data_quality: valid behavior", {
   dat <- data.frame(patient_id = c("p1", "p2"), organism_normalized = c("e coli", "k pn"))
@@ -183,7 +183,7 @@ test_that("validate_data_quality: error handling", {
   expect_error(validate_data_quality(dat, min_rows = 2, stop_on_failure = TRUE), "failed")
 })
 
-# prep_log_source --------------------------------------------------------------
+# prep_log_source
 
 test_that("prep_log_source: valid behavior", {
   dat <- cat2_intake_df()
@@ -215,7 +215,7 @@ test_that("prep_log_source: error handling", {
   expect_equal(prov$centre_name, "NONEXISTENT_CENTRE")
 })
 
-# prep_inventory_columns -------------------------------------------------------
+# prep_inventory_columns
 
 test_that("prep_inventory_columns: valid behavior", {
   dat <- cat2_intake_df()
@@ -240,7 +240,7 @@ test_that("prep_inventory_columns: error handling", {
   expect_error(prep_inventory_columns(NULL), NA)
 })
 
-# prep_detect_schema_drift -----------------------------------------------------
+# prep_detect_schema_drift
 
 test_that("prep_detect_schema_drift: valid behavior", {
   d1 <- data.frame(a = 1, b = 2)

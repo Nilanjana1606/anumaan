@@ -1,6 +1,6 @@
 # Category 1: prep_standardize_organisms.R (target helper subset)
 
-# prep_standardize_organisms ---------------------------------------------------
+# prep_standardize_organisms
 
 test_that("prep_standardize_organisms: clinical text variants map as expected", {
   dat <- data.frame(
@@ -41,7 +41,7 @@ test_that("prep_standardize_organisms + prep_is_contaminant: CONS and Bacillus f
   expect_equal(is_contam, c(TRUE, TRUE, FALSE))
 })
 
-# prep_extract_genus -----------------------------------------------------------
+# prep_extract_genus
 
 test_that("prep_extract_genus: valid behavior", {
   dat <- data.frame(organism_normalized = c("escherichia coli", "klebsiella pneumoniae"), stringsAsFactors = FALSE)
@@ -65,7 +65,7 @@ test_that("prep_extract_genus: error handling", {
   expect_error(prep_extract_genus(data.frame(x = 1), organism_col = "organism_normalized"), "not found")
 })
 
-# prep_extract_species ---------------------------------------------------------
+# prep_extract_species
 
 test_that("prep_extract_species: valid behavior", {
   dat <- data.frame(organism_normalized = c("escherichia coli", "klebsiella pneumoniae"), stringsAsFactors = FALSE)
@@ -89,7 +89,7 @@ test_that("prep_extract_species: error handling", {
   expect_error(prep_extract_species(data.frame(x = 1), organism_col = "organism_normalized"), "not found")
 })
 
-# prep_normalize_sp_variants ---------------------------------------------------
+# prep_normalize_sp_variants
 
 test_that("prep_normalize_sp_variants: valid behavior", {
   out <- anumaan:::prep_normalize_sp_variants(c("Acinetobacter sp", "E. coli"))
@@ -114,7 +114,7 @@ test_that("prep_normalize_sp_variants: error handling", {
   expect_error(anumaan:::prep_normalize_sp_variants(bad_input), "cannot coerce")
 })
 
-# get_organism_taxonomy --------------------------------------------------------
+# get_organism_taxonomy
 
 test_that("get_organism_taxonomy: valid behavior", {
   tx <- anumaan:::get_organism_taxonomy()

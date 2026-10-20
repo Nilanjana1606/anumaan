@@ -6,6 +6,9 @@
 \usage{
 summarize_value_mapping(raw_data, processed_data, raw_col, processed_col)
 }
+\value{
+A list with a raw-versus-processed value contingency table.
+}
 \description{
 Summarize Value Mapping
 }

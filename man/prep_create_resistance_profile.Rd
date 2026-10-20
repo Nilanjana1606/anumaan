@@ -38,20 +38,13 @@ Generates a resistance profile string for each event summarizing
 resistance patterns. Useful for identifying common resistance phenotypes.
 }
 \examples{
-\dontrun{
-# List resistant drugs
-data_with_profile <- prep_create_resistance_profile(data)
-
-# Full S/R pattern
-data_with_profile <- prep_create_resistance_profile(
-  data,
-  format = "full_pattern"
+ast <- data.frame(
+  event_id              = rep(c("E1", "E2"), each = 3),
+  organism_normalized   = rep(c("Escherichia coli", "Klebsiella pneumoniae"), each = 3),
+  antibiotic_normalized = rep(c("Meropenem", "Imipenem", "Ciprofloxacin"), 2),
+  antibiotic_class      = rep(c("Carbapenems", "Carbapenems", "Fluoroquinolones"), 2),
+  antibiotic_value      = c("S", "R", "R", "S", "S", "R")
 )
-
-# Resistant classes only
-data_with_profile <- prep_create_resistance_profile(
-  data,
-  format = "class_summary"
-)
-}
+prep_create_resistance_profile(ast)
+prep_create_resistance_profile(ast, format = "full_pattern")
 }

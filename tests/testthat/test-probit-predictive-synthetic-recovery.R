@@ -9,17 +9,15 @@
 #      each PPC statistic family actually detects the specific model
 #      deficiency it is designed to detect (not just that the pipeline runs).
 
-# ---------------------------------------------------------------------------
 # Tier 1: fast unit tests (reuses the .ppc_build_test_fit() helper defined in
 # test-probit-posterior-predictive.R, sourced into the same environment when
 # the full suite runs; redefined here for standalone-file execution).
-# ---------------------------------------------------------------------------
 
 if (!exists(".ppc_build_test_fit")) {
   .ppc_build_test_fit <- function(X_event, re_data, random_effects, class_cols,
-                                   beta_states, re_effect_states,
-                                   L_omega_states = NULL,
-                                   obs_ast, residual_structure = "identity") {
+                                  beta_states, re_effect_states,
+                                  L_omega_states = NULL,
+                                  obs_ast, residual_structure = "identity") {
     S <- length(beta_states)
     K <- ncol(X_event)
     D <- length(class_cols)
@@ -28,18 +26,24 @@ if (!exists(".ppc_build_test_fit")) {
     N_ev <- nrow(X_event)
 
     args_list <- list()
-    for (a in seq_len(K)) for (b in seq_len(D)) {
-      key <- sprintf("beta[%d,%d]", a, b)
-      args_list[[key]] <- vapply(seq_len(S), function(s) beta_states[[s]][a, b], numeric(1L))
+    for (a in seq_len(K)) {
+      for (b in seq_len(D)) {
+        key <- sprintf("beta[%d,%d]", a, b)
+        args_list[[key]] <- vapply(seq_len(S), function(s) beta_states[[s]][a, b], numeric(1L))
+      }
     }
-    for (a in seq_len(D)) for (b in seq_len(total_re_levels)) {
-      key <- sprintf("re_effect[%d,%d]", a, b)
-      args_list[[key]] <- vapply(seq_len(S), function(s) re_effect_states[[s]][a, b], numeric(1L))
+    for (a in seq_len(D)) {
+      for (b in seq_len(total_re_levels)) {
+        key <- sprintf("re_effect[%d,%d]", a, b)
+        args_list[[key]] <- vapply(seq_len(S), function(s) re_effect_states[[s]][a, b], numeric(1L))
+      }
     }
     if (!is.null(L_omega_states)) {
-      for (a in seq_len(D)) for (b in seq_len(D)) {
-        key <- sprintf("L_Omega[%d,%d]", a, b)
-        args_list[[key]] <- vapply(seq_len(S), function(s) L_omega_states[[s]][a, b], numeric(1L))
+      for (a in seq_len(D)) {
+        for (b in seq_len(D)) {
+          key <- sprintf("L_Omega[%d,%d]", a, b)
+          args_list[[key]] <- vapply(seq_len(S), function(s) L_omega_states[[s]][a, b], numeric(1L))
+        }
       }
     }
     draws <- do.call(posterior::draws_array, args_list)
@@ -75,10 +79,14 @@ test_that("compute_probit_ppc_statistics() returns the exact Part 7 output schem
   re_effect_states <- lapply(seq_len(S), function(s) matrix(rnorm(4, sd = 0.2), nrow = 2, ncol = 2))
   obs_ast <- cbind(rbinom(60, 1, 0.4), rbinom(60, 1, 0.5))
   fit <- .ppc_build_test_fit(X_event, re_data, "hosp", c("classA", "classB"),
-                              beta_states, re_effect_states, obs_ast = obs_ast)
+    beta_states, re_effect_states,
+    obs_ast = obs_ast
+  )
 
-  stats_tbl <- compute_probit_ppc_statistics(fit, n_states = S, seed = 1,
-                                              statistics = c("marginal", "resistant_count"))
+  stats_tbl <- compute_probit_ppc_statistics(fit,
+    n_states = S, seed = 1,
+    statistics = c("marginal", "resistant_count")
+  )
   expect_true(is.data.frame(stats_tbl))
   expect_identical(names(stats_tbl), c(
     "statistic_name", "stratum", "observed_value", "replicated_mean", "replicated_sd",
@@ -107,8 +115,10 @@ test_that("finite-replicate PPC tails cannot be zero", {
 
 test_that("compute_posterior_predictive_status() family-level logic", {
   base <- tibble::tibble(
-    statistic_name = c("marginal_resistance", "pairwise_RR", "profile_shannon_entropy",
-                        "hospital_heterogeneity_sd", "cluster_within_group_same_class_agreement"),
+    statistic_name = c(
+      "marginal_resistance", "pairwise_RR", "profile_shannon_entropy",
+      "hospital_heterogeneity_sd", "cluster_within_group_same_class_agreement"
+    ),
     stratum = "s", observed_value = 0.5,
     replicated_mean = 0.5, replicated_sd = 0.1,
     replicated_q025 = 0.3, replicated_q50 = 0.5, replicated_q975 = 0.7,
@@ -146,14 +156,14 @@ test_that("admission-role clustering statistic detects strong within-admission a
   set.seed(11)
   n_adm <- 60L
   ev_per_adm <- 3L
-  adm_effect <- rep(rnorm(n_adm, sd = 2), each = ev_per_adm)   # strong per-admission latent tendency
+  adm_effect <- rep(rnorm(n_adm, sd = 2), each = ev_per_adm) # strong per-admission latent tendency
   N_ev <- n_adm * ev_per_adm
   re_data <- data.frame(
     hosp = rep("H1", N_ev),
     adm = rep(paste0("A", seq_len(n_adm)), each = ev_per_adm)
   )
   X_event <- matrix(1, nrow = N_ev, ncol = 1)
-  mu_true <- adm_effect   # class A driven entirely by admission-level tendency
+  mu_true <- adm_effect # class A driven entirely by admission-level tendency
   obs_ast <- cbind(classA = rbinom(N_ev, 1, stats::pnorm(mu_true)))
 
   # Fit declares ONLY "hosp" as a random-effect block -- admission is present
@@ -164,15 +174,18 @@ test_that("admission-role clustering statistic detects strong within-admission a
   re_effect_states <- list(matrix(0, nrow = 1, ncol = re_prep_check$total_re_levels))
 
   fit <- .ppc_build_test_fit(X_event, re_data, "hosp", "classA",
-                              beta_states, re_effect_states, obs_ast = obs_ast)
+    beta_states, re_effect_states,
+    obs_ast = obs_ast
+  )
 
   stats_tbl <- compute_probit_ppc_statistics(
-    fit, n_states = 1L, seed = 1, statistics = "admission_clustering",
+    fit,
+    n_states = 1L, seed = 1, statistics = "admission_clustering",
     random_effect_roles = c(adm = "admission")
   )
   agree_row <- stats_tbl[stats_tbl$statistic_name == "cluster_within_group_same_class_agreement", ]
   expect_equal(agree_row$support_status, "supported")
-  expect_gt(agree_row$observed_value, 0.7)   # strong true within-admission agreement
+  expect_gt(agree_row$observed_value, 0.7) # strong true within-admission agreement
 })
 
 test_that("clustering statistics report role_not_mapped / insufficient_support cleanly, never as failures", {
@@ -182,49 +195,63 @@ test_that("clustering statistics report role_not_mapped / insufficient_support c
   re_effect_states <- list(matrix(0, nrow = 1, ncol = 2))
   obs_ast <- matrix(1, nrow = 2, ncol = 1)
   fit <- .ppc_build_test_fit(X_event, re_data, "hosp", "classA",
-                              beta_states, re_effect_states, obs_ast = obs_ast)
+    beta_states, re_effect_states,
+    obs_ast = obs_ast
+  )
 
   no_role <- compute_probit_ppc_statistics(fit, n_states = 1L, statistics = "admission_clustering")
   expect_true(all(no_role$support_status == "role_not_mapped"))
   expect_true(all(is.na(no_role$observed_value)))
 
-  bad_col <- compute_probit_ppc_statistics(fit, n_states = 1L, statistics = "admission_clustering",
-                                            random_effect_roles = c(nonexistent_col = "admission"))
+  bad_col <- compute_probit_ppc_statistics(fit,
+    n_states = 1L, statistics = "admission_clustering",
+    random_effect_roles = c(nonexistent_col = "admission")
+  )
   expect_true(all(bad_col$support_status == "role_not_mapped"))
 })
 
-# ---------------------------------------------------------------------------
 # Tier 2: Part 19 synthetic recovery scenarios (real, small/fast cmdstanr fits)
-# ---------------------------------------------------------------------------
 
 .ppcrec_cmdstan_available <- function() {
-  if (!requireNamespace("cmdstanr", quietly = TRUE)) return(FALSE)
-  isTRUE(tryCatch({ cmdstanr::cmdstan_path(); TRUE }, error = function(e) FALSE))
+  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
+    return(FALSE)
+  }
+  isTRUE(tryCatch(
+    {
+      cmdstanr::cmdstan_path()
+      TRUE
+    },
+    error = function(e) FALSE
+  ))
 }
 
 .ppcrec_fit <- function(wide, class_cols, random_effects, residual_structure = "identity",
-                         fixed_effects = "Age_normalised", prior_config = list(),
-                         chains = 2L, iter = 200L, seed = 1L) {
+                        fixed_effects = "Age_normalised", prior_config = list(),
+                        chains = 2L, iter = 200L, seed = 1L) {
   suppressWarnings(fit_bayesian_multivariate_probit(
-    event_class_data   = wide,
-    class_cols         = class_cols,
-    fixed_effects       = fixed_effects,
-    random_effects      = random_effects,
-    pathogen            = "bug",
-    pathogen_col        = "pathogen",
-    event_id_col        = "event_id",
-    residual_structure  = residual_structure,
-    prior_config        = utils::modifyList(list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0), prior_config),
-    sampler_config      = list(chains = chains, iter_warmup = iter, iter_sampling = iter,
-                               seed = seed, parallel_chains = chains, adapt_delta = 0.9),
-    show_messages       = FALSE
+    event_class_data = wide,
+    class_cols = class_cols,
+    fixed_effects = fixed_effects,
+    random_effects = random_effects,
+    pathogen = "bug",
+    pathogen_col = "pathogen",
+    event_id_col = "event_id",
+    residual_structure = residual_structure,
+    prior_config = utils::modifyList(list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0), prior_config),
+    sampler_config = list(
+      chains = chains, iter_warmup = iter, iter_sampling = iter,
+      seed = seed, parallel_chains = chains, adapt_delta = 0.9
+    ),
+    show_messages = FALSE
   ))
 }
 
 test_that("Scenario 1: identity-generated + identity-fit -- PPC broadly calibrated", {
+  skip_on_cran()
   skip_if_not(.ppcrec_cmdstan_available(), "cmdstanr/CmdStan not available")
   set.seed(101)
-  n_hosp <- 4L; n_per_hosp <- 50L
+  n_hosp <- 4L
+  n_per_hosp <- 50L
   hosp_eff <- rnorm(n_hosp, sd = 0.3)
   wide <- do.call(rbind, lapply(seq_len(n_hosp), function(h) {
     n <- n_per_hosp
@@ -238,10 +265,13 @@ test_that("Scenario 1: identity-generated + identity-fit -- PPC broadly calibrat
     )
   }))
 
-  fit <- .ppcrec_fit(wide, c("classA", "classB"), random_effects = c("center_name"),
-                      residual_structure = "identity")
+  fit <- .ppcrec_fit(wide, c("classA", "classB"),
+    random_effects = c("center_name"),
+    residual_structure = "identity"
+  )
   stats_tbl <- compute_probit_ppc_statistics(
-    fit, n_states = 150L, seed = 5L,
+    fit,
+    n_states = 150L, seed = 5L,
     statistics = c("marginal", "resistant_count", "pairwise", "complete_profile", "hospital_heterogeneity"),
     min_hospital_support = 20L, min_complete_profile_events = 20L
   )
@@ -250,6 +280,7 @@ test_that("Scenario 1: identity-generated + identity-fit -- PPC broadly calibrat
 })
 
 test_that("Scenario 2: strong correlated residual generated + identity-fit -- pairwise/profile PPC should fail", {
+  skip_on_cran()
   skip_if_not(.ppcrec_cmdstan_available(), "cmdstanr/CmdStan not available")
   set.seed(102)
   n <- 220L
@@ -265,30 +296,34 @@ test_that("Scenario 2: strong correlated residual generated + identity-fit -- pa
     classA = Y[, 1], classB = Y[, 2], event_id = paste0("E", seq_len(n))
   )
 
-  fit <- .ppcrec_fit(wide, c("classA", "classB"), random_effects = c("center_name"),
-                      residual_structure = "identity")
+  fit <- .ppcrec_fit(wide, c("classA", "classB"),
+    random_effects = c("center_name"),
+    residual_structure = "identity"
+  )
   stats_tbl <- compute_probit_ppc_statistics(
-    fit, n_states = 150L, seed = 5L,
+    fit,
+    n_states = 150L, seed = 5L,
     statistics = c("marginal", "pairwise", "complete_profile"),
     min_complete_profile_events = 20L
   )
   status <- compute_posterior_predictive_status(stats_tbl)
   pairwise_bad <- !is.null(status$family_status$pairwise) && status$family_status$pairwise$status != "ok"
-  profile_bad  <- !is.null(status$family_status$profile)  && status$family_status$profile$status != "ok"
+  profile_bad <- !is.null(status$family_status$profile) && status$family_status$profile$status != "ok"
   expect_true(pairwise_bad || profile_bad)
 })
 
 test_that("Scenario 3: strong hospital heterogeneity + heavily shrunk hospital RE -- hospital heterogeneity PPC should fail", {
+  skip_on_cran()
   skip_if_not(.ppcrec_cmdstan_available(), "cmdstanr/CmdStan not available")
   set.seed(103)
   n_per_hosp <- 50L
-  hosp_p <- c(0.08, 0.90, 0.10, 0.88)   # extreme, well-separated hospital rates
+  hosp_p <- c(0.08, 0.90, 0.10, 0.88) # extreme, well-separated hospital rates
   wide <- do.call(rbind, lapply(seq_along(hosp_p), function(h) {
     n <- n_per_hosp
     data.frame(
       center_name = paste0("H", h), pathogen = "bug", Age_normalised = rnorm(n),
       classA = rbinom(n, 1, hosp_p[h]),
-      classB = rbinom(n, 1, 0.3),   # unrelated nuisance class -- probit requires D >= 2
+      classB = rbinom(n, 1, 0.3), # unrelated nuisance class -- probit requires D >= 2
       event_id = paste0("H", h, "_", seq_len(n))
     )
   }))
@@ -298,22 +333,27 @@ test_that("Scenario 3: strong hospital heterogeneity + heavily shrunk hospital R
   # emulating "the model does not effectively use hospital-level variation"
   # (Stage-1 architecture requires >=1 declared RE block, so a literal
   # omission of the hospital block is not expressible via this API).
-  fit <- .ppcrec_fit(wide, c("classA", "classB"), random_effects = c("center_name"),
-                      residual_structure = "identity", prior_config = list(tau_sd = 0.02))
+  fit <- .ppcrec_fit(wide, c("classA", "classB"),
+    random_effects = c("center_name"),
+    residual_structure = "identity", prior_config = list(tau_sd = 0.02)
+  )
   stats_tbl <- compute_probit_ppc_statistics(
-    fit, n_states = 150L, seed = 5L,
+    fit,
+    n_states = 150L, seed = 5L,
     statistics = c("marginal", "hospital_heterogeneity"),
     min_hospital_support = 20L
   )
   status <- compute_posterior_predictive_status(stats_tbl)
   expect_true(!is.null(status$family_status$hospital_heterogeneity) &&
-              status$family_status$hospital_heterogeneity$status != "ok")
+    status$family_status$hospital_heterogeneity$status != "ok")
 })
 
 test_that("Scenario 4: repeated-admission clustering, admission not declared as RE -- admission clustering PPC should fail", {
+  skip_on_cran()
   skip_if_not(.ppcrec_cmdstan_available(), "cmdstanr/CmdStan not available")
   set.seed(104)
-  n_adm <- 70L; ev_per_adm <- 3L
+  n_adm <- 70L
+  ev_per_adm <- 3L
   adm_id <- rep(paste0("A", seq_len(n_adm)), each = ev_per_adm)
   adm_eff <- rep(rnorm(n_adm, sd = 1.8), each = ev_per_adm)
   n <- n_adm * ev_per_adm
@@ -322,15 +362,18 @@ test_that("Scenario 4: repeated-admission clustering, admission not declared as 
   wide <- data.frame(
     center_name = "H1", pathogen = "bug", Age_normalised = age,
     classA = rbinom(n, 1, stats::pnorm(mu)),
-    classB = rbinom(n, 1, 0.3),   # unrelated nuisance class -- probit requires D >= 2
+    classB = rbinom(n, 1, 0.3), # unrelated nuisance class -- probit requires D >= 2
     event_id = paste0("E", seq_len(n)),
     admission_id = adm_id
   )
 
-  fit <- .ppcrec_fit(wide, c("classA", "classB"), random_effects = c("center_name"),
-                      residual_structure = "identity")
+  fit <- .ppcrec_fit(wide, c("classA", "classB"),
+    random_effects = c("center_name"),
+    residual_structure = "identity"
+  )
   stats_tbl <- compute_probit_ppc_statistics(
-    fit, n_states = 150L, seed = 5L, statistics = "admission_clustering",
+    fit,
+    n_states = 150L, seed = 5L, statistics = "admission_clustering",
     random_effect_roles = c(admission_id = "admission")
   )
   status <- compute_posterior_predictive_status(stats_tbl)
@@ -340,9 +383,12 @@ test_that("Scenario 4: repeated-admission clustering, admission not declared as 
 })
 
 test_that("Scenario 5: correctly specified correlated + hospital/admission model -- core PPC broadly reproduced", {
+  skip_on_cran()
   skip_if_not(.ppcrec_cmdstan_available(), "cmdstanr/CmdStan not available")
   set.seed(105)
-  n_hosp <- 3L; n_adm_per_hosp <- 20L; ev_per_adm <- 2L
+  n_hosp <- 3L
+  n_adm_per_hosp <- 20L
+  ev_per_adm <- 2L
   rows <- list()
   for (h in seq_len(n_hosp)) {
     hosp_eff <- rnorm(1, sd = 0.3)
@@ -352,7 +398,8 @@ test_that("Scenario 5: correctly specified correlated + hospital/admission model
       mu1 <- 0.1 + 0.2 * age + hosp_eff + adm_eff
       mu2 <- -0.1 + 0.15 * age + hosp_eff + adm_eff
       rho <- 0.4
-      Omega <- matrix(c(1, rho, rho, 1), 2, 2); L <- t(chol(Omega))
+      Omega <- matrix(c(1, rho, rho, 1), 2, 2)
+      L <- t(chol(Omega))
       Z <- cbind(mu1, mu2) + t(L %*% matrix(rnorm(2 * ev_per_adm), 2, ev_per_adm))
       Y <- (Z > 0) * 1L
       rows[[length(rows) + 1L]] <- data.frame(
@@ -366,14 +413,18 @@ test_that("Scenario 5: correctly specified correlated + hospital/admission model
   wide <- do.call(rbind, rows)
 
   fit <- .ppcrec_fit(wide, c("classA", "classB"),
-                      random_effects = list(
-                        list(name = "hospital", group_col = "center_name", terms = "intercept"),
-                        list(name = "admission", group_col = "admission_id", terms = "intercept")
-                      ), residual_structure = "correlated")
+    random_effects = list(
+      list(name = "hospital", group_col = "center_name", terms = "intercept"),
+      list(name = "admission", group_col = "admission_id", terms = "intercept")
+    ), residual_structure = "correlated"
+  )
   stats_tbl <- compute_probit_ppc_statistics(
-    fit, n_states = 150L, seed = 5L,
-    statistics = c("marginal", "resistant_count", "pairwise", "complete_profile",
-                    "hospital_heterogeneity", "admission_clustering"),
+    fit,
+    n_states = 150L, seed = 5L,
+    statistics = c(
+      "marginal", "resistant_count", "pairwise", "complete_profile",
+      "hospital_heterogeneity", "admission_clustering"
+    ),
     random_effect_roles = c(admission_id = "admission"),
     min_hospital_support = 15L, min_complete_profile_events = 15L
   )

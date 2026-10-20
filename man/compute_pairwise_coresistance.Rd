@@ -86,14 +86,16 @@ Matrices are computed for \strong{all} tested classes -- no filtering by
 marginal resistance or GBD core list is applied here.
 }
 \examples{
-\dontrun{
-marg <- compute_marginal_resistance(amr_clean, ...)
+set.seed(1)
+ast_class <- data.frame(
+  isolate_id       = rep(sprintf("ISO\%02d", 1:80), each = 3),
+  organism_name    = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 120),
+  org_group        = "Enterobacterales",
+  antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), times = 80),
+  antibiotic_value = sample(c("S", "R"), 240, replace = TRUE)
+)
+marg <- compute_marginal_resistance(ast_class)
+marg$marginal
 co_res <- compute_pairwise_coresistance(marg)
-
-# Prevalence matrix for K. pneumoniae
 co_res[["Klebsiella pneumoniae"]]$prevalence
-
-# Co-tested counts
-co_res[["Klebsiella pneumoniae"]]$T_matrix
-}
 }

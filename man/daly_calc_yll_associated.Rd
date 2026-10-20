@@ -20,7 +20,7 @@ daly_calc_yll_associated(
   poly_weight_method = "monomicrobial_proportion",
   min_mono_per_facility = 30L,
   gap_days = 14,
-  le_path = system.file("extdata", "life_expectancy_all.xlsx", package = "anumaan"),
+  le_path = system.file("extdata", "life_expectancy_all.csv", package = "anumaan"),
   male_value = "Male",
   female_value = "Female",
   age_bin_map = c(`<1` = "0-1"),
@@ -75,7 +75,7 @@ to global weights.  Default \code{30L}.}
 episode detection.  Default \code{14}.}
 
 \item{le_path}{Character.  Path to the India life expectancy
-xlsx file.  Defaults to the bundled \code{inst/extdata} copy.}
+CSV (or xlsx) file.  Defaults to the bundled \code{inst/extdata} copy.}
 
 \item{male_value}{Character.  Value in \code{sex_col} for males.
 Default \code{"Male"}.}
@@ -138,24 +138,16 @@ If \code{date_culture_col} is \code{NULL} polymicrobial flagging is
 skipped and all weights default to 1.
 }
 \examples{
-\dontrun{
-yll <- daly_calc_yll_associated(
-  data             = cohort_df,
-  outcome_col      = "final_outcome",
-  death_value      = "Death",
-  pathogen_col     = "organism_name",
-  patient_col      = "PatientInformation_id",
-  age_bin_col      = "Age_bin",
-  sex_col          = "gender",
-  facility_col     = "center_name",
-  syndrome_col     = "infectious_syndrome",
-  date_culture_col = "culture_date",
-  specimen_col     = "sample_type",
-  stratify_by      = c("location", "infectious_syndrome")
+cohort <- data.frame(
+  patient_id    = sprintf("P\%02d", 1:6),
+  final_outcome = c("Death", "Death", "Discharged", "Death", "Discharged", "Death"),
+  organism_name = rep(c("Escherichia coli", "Klebsiella pneumoniae"), 3),
+  age_bin       = c("40-45", "60-65", "20-25", "0-1", "70-75", "85+"),
+  sex           = c("Male", "Female", "Male", "Female", "Male", "Female")
 )
-yll$total
+yll <- daly_calc_yll_associated(cohort,
+  outcome_col = "final_outcome", pathogen_col = "organism_name",
+  patient_col = "patient_id", age_bin_col = "age_bin", sex_col = "sex"
+)
 yll$per_pathogen
-yll$by_age_sex
-yll$stratified
-}
 }

@@ -72,7 +72,7 @@ prep_clean_ast_values <- function(data,
   }
 
   message("\nValue distribution:")
-  print(table(data[[value_col]], useNA = "ifany"))
+  .msg_print(table(data[[value_col]], useNA = "ifany"))
 
   return(data)
 }
@@ -141,9 +141,7 @@ prep_recode_intermediate_ast <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # New functions (Layer 4d)
-# ---------------------------------------------------------------------------
 
 #' Harmonize AST Values
 #'
@@ -343,7 +341,7 @@ prep_flag_invalid_ast <- function(data, col = "ast_value_harmonized") {
     message(sprintf("[prep_flag_invalid_ast] %d row(s) with invalid AST value.", n_invalid))
     top_vals <- utils::head(sort(table(data[[col]][data$is_ast_invalid]), decreasing = TRUE), 5)
     message("Top invalid values:")
-    print(top_vals)
+    .msg_print(top_vals)
   } else {
     message("[prep_flag_invalid_ast] All non-NA AST values are valid (S/I/R).")
   }
@@ -410,7 +408,7 @@ prep_deduplicate_ast <- function(data,
     return(data)
   }
 
-  # --- Step 1 (always): remove exact duplicates on all 5 key columns ---
+  # Step 1 (always): remove exact duplicates on all 5 key columns
   n_before_exact <- nrow(data)
   data <- dplyr::distinct(data, dplyr::across(dplyr::all_of(exact_key_cols)), .keep_all = TRUE)
   n_exact_removed <- n_before_exact - nrow(data)
@@ -421,7 +419,7 @@ prep_deduplicate_ast <- function(data,
     ))
   }
 
-  # --- Step 2 (always): detect conflicts (same 4-key group, different values) ---
+  # Step 2 (always): detect conflicts (same 4-key group, different values)
   conflict_summary <- data %>%
     dplyr::group_by(dplyr::across(dplyr::all_of(key_cols))) %>%
     dplyr::summarise(
@@ -451,14 +449,14 @@ prep_deduplicate_ast <- function(data,
       n_groups, n_flagged
     ))
     message("\nConflict summary (top 10):")
-    print(utils::head(conflict_summary[, c(key_cols, "conflicting_values", "n_rows")], 10))
+    .msg_print(utils::head(conflict_summary[, c(key_cols, "conflicting_values", "n_rows")], 10))
   }
 
   if (mode == "detect") {
     return(data)
   }
 
-  # --- Step 3 (remove only): resolve conflicts via strategy ---
+  # Step 3 (remove only): resolve conflicts via strategy
   n_before <- nrow(data)
 
   if (strategy %in% c("resistant_wins", "susceptible_wins")) {
@@ -492,9 +490,7 @@ prep_deduplicate_ast <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # Reshape helpers
-# ---------------------------------------------------------------------------
 
 #' Convert Wide Format to Long Format
 #'
@@ -522,25 +518,20 @@ prep_deduplicate_ast <- function(data,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Specify antibiotic columns explicitly
-#' long_data <- prep_pivot_ast_wide_to_long(
-#'   data = raw_data,
-#'   antibiotic_cols = c("AMIKACIN", "GENTAMICIN", "CIPROFLOXACIN")
+#' wide <- data.frame(
+#'   patient_id      = c("P01", "P02", "P03"),
+#'   organism_name   = c("Escherichia coli", "Klebsiella pneumoniae", "Escherichia coli"),
+#'   date_of_culture = as.Date(c("2024-01-02", "2024-01-05", "2024-01-09")),
+#'   Amikacin        = c("S", "R", "S"),
+#'   Meropenem       = c("S", "R", NA),
+#'   Ciprofloxacin   = c("R", "R", "S")
 #' )
-#'
-#' # Auto-detect columns by pattern (columns 12-53)
-#' long_data <- prep_pivot_ast_wide_to_long(
-#'   data = raw_data,
-#'   antibiotic_cols = names(raw_data)[12:53]
+#' long <- prep_pivot_ast_wide_to_long(wide,
+#'   antibiotic_cols = c("Amikacin", "Meropenem", "Ciprofloxacin"),
+#'   id_cols = c("patient_id", "organism_name", "date_of_culture"),
+#'   create_event_id = TRUE
 #' )
-#'
-#' # Auto-detect uppercase antibiotic names
-#' long_data <- prep_pivot_ast_wide_to_long(
-#'   data = raw_data,
-#'   pattern = "^[A-Z]+$"
-#' )
-#' }
+#' long
 prep_pivot_ast_wide_to_long <- function(data,
                                         antibiotic_cols = NULL,
                                         pattern = NULL,
@@ -641,17 +632,14 @@ prep_pivot_ast_wide_to_long <- function(data,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Basic wide format
-#' wide_data <- prep_create_wide_ast_matrix(data)
-#'
-#' # Class-level wide format
-#' wide_data <- prep_create_wide_ast_matrix(
-#'   data,
-#'   antibiotic_col = "antibiotic_class",
-#'   prefix = "class_"
+#' ast <- data.frame(
+#'   event_id              = rep(c("E1", "E2"), each = 3),
+#'   organism_normalized   = rep(c("Escherichia coli", "Klebsiella pneumoniae"), each = 3),
+#'   antibiotic_normalized = rep(c("Meropenem", "Imipenem", "Ciprofloxacin"), 2),
+#'   antibiotic_class      = rep(c("Carbapenems", "Carbapenems", "Fluoroquinolones"), 2),
+#'   antibiotic_value      = c("S", "R", "R", "S", "S", "R")
 #' )
-#' }
+#' prep_create_wide_ast_matrix(ast, keep_cols = "organism_normalized")
 prep_create_wide_ast_matrix <- function(data,
                                         event_col = "event_id",
                                         antibiotic_col = "antibiotic_normalized",

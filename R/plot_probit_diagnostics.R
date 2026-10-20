@@ -80,7 +80,7 @@ plot_probit_diagnostics <- function(
   pdf_path <- file.path(output_dir, paste0(experiment_id, "_diagnostics.pdf"))
   title_base <- sprintf("%s\n%s", experiment_id, pathogen)
 
-  # -- Select key parameters (exclude z_free; sample large arrays sparingly) ---
+  # Select key parameters (exclude z_free; sample large arrays sparingly)
   all_vars <- dimnames(draws)[[3]]
   lp_vars <- grep("^lp__$", all_vars, value = TRUE)
   tau_vars <- grep("^tau_", all_vars, value = TRUE)
@@ -128,7 +128,7 @@ plot_probit_diagnostics <- function(
   n_chains <- dim(draws)[2]
   n_sampling <- dim(draws)[1]
 
-  # -- 1. Overall sampler status -------------------------------------------------
+  # 1. Overall sampler status
   .fmt_or_na <- function(x, fmt) if (is.null(x) || length(x) == 0L || is.na(x[[1L]])) "NA" else sprintf(fmt, x[[1L]])
   status_str <- .fmt_or_na(diag$diagnostic_status, "%s")
   verdict <- if (grepl("^fail", status_str)) {
@@ -154,12 +154,17 @@ plot_probit_diagnostics <- function(
   )
   .try_plot(
     ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0.5, y = length(health_lines) + 2.4,
-                        label = sprintf("SAMPLER STATUS: %s", verdict),
-                        hjust = 0.5, size = 8, fontface = "bold", colour = verdict_colour) +
-      ggplot2::annotate("text", x = 0, y = seq(length(health_lines), 1), label = health_lines,
-                        hjust = 0, size = 4.2, family = "mono") +
-      ggplot2::xlim(0, 1) + ggplot2::ylim(0, length(health_lines) + 3.2) +
+      ggplot2::annotate("text",
+        x = 0.5, y = length(health_lines) + 2.4,
+        label = sprintf("SAMPLER STATUS: %s", verdict),
+        hjust = 0.5, size = 8, fontface = "bold", colour = verdict_colour
+      ) +
+      ggplot2::annotate("text",
+        x = 0, y = seq(length(health_lines), 1), label = health_lines,
+        hjust = 0, size = 4.2, family = "mono"
+      ) +
+      ggplot2::xlim(0, 1) +
+      ggplot2::ylim(0, length(health_lines) + 3.2) +
       ggplot2::labs(
         title = paste(title_base, "-- Sampler Health"),
         subtitle = "Read this page before interpreting anything downstream -- a failure/warning status here means the posterior itself is not yet trustworthy, regardless of how the rest of this PDF looks."
@@ -169,7 +174,7 @@ plot_probit_diagnostics <- function(
     "sampler health"
   )
 
-  # -- 2. Rhat / ESS diagnosis (pooled across structural parameters) -----------
+  # 2. Rhat / ESS diagnosis (pooled across structural parameters)
   rhat_df <- tryCatch(
     {
       s <- posterior::summarise_draws(draws, "rhat")
@@ -251,7 +256,7 @@ plot_probit_diagnostics <- function(
     "worst structural parameters"
   )
 
-  # -- 4. Trace/rank diagnostics for exactly those worst-converging terms ------
+  # 4. Trace/rank diagnostics for exactly those worst-converging terms
   worst_offender_plots <- tryCatch(
     plot_probit_worst_offender_diagnostics(fit_obj, draws, title_base),
     error = function(e) NULL
@@ -261,7 +266,7 @@ plot_probit_diagnostics <- function(
     if (!is.null(worst_offender_plots$rank)) .try_plot(worst_offender_plots$rank, "worst-offender rank plot")
   }
 
-  # -- 5. Energy / divergence / treedepth (sampler geometry) -------------------
+  # 5. Energy / divergence / treedepth (sampler geometry)
   # mcmc_nuts_energy() plots the marginal energy distribution (pi_E) against
   # the distribution of between-iteration energy transitions (pi_delta_E) --
   # it is a SHAPE/OVERLAP diagnostic, not a bar chart of the E-BFMI number
@@ -305,7 +310,9 @@ plot_probit_diagnostics <- function(
   # -- 6. Omega estimate + convergence (correlated fits only, kept adjacent) --
   corr_summary <- if (identical(fit_obj$residual_structure, "correlated")) {
     tryCatch(summarize_fit_correlation_matrix(fit_obj, "Omega", fit_obj$class_cols), error = function(e) NULL)
-  } else NULL
+  } else {
+    NULL
+  }
   if (!is.null(corr_summary)) {
     .try_plot(plot_omega_correlation_heatmap(corr_summary, fit_obj$class_cols, title_base), "Omega correlation heatmap")
     .try_plot(plot_omega_convergence_heatmap(corr_summary, fit_obj$class_cols, title_base), "Omega convergence heatmap")
@@ -316,7 +323,7 @@ plot_probit_diagnostics <- function(
     )
   }
 
-  # -- 7. Fixed-effect family diagnosis -----------------------------------------
+  # 7. Fixed-effect family diagnosis
   fe_plots <- tryCatch(plot_probit_fixed_effect_diagnostics(fit_obj, title_base), error = function(e) NULL)
   if (!is.null(fe_plots)) {
     if (!is.null(fe_plots$other)) .try_plot(fe_plots$other, "fixed-effect coefficients (non-hospital)")
@@ -329,7 +336,7 @@ plot_probit_diagnostics <- function(
     if (!is.null(beta_family_plots$bar)) .try_plot(beta_family_plots$bar, "fixed-effect family convergence bar chart")
   }
 
-  # -- 8. Supplementary: full (uncurated) trace/rank/density views -------------
+  # 8. Supplementary: full (uncurated) trace/rank/density views
   # Appendix-only -- pages 3-4 above already show the curated worst-offender
   # view; these cover a broader (but still capped at max_params) parameter
   # set for a reader who wants the fuller picture after reading 1-7.
@@ -403,7 +410,7 @@ plot_probit_diagnostics <- function(
     )
   }
 
-  # -- 9. Interpretation summary (final page) -----------------------------------
+  # 9. Interpretation summary (final page)
   # Every page above requires the reader to synthesise several numbers into a
   # conclusion themselves; this closing page does that synthesis explicitly
   # from the same canonical fields already shown (nothing new is computed),
@@ -411,7 +418,9 @@ plot_probit_diagnostics <- function(
   # the first and last pages.
   degeneracy_stats <- if (!is.null(corr_summary)) {
     tryCatch(.omega_degeneracy_stats(fit_obj, fit_obj$class_cols), error = function(e) NULL)
-  } else NULL
+  } else {
+    NULL
+  }
   interp_thresholds <- .probit_diagnostic_thresholds()
   interp_lines <- .probit_interpretation_text(
     diag, status_str, verdict,
@@ -430,9 +439,12 @@ plot_probit_diagnostics <- function(
   wrapped <- c(table_lines, "", wrapped_narrative)
   .try_plot(
     ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0, y = rev(seq_along(wrapped)), label = wrapped,
-                        hjust = 0, size = 3.3, family = "mono") +
-      ggplot2::xlim(0, 1) + ggplot2::ylim(0, length(wrapped) + 1) +
+      ggplot2::annotate("text",
+        x = 0, y = rev(seq_along(wrapped)), label = wrapped,
+        hjust = 0, size = 3.3, family = "mono"
+      ) +
+      ggplot2::xlim(0, 1) +
+      ggplot2::ylim(0, length(wrapped) + 1) +
       ggplot2::labs(
         title = paste(title_base, "-- Interpretation Summary"),
         subtitle = "Auto-generated from the canonical diagnostic fields shown on the pages above -- not a substitute for reading them, a starting point for reading them."
@@ -509,8 +521,8 @@ plot_probit_diagnostics <- function(
     }
     lines <- c(lines, omega_line)
     if (!is.null(degeneracy_stats) && identical(residual_structure, "correlated") &&
-        !is.na(degeneracy_stats$pct_near_degenerate) && degeneracy_stats$pct_near_degenerate > 50 &&
-        !is.null(corr_summary) && all(corr_summary$correlation_median > 0.7, na.rm = TRUE)) {
+      !is.na(degeneracy_stats$pct_near_degenerate) && degeneracy_stats$pct_near_degenerate > 50 &&
+      !is.null(corr_summary) && all(corr_summary$correlation_median > 0.7, na.rm = TRUE)) {
       lines <- c(lines, "Posterior correlations are uniformly very high across every class pair -- the model is effectively estimating an almost common latent resistance dimension. This describes the latent residual Z, not an empirical correlation of the observed AST results.")
     }
   }

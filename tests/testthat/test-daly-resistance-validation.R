@@ -14,7 +14,8 @@
 
 .sim_profile_freqs <- function(mu, Omega, M, seed) {
   set.seed(seed)
-  D <- ncol(mu); n_ev <- nrow(mu)
+  D <- ncol(mu)
+  n_ev <- nrow(mu)
   L <- t(chol(Omega))
   eps <- matrix(stats::rnorm(D * n_ev * M), nrow = D, ncol = n_ev * M)
   z <- t(L %*% eps) + mu[rep(seq_len(n_ev), each = M), , drop = FALSE]
@@ -58,11 +59,20 @@ test_that("correlated-profile simulation with rho = 0.8 diverges from independen
 })
 
 .validation_cmdstan_available <- function() {
-  if (!requireNamespace("cmdstanr", quietly = TRUE)) return(FALSE)
-  isTRUE(tryCatch({ cmdstanr::cmdstan_path(); TRUE }, error = function(e) FALSE))
+  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
+    return(FALSE)
+  }
+  isTRUE(tryCatch(
+    {
+      cmdstanr::cmdstan_path()
+      TRUE
+    },
+    error = function(e) FALSE
+  ))
 }
 
 test_that("validate_complete_profile_calibration() uses Omega for a real correlated fit, not the independent product", {
+  skip_on_cran()
   skip_if_not(.validation_cmdstan_available(), "cmdstanr/CmdStan not available")
 
   # Simulate D=2 classes sharing a strong common latent factor, so the fitted
@@ -88,13 +98,16 @@ test_that("validate_complete_profile_calibration() uses Omega for a real correla
     profile_group_col = "center_name",
     residual_structure = "correlated",
     prior_config = list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0),
-    sampler_config = list(chains = 2L, iter_warmup = 150L, iter_sampling = 150L,
-                          seed = 7L, parallel_chains = 2L, adapt_delta = 0.9),
+    sampler_config = list(
+      chains = 2L, iter_warmup = 150L, iter_sampling = 150L,
+      seed = 7L, parallel_chains = 2L, adapt_delta = 0.9
+    ),
     show_messages = FALSE
   ))
 
   fixed_result <- validate_complete_profile_calibration(
-    fit, n_posterior_draws_for_validation = 100L, seed = 1L,
+    fit,
+    n_posterior_draws_for_validation = 100L, seed = 1L,
     min_complete_events = 30L, n_mc_profile_replicates = 200L
   )
   fixed_result <- fixed_result[fixed_result$status == "evaluated", ]

@@ -6,13 +6,22 @@
 # (explicitly deferred to a later phase).
 
 .mixedppc_cmdstan_available <- function() {
-  if (!requireNamespace("cmdstanr", quietly = TRUE)) return(FALSE)
-  isTRUE(tryCatch({ cmdstanr::cmdstan_path(); TRUE }, error = function(e) FALSE))
+  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
+    return(FALSE)
+  }
+  isTRUE(tryCatch(
+    {
+      cmdstanr::cmdstan_path()
+      TRUE
+    },
+    error = function(e) FALSE
+  ))
 }
 
 .mixedppc_make_fit <- function(seed = 1L) {
   set.seed(seed)
-  n_hosp <- 4L; n_per_hosp <- 30L
+  n_hosp <- 4L
+  n_per_hosp <- 30L
   hosp_eff <- stats::rnorm(n_hosp, sd = 0.4)
   wide <- do.call(rbind, lapply(seq_len(n_hosp), function(h) {
     n <- n_per_hosp
@@ -32,13 +41,16 @@
     pathogen = "bug", pathogen_col = "pathogen", event_id_col = "event_id",
     residual_structure = "identity",
     prior_config = list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0),
-    sampler_config = list(chains = 2L, iter_warmup = 150L, iter_sampling = 150L,
-                          seed = seed, parallel_chains = 2L, adapt_delta = 0.9),
+    sampler_config = list(
+      chains = 2L, iter_warmup = 150L, iter_sampling = 150L,
+      seed = seed, parallel_chains = 2L, adapt_delta = 0.9
+    ),
     show_messages = FALSE
   ))
 }
 
 test_that("simulate_probit_mixed_predictive() validates blocks_to_replicate against declared blocks", {
+  skip_on_cran()
   skip_if_not(.mixedppc_cmdstan_available(), "cmdstanr/CmdStan not available")
   fit <- .mixedppc_make_fit()
   expect_error(
@@ -64,13 +76,17 @@ test_that("unreplicated_block_behavior = 'error' rejects fits with un-listed dec
   # (no cmdstanr fit needed) is sufficient to exercise both branches.
   re_data <- data.frame(hosp = c("H1", "H2"), adm = c("A1", "A2"))
   fake_fit <- list(random_effects_prep = prepare_random_effects(
-    re_data, list(list(name = "hospital", group_col = "hosp", terms = "intercept"),
-                  list(name = "admission", group_col = "adm", terms = "intercept"))
+    re_data, list(
+      list(name = "hospital", group_col = "hosp", terms = "intercept"),
+      list(name = "admission", group_col = "adm", terms = "intercept")
+    )
   ))
 
   expect_error(
-    simulate_probit_mixed_predictive(fake_fit, blocks_to_replicate = "hospital",
-                                      unreplicated_block_behavior = "error"),
+    simulate_probit_mixed_predictive(fake_fit,
+      blocks_to_replicate = "hospital",
+      unreplicated_block_behavior = "error"
+    ),
     "admission"
   )
   # Replicating BOTH declared blocks leaves nothing unhandled -- validation
@@ -78,19 +94,23 @@ test_that("unreplicated_block_behavior = 'error' rejects fits with un-listed dec
   # for unrelated reasons since fake_fit has no real draws -- we only assert
   # the error is NOT the unreplicated-block validation message).
   err <- tryCatch(
-    simulate_probit_mixed_predictive(fake_fit, blocks_to_replicate = c("hospital", "admission"),
-                                      unreplicated_block_behavior = "error"),
+    simulate_probit_mixed_predictive(fake_fit,
+      blocks_to_replicate = c("hospital", "admission"),
+      unreplicated_block_behavior = "error"
+    ),
     error = function(e) conditionMessage(e)
   )
   expect_false(grepl("unreplicated_block_behavior", err))
 })
 
 test_that("simulate_probit_mixed_predictive() core generative step: new levels differ from fitted levels", {
+  skip_on_cran()
   skip_if_not(.mixedppc_cmdstan_available(), "cmdstanr/CmdStan not available")
   fit <- .mixedppc_make_fit()
 
   mixed_draws <- simulate_probit_mixed_predictive(
-    fit, blocks_to_replicate = "center_name", n_states = 10L, seed = 7L, n_new_levels_per_block = 5L
+    fit,
+    blocks_to_replicate = "center_name", n_states = 10L, seed = 7L, n_new_levels_per_block = 5L
   )
   expect_s3_class(mixed_draws, "amr_mixed_predictive_draws")
   expect_true(inherits(mixed_draws, "amr_ppc_draws"))
@@ -109,7 +129,8 @@ test_that("simulate_probit_mixed_predictive() core generative step: new levels d
   ev_idx_obs <- which(fit$event_metadata$.event_idx %in% fit$data_long$ev_idx)
   beta_1 <- matrix(draws_mat[1, grep("^beta\\[", colnames(draws_mat))], nrow = 2, ncol = 2)
   re_eff_1 <- matrix(draws_mat[1, grep("^re_effect\\[", colnames(draws_mat))],
-                      nrow = 2, ncol = re_prep$total_re_levels)
+    nrow = 2, ncol = re_prep$total_re_levels
+  )
   mu_fitted <- (fit$X_event[ev_idx_obs, , drop = FALSE] %*% beta_1) +
     re_contribution(re_eff_1, fit$event_re_idx[ev_idx_obs, , drop = FALSE])
 
@@ -117,11 +138,16 @@ test_that("simulate_probit_mixed_predictive() core generative step: new levels d
 })
 
 test_that("simulate_probit_mixed_predictive() is reproducible under a fixed seed", {
+  skip_on_cran()
   skip_if_not(.mixedppc_cmdstan_available(), "cmdstanr/CmdStan not available")
   fit <- .mixedppc_make_fit()
-  d1 <- simulate_probit_mixed_predictive(fit, blocks_to_replicate = "center_name",
-                                          n_states = 8L, seed = 11L)
-  d2 <- simulate_probit_mixed_predictive(fit, blocks_to_replicate = "center_name",
-                                          n_states = 8L, seed = 11L)
+  d1 <- simulate_probit_mixed_predictive(fit,
+    blocks_to_replicate = "center_name",
+    n_states = 8L, seed = 11L
+  )
+  d2 <- simulate_probit_mixed_predictive(fit,
+    blocks_to_replicate = "center_name",
+    n_states = 8L, seed = 11L
+  )
   expect_identical(d1$generate_state(2L)$Y_rep_complete, d2$generate_state(2L)$Y_rep_complete)
 })

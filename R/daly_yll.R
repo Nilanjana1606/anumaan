@@ -2,16 +2,17 @@
 # YLL (Years of Life Lost) calculation functions for AMR burden estimation
 
 daly_load_life_expectancy <- function(le_path) {
-  if (!requireNamespace("readxl", quietly = TRUE)) {
-    stop("Package 'readxl' is required to load the life expectancy table.")
-  }
-  if (!file.exists(le_path)) {
+  if (!nzchar(le_path) || !file.exists(le_path)) {
     stop(sprintf("Life expectancy file not found: %s", le_path))
   }
 
-  raw <- readxl::read_excel(le_path, col_names = FALSE, .name_repair = "minimal")
+  raw <- if (grepl("\\.csv$", le_path, ignore.case = TRUE)) {
+    utils::read.csv(le_path, header = FALSE, colClasses = "character")
+  } else {
+    readxl::read_excel(le_path, col_names = FALSE, .name_repair = "minimal")
+  }
 
-  # Table layout (1-indexed rows) for life_expectancy_all.xlsx:
+  # Table layout (1-indexed rows) for life_expectancy_all.csv / .xlsx:
   #   Row  1       : title  ("LIFE EXPECTANCY 2019-2023 INDIA")
   #   Row  2       : header (Age category, India, state names ...)
   #   Rows  3 - 21 : Combined, 19 age bins
@@ -96,7 +97,7 @@ daly_load_life_expectancy <- function(le_path) {
 #' @param specimen_col          Character or \code{NULL}.  Specimen type column
 #'   used alongside \code{date_culture_col} for polymicrobial detection.
 #' @param le_path               Character.  Path to the India life expectancy
-#'   xlsx file.  Defaults to the bundled \code{inst/extdata} copy.
+#'   CSV (or xlsx) file.  Defaults to the bundled \code{inst/extdata} copy.
 #' @param male_value            Character.  Value in \code{sex_col} for males.
 #'   Default \code{"Male"}.
 #' @param female_value          Character.  Value in \code{sex_col} for females.
@@ -139,26 +140,18 @@ daly_load_life_expectancy <- function(le_path) {
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' yll <- daly_calc_yll_associated(
-#'   data             = cohort_df,
-#'   outcome_col      = "final_outcome",
-#'   death_value      = "Death",
-#'   pathogen_col     = "organism_name",
-#'   patient_col      = "PatientInformation_id",
-#'   age_bin_col      = "Age_bin",
-#'   sex_col          = "gender",
-#'   facility_col     = "center_name",
-#'   syndrome_col     = "infectious_syndrome",
-#'   date_culture_col = "culture_date",
-#'   specimen_col     = "sample_type",
-#'   stratify_by      = c("location", "infectious_syndrome")
+#' cohort <- data.frame(
+#'   patient_id    = sprintf("P%02d", 1:6),
+#'   final_outcome = c("Death", "Death", "Discharged", "Death", "Discharged", "Death"),
+#'   organism_name = rep(c("Escherichia coli", "Klebsiella pneumoniae"), 3),
+#'   age_bin       = c("40-45", "60-65", "20-25", "0-1", "70-75", "85+"),
+#'   sex           = c("Male", "Female", "Male", "Female", "Male", "Female")
 #' )
-#' yll$total
+#' yll <- daly_calc_yll_associated(cohort,
+#'   outcome_col = "final_outcome", pathogen_col = "organism_name",
+#'   patient_col = "patient_id", age_bin_col = "age_bin", sex_col = "sex"
+#' )
 #' yll$per_pathogen
-#' yll$by_age_sex
-#' yll$stratified
-#' }
 daly_calc_yll_associated <- function(
   data,
   outcome_col,
@@ -175,7 +168,7 @@ daly_calc_yll_associated <- function(
   poly_weight_method = "monomicrobial_proportion",
   min_mono_per_facility = 30L,
   gap_days = 14,
-  le_path = system.file("extdata", "life_expectancy_all.xlsx", package = "anumaan"),
+  le_path = system.file("extdata", "life_expectancy_all.csv", package = "anumaan"),
   male_value = "Male",
   female_value = "Female",
   age_bin_map = c("<1" = "0-1"),
@@ -297,7 +290,7 @@ daly_calc_yll_associated <- function(
     )
 
   if (!is.null(syndrome_name)) {
-    df <- df %>% dplyr::filter(.data[[syndrome_col]] == syndrome_name)
+    df <- df %>% dplyr::filter(.name_key(.data[[syndrome_col]]) == .name_key(syndrome_name))
   }
 
   if (nrow(df) == 0L) {
@@ -511,27 +504,26 @@ daly_calc_yll_associated <- function(
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' yll_assoc <- daly_calc_yll_associated(data = cohort, ...)
-#' mort_or <- fit_mortality_rr_logistic(data = rr_data, ...)
-#' profiles_or <- assign_rr_to_profiles(profiles_out,
-#'   rr_table = mort_or,
-#'   rr_col = "OR_death"
+#' cohort <- data.frame(
+#'   patient_id    = sprintf("P%02d", 1:6),
+#'   final_outcome = c("Death", "Death", "Discharged", "Death", "Discharged", "Death"),
+#'   organism_name = rep(c("Escherichia coli", "Klebsiella pneumoniae"), 3),
+#'   age_bin       = c("40-45", "60-65", "20-25", "0-1", "70-75", "85+"),
+#'   sex           = c("Male", "Female", "Male", "Female", "Male", "Female")
 #' )
-#' paf_mort <- daly_calc_paf_mortality(profiles_or)
-#'
-#' yll_attr <- daly_calc_yll_attributable(
-#'   yll_patient_data = yll_assoc$patient_data,
-#'   paf_mort         = paf_mort,
-#'   pathogen_col     = "organism_name",
-#'   patient_col      = "PatientInformation_id",
-#'   age_bin_col      = "Age_bin",
-#'   sex_col          = ".sex_norm",
-#'   facility_col     = "center_name",
-#'   syndrome_col     = "infectious_syndrome",
-#'   stratify_by      = c("location", "infectious_syndrome")
+#' yll <- daly_calc_yll_associated(cohort,
+#'   outcome_col = "final_outcome", pathogen_col = "organism_name",
+#'   patient_col = "patient_id", age_bin_col = "age_bin", sex_col = "sex"
 #' )
-#' }
+#' paf_mort <- list(
+#'   "Escherichia coli"      = list(PAF_k_mort = 0.20),
+#'   "Klebsiella pneumoniae" = list(PAF_k_mort = 0.35)
+#' )
+#' yll_attr <- daly_calc_yll_attributable(yll$patient_data, paf_mort,
+#'   pathogen_col = "organism_name", patient_col = "patient_id",
+#'   age_bin_col = "age_bin"
+#' )
+#' yll_attr$per_pathogen
 daly_calc_yll_attributable <- function(
   yll_patient_data,
   paf_mort,

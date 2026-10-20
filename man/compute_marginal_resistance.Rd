@@ -103,17 +103,14 @@ listed in \code{$near_zero} as a flag for downstream use -- they are
 \strong{not} removed here.
 }
 \examples{
-\dontrun{
-marg <- compute_marginal_resistance(
-  data                 = amr_clean,
-  pathogen_col         = "organism_name",
-  org_group_col        = "org_group",
-  isolate_col          = "isolate_id",
-  antibiotic_class_col = "antibiotic_class",
-  antibiotic_value_col = "antibiotic_value"
+set.seed(1)
+ast_class <- data.frame(
+  isolate_id       = rep(sprintf("ISO\%02d", 1:80), each = 3),
+  organism_name    = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 120),
+  org_group        = "Enterobacterales",
+  antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), times = 80),
+  antibiotic_value = sample(c("S", "R"), 240, replace = TRUE)
 )
-
-marg$marginal # full marginal resistance table
-marg$near_zero # classes flagged as near-zero
-}
+marg <- compute_marginal_resistance(ast_class)
+marg$marginal
 }

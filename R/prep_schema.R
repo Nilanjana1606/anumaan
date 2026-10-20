@@ -19,12 +19,11 @@
 # Dataset-specific column maps belong in the analysis layer, NOT this package.
 
 
-# ---------------------------------------------------------------------------
 # Default column mappings (generic fuzzy-match alias list)
-# ---------------------------------------------------------------------------
 
 #' Default column name mappings for fuzzy matching
 #'
+#' @docType data
 #' @format A named list with elements mapping standard names to character
 #'   vectors of acceptable aliases.
 #' @export
@@ -453,7 +452,7 @@ prep_clean_optional_columns <- function(data, optional_cols = NULL) {
   })
 
   message("\nOptional column completeness:")
-  print(data.frame(
+  .msg_print(data.frame(
     column = names(completeness),
     completeness_pct = as.numeric(completeness),
     stringsAsFactors = FALSE

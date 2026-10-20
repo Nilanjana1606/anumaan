@@ -26,9 +26,13 @@
 .beta_parameter_table <- function(fit) {
   X <- fit$X_event %||% fit$X_design
   monitored <- fit$diagnostics_detail$monitored_parameters
-  if (is.null(X) || is.null(colnames(X)) || is.null(monitored) || nrow(monitored) == 0L) return(NULL)
+  if (is.null(X) || is.null(colnames(X)) || is.null(monitored) || nrow(monitored) == 0L) {
+    return(NULL)
+  }
   beta_rows <- monitored[monitored$parameter_group == "beta", , drop = FALSE]
-  if (nrow(beta_rows) == 0L) return(NULL)
+  if (nrow(beta_rows) == 0L) {
+    return(NULL)
+  }
   covariate_names <- colnames(X)
   class_cols <- fit$class_cols
   K <- length(covariate_names)
@@ -38,8 +42,11 @@
   d <- suppressWarnings(as.integer(vapply(m, `[`, character(1L), 3L)))
   ok <- !is.na(k) & !is.na(d) & k <= K & d <= length(class_cols)
   beta_rows <- beta_rows[ok, , drop = FALSE]
-  k <- k[ok]; d <- d[ok]
-  if (nrow(beta_rows) == 0L) return(NULL)
+  k <- k[ok]
+  d <- d[ok]
+  if (nrow(beta_rows) == 0L) {
+    return(NULL)
+  }
 
   beta_rows$covariate <- covariate_names[k]
   beta_rows$family <- .covariate_family(beta_rows$covariate)
@@ -65,9 +72,13 @@
 #'   \code{NULL} if fixed-effect parameter diagnostics are unavailable.
 #' @export
 plot_probit_beta_family_diagnostics <- function(fit, title_base = "") {
-  if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    return(NULL)
+  }
   tbl <- .beta_parameter_table(fit)
-  if (is.null(tbl)) return(NULL)
+  if (is.null(tbl)) {
+    return(NULL)
+  }
 
   summary_tbl <- do.call(rbind, lapply(split(tbl, tbl$family), function(g) {
     data.frame(
@@ -83,18 +94,25 @@ plot_probit_beta_family_diagnostics <- function(fit, title_base = "") {
   }))
   summary_tbl <- summary_tbl[order(-summary_tbl$pct_rhat_gt_1_01, -summary_tbl$worst_rhat), , drop = FALSE]
 
-  header <- sprintf("%-12s %6s %10s %10s %10s %10s %10s",
-                    "Family", "n", "%Rhat>.01", "%Rhat>.05", "worstRhat", "minESSblk", "minESStl")
-  body <- sprintf("%-12s %6d %10.1f %10.1f %10.4f %10.0f %10.0f",
-                  summary_tbl$family, summary_tbl$n_parameters,
-                  summary_tbl$pct_rhat_gt_1_01, summary_tbl$pct_rhat_gt_1_05,
-                  summary_tbl$worst_rhat, summary_tbl$min_ess_bulk, summary_tbl$min_ess_tail)
+  header <- sprintf(
+    "%-12s %6s %10s %10s %10s %10s %10s",
+    "Family", "n", "%Rhat>.01", "%Rhat>.05", "worstRhat", "minESSblk", "minESStl"
+  )
+  body <- sprintf(
+    "%-12s %6d %10.1f %10.1f %10.4f %10.0f %10.0f",
+    summary_tbl$family, summary_tbl$n_parameters,
+    summary_tbl$pct_rhat_gt_1_01, summary_tbl$pct_rhat_gt_1_05,
+    summary_tbl$worst_rhat, summary_tbl$min_ess_bulk, summary_tbl$min_ess_tail
+  )
   table_lines <- c(header, strrep("-", nchar(header)), body)
 
   table_page <- ggplot2::ggplot() +
-    ggplot2::annotate("text", x = 0, y = rev(seq_along(table_lines)), label = table_lines,
-                      hjust = 0, size = 3.4, family = "mono") +
-    ggplot2::xlim(0, 1) + ggplot2::ylim(0, length(table_lines) + 1) +
+    ggplot2::annotate("text",
+      x = 0, y = rev(seq_along(table_lines)), label = table_lines,
+      hjust = 0, size = 3.4, family = "mono"
+    ) +
+    ggplot2::xlim(0, 1) +
+    ggplot2::ylim(0, length(table_lines) + 1) +
     ggplot2::labs(
       title = paste(title_base, "-- Fixed-Effect Convergence by Source of Variation"),
       subtitle = "Every beta coefficient split by the covariate family it belongs to (not lumped into one 'beta' aggregate) -- answers which part of the fixed-effect structure is destabilising the fit."
@@ -168,12 +186,18 @@ plot_probit_beta_family_diagnostics <- function(fit, title_base = "") {
 #'   parameter exceeds the threshold, or diagnostics are unavailable.
 #' @export
 plot_probit_worst_parameters <- function(fit, title_base = "", rhat_threshold = 1.01, max_rows = 40L) {
-  if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    return(NULL)
+  }
   monitored <- fit$diagnostics_detail$monitored_parameters
-  if (is.null(monitored) || nrow(monitored) == 0L) return(NULL)
+  if (is.null(monitored) || nrow(monitored) == 0L) {
+    return(NULL)
+  }
   monitored$rhat <- suppressWarnings(as.numeric(monitored$rhat))
   failing <- monitored[!is.na(monitored$rhat) & monitored$rhat > rhat_threshold, , drop = FALSE]
-  if (nrow(failing) == 0L) return(NULL)
+  if (nrow(failing) == 0L) {
+    return(NULL)
+  }
   failing <- failing[order(-failing$rhat), , drop = FALSE]
   n_total_failing <- nrow(failing)
   failing <- head(failing, max_rows)
@@ -185,14 +209,19 @@ plot_probit_worst_parameters <- function(fit, title_base = "", rhat_threshold = 
   header <- sprintf("%-45s %10s %10s %10s", "Parameter", "Rhat", "ESSbulk", "ESStail")
   body <- sprintf("%-45s %10.4f %10.0f %10.0f", failing$label, failing$rhat, failing$ess_bulk, failing$ess_tail)
   table_lines <- c(header, strrep("-", nchar(header)), body)
-  subtitle <- sprintf("%d structural parameter(s) exceed Rhat > %.2f%s",
-                      n_total_failing, rhat_threshold,
-                      if (n_total_failing > max_rows) sprintf(" (showing worst %d)", max_rows) else "")
+  subtitle <- sprintf(
+    "%d structural parameter(s) exceed Rhat > %.2f%s",
+    n_total_failing, rhat_threshold,
+    if (n_total_failing > max_rows) sprintf(" (showing worst %d)", max_rows) else ""
+  )
 
   ggplot2::ggplot() +
-    ggplot2::annotate("text", x = 0, y = rev(seq_along(table_lines)), label = table_lines,
-                      hjust = 0, size = 3.0, family = "mono") +
-    ggplot2::xlim(0, 1) + ggplot2::ylim(0, length(table_lines) + 1) +
+    ggplot2::annotate("text",
+      x = 0, y = rev(seq_along(table_lines)), label = table_lines,
+      hjust = 0, size = 3.0, family = "mono"
+    ) +
+    ggplot2::xlim(0, 1) +
+    ggplot2::ylim(0, length(table_lines) + 1) +
     ggplot2::labs(
       title = paste(title_base, "-- Parameters with the Poorest Chain Convergence"),
       subtitle = subtitle

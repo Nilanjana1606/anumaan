@@ -12,8 +12,10 @@
       cache <<- if (nzchar(path) && file.exists(path)) {
         utils::read.csv(path, stringsAsFactors = FALSE)
       } else {
-        data.frame(class_name = character(0), display_label = character(0),
-                   short_label = character(0), stringsAsFactors = FALSE)
+        data.frame(
+          class_name = character(0), display_label = character(0),
+          short_label = character(0), stringsAsFactors = FALSE
+        )
       }
     }
     cache

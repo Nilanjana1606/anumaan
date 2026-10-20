@@ -1,13 +1,19 @@
 # Tests for R/plot_beta_family_diagnostics.R.
 
-.fake_X <- matrix(0, nrow = 4, ncol = 5,
-                  dimnames = list(NULL, c("(Intercept)", "Age_normalised", "genderMale",
-                                           "center_nameHospital_A", "center_nameHospital_B")))
+.fake_X <- matrix(0,
+  nrow = 4, ncol = 5,
+  dimnames = list(NULL, c(
+    "(Intercept)", "Age_normalised", "genderMale",
+    "center_nameHospital_A", "center_nameHospital_B"
+  ))
+)
 
 .fake_monitored <- (function() {
   vars <- sprintf("beta[%d,%d]", rep(1:5, 2), rep(1:2, each = 5))
-  rhat <- c(1.00, 1.00, 1.00, 1.06, 1.00,   # class 1: only Hospital_A dummy (k=4) fails
-            1.00, 1.00, 1.00, 1.00, 1.00)   # class 2: all pass
+  rhat <- c(
+    1.00, 1.00, 1.00, 1.06, 1.00, # class 1: only Hospital_A dummy (k=4) fails
+    1.00, 1.00, 1.00, 1.00, 1.00
+  ) # class 2: all pass
   data.frame(
     variable = c(vars, "Omega[1,2]", "lp__"),
     parameter_group = c(rep("beta", 10), "Omega", "lp__"),

@@ -1,6 +1,6 @@
 # Category 2: prep_schema.R
 
-# prep_standardize_column_names ------------------------------------------------
+# prep_standardize_column_names
 
 test_that("prep_standardize_column_names: valid behavior", {
   dat <- cat2_schema_df()
@@ -29,7 +29,7 @@ test_that("prep_standardize_column_names: error handling", {
   expect_true("x" %in% names(out$mapping_log) || length(out$mapping_log) == 0)
 })
 
-# prep_build_column_map --------------------------------------------------------
+# prep_build_column_map
 
 test_that("prep_build_column_map: valid behavior", {
   dat <- cat2_schema_df()
@@ -54,7 +54,7 @@ test_that("prep_build_column_map: error handling", {
   expect_error(prep_build_column_map(dat, column_map = list(a = "PID")), "named character vector")
 })
 
-# prep_apply_column_map --------------------------------------------------------
+# prep_apply_column_map
 
 test_that("prep_apply_column_map: valid behavior", {
   dat <- cat2_schema_df()
@@ -80,7 +80,7 @@ test_that("prep_apply_column_map: error handling", {
   expect_identical(out, dat)
 })
 
-# prep_assert_standard_names ---------------------------------------------------
+# prep_assert_standard_names
 
 test_that("prep_assert_standard_names: valid behavior", {
   dat <- data.frame(patient_id = "p1", culture_date = as.Date("2020-01-01"))
@@ -102,7 +102,7 @@ test_that("prep_assert_standard_names: error handling", {
   expect_error(prep_assert_standard_names(dat, c("patient_id", "culture_date"), strict = TRUE), "missing")
 })
 
-# detect_preprocessing_capabilities --------------------------------------------
+# detect_preprocessing_capabilities
 
 test_that("detect_preprocessing_capabilities: valid behavior", {
   dat <- data.frame(patient_id = "p1", culture_date = as.Date("2020-01-01"), organism_name = "e coli", sample_type = "blood", antibiotic_name = "amikacin", antibiotic_value = "R", stringsAsFactors = FALSE)
@@ -126,7 +126,7 @@ test_that("detect_preprocessing_capabilities: error handling", {
   expect_error(detect_preprocessing_capabilities(NULL), NA)
 })
 
-# prep_report_capabilities -----------------------------------------------------
+# prep_report_capabilities
 
 test_that("prep_report_capabilities: valid behavior", {
   caps <- c(parse_dates = TRUE, derive_hai = FALSE)
@@ -149,7 +149,7 @@ test_that("prep_report_capabilities: error handling", {
   expect_error(prep_report_capabilities(1), NA)
 })
 
-# prep_clean_optional_columns --------------------------------------------------
+# prep_clean_optional_columns
 
 test_that("prep_clean_optional_columns: valid behavior", {
   dat <- data.frame(infection_type = c("community acquired", "hospital acquired"), unit_type = c("general ward", "icu"), stringsAsFactors = FALSE)

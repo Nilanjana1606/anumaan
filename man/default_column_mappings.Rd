@@ -14,4 +14,3 @@ default_column_mappings
 \description{
 Default column name mappings for fuzzy matching
 }
-\keyword{datasets}

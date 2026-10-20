@@ -243,7 +243,7 @@ adds stewardship specimen labels such as `Brain abscess`, `Instrument`,
 ## Package Reference
 
 Full function documentation is at the
-[Reference page](../reference/index.html).
+[Reference page](https://saketlab.github.io/anumaan/reference/index.html).
 
 ```r
 # Search all functions

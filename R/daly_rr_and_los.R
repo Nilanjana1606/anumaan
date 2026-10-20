@@ -28,8 +28,7 @@
 .safe_fitdist <- function(x, dist) safe_fit(x, dist)
 
 
-# -- Step 1b -------------------------------------------------------------------
-
+# Step 1b
 #' Compute Patient-Level Post-Infection LOS
 #'
 #' Computes LOS with infection-type-specific clock start:
@@ -96,7 +95,7 @@ daly_compute_patient_los <- function(
   los_col = NULL,
   max_los = 200
 ) {
-  # -- Column validation ------------------------------------------------------
+  # Column validation
   required <- c(
     patient_id_col, facility_col, organism_col,
     date_admission_col, date_discharge_col, date_culture_col,
@@ -115,7 +114,7 @@ daly_compute_patient_los <- function(
     stop(sprintf("los_col '%s' not found in data.", los_col))
   }
 
-  # -- Facility filtering -----------------------------------------------------
+  # Facility filtering
   if (!is.null(facility_name)) {
     avail <- unique(data[[facility_col]])
     if (!facility_name %in% avail) {
@@ -137,24 +136,24 @@ daly_compute_patient_los <- function(
     ))
   }
 
-  # -- Syndrome filtering ----------------------------------------------------
+  # Syndrome filtering
   if (!is.null(syndrome_name)) {
     avail_syn <- unique(data[[syndrome_col]])
-    if (!syndrome_name %in% avail_syn) {
+    if (!.name_key(syndrome_name) %in% .name_key(avail_syn)) {
       stop(sprintf(
         "syndrome_name '%s' not found in column '%s'. Available: %s",
         syndrome_name, syndrome_col,
         paste(sort(as.character(avail_syn)), collapse = ", ")
       ))
     }
-    data <- data[data[[syndrome_col]] == syndrome_name, ]
+    data <- data[.name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     message(sprintf(
       "Filtering to syndrome '%s': %d row(s) retained.",
       syndrome_name, nrow(data)
     ))
   }
 
-  # -- Checkpoint: discharge date coverage -----------------------------------
+  # Checkpoint: discharge date coverage
   discharged_data <- data[data[[final_outcome_col]] == final_outcome_value, ]
   n_total <- nrow(discharged_data)
   n_no_disc <- sum(is.na(as.Date(discharged_data[[date_discharge_col]])))
@@ -176,7 +175,7 @@ daly_compute_patient_los <- function(
     }
   }
 
-  # -- Pre-compute episode-minimum culture dates ------------------------------
+  # Pre-compute episode-minimum culture dates
   # A new episode starts only when BOTH conditions are met:
   #   1. Gap from the current episode's start date > 14 days
   #   2. Organism differs from the current episode's first organism
@@ -226,7 +225,7 @@ daly_compute_patient_los <- function(
       .cult_ep_min
     )
 
-  # -- LOS computation -------------------------------------------------------
+  # LOS computation
   unknown_types_lc <- c("unknown", "not known")
 
   los_data <- data %>%
@@ -240,7 +239,7 @@ daly_compute_patient_los <- function(
       .cult = .cult_ep_min,
       .inf_lc = tolower(trimws(as.character(.data[[infection_type_derived_col]]))),
       LOS_days = dplyr::case_when(
-        # -- Patients WITH a discharge date ----------------------------
+        # Patients WITH a discharge date
         # HAI: clock starts at culture date
         !is.na(.disc) & .inf_lc == "hai" ~
           as.numeric(.disc - .cult),
@@ -258,7 +257,7 @@ daly_compute_patient_los <- function(
         # All other infection types with discharge date: fallback to admission
         !is.na(.disc) ~
           as.numeric(.disc - .adm),
-        # -- Patients WITHOUT a discharge date: resolved below ---------
+        # Patients WITHOUT a discharge date: resolved below
         TRUE ~ NA_real_
       )
     )
@@ -280,7 +279,7 @@ daly_compute_patient_los <- function(
       )
   }
 
-  # -- Final filtering and deduplication -------------------------------------
+  # Final filtering and deduplication
   los_data <- los_data %>%
     dplyr::select(-".adm", -".disc", -".cult", -".cult_ep_min", -".inf_lc") %>%
     dplyr::filter(!is.na(LOS_days), LOS_days > 0L, LOS_days <= max_los) %>%
@@ -299,8 +298,7 @@ daly_compute_patient_los <- function(
 }
 
 
-# -- Step 1c (internal) --------------------------------------------------------
-
+# Step 1c (internal)
 #' Collapse drug-level data to antibiotic-class binary wide matrix
 #'
 #' Standardises antibiotic values (Intermediate -> R/S per GBD rules),
@@ -309,7 +307,7 @@ daly_compute_patient_los <- function(
 #' Column names are sanitised with make.names(); the original-to-safe name
 #' mapping is stored as the "class_name_map" attribute.
 #'
-#' @keywords internal
+#' @noRd
 .build_class_resistance_wide <- function(
   data,
   patient_id_col = "PatientInformation_id",
@@ -370,8 +368,7 @@ daly_compute_patient_los <- function(
 }
 
 
-# -- daly_fit_los_rr -----------------------------------------------------------
-
+# daly_fit_los_rr
 #' Fit relative LOS using Gamma GLM with log link
 #'
 #' Estimates class-specific relative length of stay (RR_LOS) for each pathogen
@@ -774,8 +771,7 @@ daly_fit_los_rr <- function(
 }
 
 
-# -- Step 2b -------------------------------------------------------------------
-
+# Step 2b
 #' Estimate Per-Class LOS Relative Risk via Parametric Distribution Fitting
 #'
 #' For each pathogen x antibiotic class, splits patients into resistant (R) and
@@ -887,7 +883,7 @@ daly_fit_los_rr_distribution <- function(
   # -- Filter to discharged patients + optional syndrome + optional facility --
   df <- dplyr::filter(data, .data[[final_outcome_col]] == final_outcome_value)
   if (!is.null(syndrome_name)) {
-    df <- dplyr::filter(df, .data[[syndrome_col]] == syndrome_name)
+    df <- dplyr::filter(df, .name_key(.data[[syndrome_col]]) == .name_key(syndrome_name))
   }
   if (!is.null(facility_name)) {
     df <- dplyr::filter(df, .data[[facility_col]] == facility_name)
@@ -903,14 +899,14 @@ daly_fit_los_rr_distribution <- function(
     return(data.frame())
   }
 
-  # -- Resolve pathogens ------------------------------------------------------
+  # Resolve pathogens
   pathogens <- if (!is.null(organism_name)) {
     organism_name
   } else {
     sort(unique(df[[organism_col]]))
   }
 
-  # -- Inner helper: fit distribution(s) and return analytical mean -----------
+  # Inner helper: fit distribution(s) and return analytical mean
   .fit_dist_mean <- function(los_vec) {
     fits <- Filter(
       Negate(is.null),
@@ -940,7 +936,7 @@ daly_fit_los_rr_distribution <- function(
       next
     }
 
-    # -- Patient LOS --------------------------------------------------------
+    # Patient LOS
     los_pat <- daly_compute_patient_los(
       path_df,
       patient_id_col             = patient_id_col,
@@ -959,7 +955,7 @@ daly_fit_los_rr_distribution <- function(
       next
     }
 
-    # -- Class resistance wide matrix (patient x class, binary 0/1) ----------
+    # Class resistance wide matrix (patient x class, binary 0/1)
     # untested_fill = NA_integer_: patients not tested for a class get NA,
     # so they are excluded from both n_R and n_S for that class (not treated
     # as susceptible). Only patients actually tested contribute to the fit.
@@ -986,7 +982,7 @@ daly_fit_los_rr_distribution <- function(
 
     n_fitted <- 0L
 
-    # -- Per-class R vs S distribution fit ----------------------------------
+    # Per-class R vs S distribution fit
     for (cls in class_safe) {
       orig_class <- class_name_map[[cls]]
 
@@ -1075,8 +1071,7 @@ daly_fit_los_rr_distribution <- function(
 }
 
 
-# -- HAI/CAI classification for mortality cohort --------------------------------
-
+# HAI/CAI classification for mortality cohort
 #' Classify HAI/CAI Infection Type for the Mortality Cohort
 #'
 #' Derives the healthcare-associated infection (HAI) vs community-acquired
@@ -1117,7 +1112,7 @@ daly_derive_hai_cai_for_mortality <- function(
   hai_threshold_hours = 48,
   patient_id_col = "PatientInformation_id"
 ) {
-  # -- Column validation ------------------------------------------------------
+  # Column validation
   required <- c(
     infection_type_col, date_admission_col,
     date_culture_col, final_outcome_col
@@ -1132,7 +1127,7 @@ daly_derive_hai_cai_for_mortality <- function(
 
   has_outcome_date <- final_outcome_date_col %in% names(data)
 
-  # -- Death-date data-quality check -----------------------------------------
+  # Death-date data-quality check
   # Flag deceased patients who are missing their outcome date but do have
   # admission or culture date recorded.  HAI/CAI derivation proceeds normally
   # (it only needs admission vs culture date); this is purely a data-quality
@@ -1184,7 +1179,7 @@ daly_derive_hai_cai_for_mortality <- function(
     flagged_df <- data[0L, , drop = FALSE]
   }
 
-  # -- Identify ambiguous labels ----------------------------------------------
+  # Identify ambiguous labels
   ambiguous_mask <- {
     inf_up <- stringr::str_to_upper(stringr::str_trim(
       as.character(data[[infection_type_col]])
@@ -1222,7 +1217,7 @@ daly_derive_hai_cai_for_mortality <- function(
     ))
   }
 
-  # -- Derive infection type --------------------------------------------------
+  # Derive infection type
   # Explicit labels take priority; date-gap only used when label is ambiguous.
   data <- data %>%
     dplyr::mutate(
@@ -1244,7 +1239,7 @@ daly_derive_hai_cai_for_mortality <- function(
       ) |
         is.na(.data[[infection_type_col]])),
       infection_type_derived = dplyr::case_when(
-        # -- Explicit HAI labels ----------------------------------------
+        # Explicit HAI labels
         .inf_raw %in% c(
           "HAI",
           "HOSPITAL ACQUIRED",
@@ -1254,7 +1249,7 @@ daly_derive_hai_cai_for_mortality <- function(
           "HOSPITAL ACQUIRED INFECTION",
           "HOSPITAL-ACQUIRED INFECTION"
         ) ~ "HAI",
-        # -- Explicit CAI labels ----------------------------------------
+        # Explicit CAI labels
         .inf_raw %in% c(
           "CAI",
           "COMMUNITY ACQUIRED",
@@ -1263,16 +1258,16 @@ daly_derive_hai_cai_for_mortality <- function(
           "COMMUNITY ACQUIRED INFECTION",
           "COMMUNITY-ACQUIRED INFECTION"
         ) ~ "CAI",
-        # -- Date-gap derivation (both dates present) ------------------
+        # Date-gap derivation (both dates present)
         .cannot_infer &
           !is.na(.data[[date_admission_col]]) &
           !is.na(.data[[date_culture_col]]) ~
           dplyr::if_else(.gap_h <= hai_threshold_hours,
             "CAI", "HAI"
           ),
-        # -- Cannot infer ----------------------------------------------
+        # Cannot infer
         .cannot_infer ~ "Not Known",
-        # -- Unrecognised non-empty label ------------------------------
+        # Unrecognised non-empty label
         TRUE ~ "Not Known"
       )
     ) %>%
@@ -1291,8 +1286,7 @@ daly_derive_hai_cai_for_mortality <- function(
 }
 
 
-# -- Step M2 -------------------------------------------------------------------
-
+# Step M2
 #' Derive ICU Binary Flag per Patient
 #'
 #' Collapses unit-type data (one row per drug test per patient) to a
@@ -1409,8 +1403,7 @@ daly_derive_hai_cai_for_mortality <- function(
 }
 
 
-# -- Step M3 -------------------------------------------------------------------
-
+# Step M3
 #' Encode Comorbidity Column for Mortality Model
 #'
 #' Standardises a free-text or numeric comorbidity column to a consistent
@@ -1556,8 +1549,7 @@ daly_derive_hai_cai_for_mortality <- function(
 }
 
 
-# -- Step M4 -------------------------------------------------------------------
-
+# Step M4
 #' Check Collinearity Between HAI and ICU Covariates
 #'
 #' Computes the phi (Pearson) correlation coefficient for the 2x2 contingency
@@ -1597,7 +1589,7 @@ daly_derive_hai_cai_for_mortality <- function(
 
   tbl <- table(HAI = h, ICU = ic)
   message("[Collinearity] HAI \u00d7 ICU cross-table:")
-  print(tbl)
+  .msg_print(tbl)
 
   # Perfect separation: any marginal is zero
   if (any(rowSums(tbl) == 0L) || any(colSums(tbl) == 0L)) {
@@ -1774,7 +1766,7 @@ daly_fit_mortality_rr <- function(
   # Step 2: optional syndrome restriction
   df <- data
   if (!is.null(syndrome_name)) {
-    df <- df[df[[syndrome_col]] == syndrome_name, , drop = FALSE]
+    df <- df[.name_key(df[[syndrome_col]]) == .name_key(syndrome_name), , drop = FALSE]
   }
 
   if (nrow(df) == 0L) {
@@ -2348,7 +2340,7 @@ get_los_by_resistance <- function(abx_data,
                                   antibiotic_col = "antibiotic_name",
                                   sus_col = "sus") {
   org_abx <- abx_data %>%
-    dplyr::filter(.data[[organism_col]] == organism)
+    dplyr::filter(.name_key(.data[[organism_col]]) == .name_key(organism))
 
   if (!is.null(center)) {
     org_abx <- dplyr::filter(org_abx, .data[[center_col]] == center)
@@ -2398,27 +2390,23 @@ get_los_by_resistance <- function(abx_data,
 
 #' Load RR (Relative Risk) Reference Data
 #'
-#' Loads the rr_list_gbd.xlsx file containing pathogen-drug combinations
+#' Loads the bundled rr_list_gbd.csv file containing pathogen-drug combinations
 #' with relative risk values for burden estimation.
 #'
 #' @return Data frame with Pathogen, Drug, and RR columns
 #' @export
 #'
 #' @examples
-#' \dontrun{
 #' rr_data <- daly_load_rr_reference()
 #' head(rr_data)
-#' }
 daly_load_rr_reference <- function() {
-  # Find Excel file
-  xlsx_path <- find_extdata_file("rr_list_gbd.xlsx")
+  csv_path <- find_extdata_file("rr_list_gbd.csv")
 
-  if (xlsx_path == "" || !file.exists(xlsx_path)) {
-    stop("rr_list_gbd.xlsx not found in inst/extdata/")
+  if (csv_path == "" || !file.exists(csv_path)) {
+    stop("rr_list_gbd.csv not found in inst/extdata/")
   }
 
-  # Load Excel file
-  rr_data <- readxl::read_excel(xlsx_path, sheet = "Sheet2")
+  rr_data <- utils::read.csv(csv_path, stringsAsFactors = FALSE, check.names = FALSE)
 
   # Clean column names
   names(rr_data) <- c(
@@ -2433,6 +2421,7 @@ daly_load_rr_reference <- function() {
   # Remove rows with NA pathogen (like footer notes)
   rr_data <- rr_data %>%
     dplyr::filter(!is.na(pathogen), !is.na(drug))
+  rr_data$pathogen <- .name_key(rr_data$pathogen) # matches rr_pathogen keys
 
   message(sprintf(
     "[v] Loaded %d pathogen-drug RR combinations",
@@ -2466,19 +2455,12 @@ daly_load_rr_reference <- function() {
 daly_add_rr_mappings <- function(data,
                                  organism_col = "organism_normalized",
                                  class_col = "antibiotic_class") {
-  # -- Pathogen mapping -------------------------------------------------------
+  # Pathogen mapping
   if (!is.null(organism_col) && organism_col %in% names(data)) {
     taxonomy <- get_organism_taxonomy()
     if (nrow(taxonomy) > 0) {
-      rr_map <- unique(data.frame(
-        organism_name = taxonomy$organism_name,
-        rr_pathogen = taxonomy$organism_name,
-        stringsAsFactors = FALSE
-      ))
-      data <- dplyr::left_join(
-        data, rr_map,
-        by = stats::setNames("organism_name", organism_col)
-      )
+      key <- .name_key(data[[organism_col]])
+      data$rr_pathogen <- ifelse(key %in% taxonomy$organism_name, key, NA_character_)
       n_mapped <- sum(!is.na(data$rr_pathogen))
       message(sprintf(
         "Mapped to RR pathogen: %d/%d (%.1f%%)",
@@ -2493,7 +2475,7 @@ daly_add_rr_mappings <- function(data,
     }
   }
 
-  # -- Drug class mapping -----------------------------------------------------
+  # Drug class mapping
   if (!is.null(class_col) && class_col %in% names(data)) {
     csv_path <- find_extdata_file("WHO_aware_class.csv")
     if (csv_path == "") {

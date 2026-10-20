@@ -5,9 +5,7 @@
 # without copying real patient IDs, dates, or centre-specific identifiers.
 
 
-# ---------------------------------------------------------------------------
 # Intake / schema
-# ---------------------------------------------------------------------------
 
 cat2_intake_minimal_valid <- function() {
   data.frame(
@@ -111,9 +109,7 @@ cat2_intake_date_edge_cases <- function() {
 }
 
 
-# ---------------------------------------------------------------------------
 # Standardization
-# ---------------------------------------------------------------------------
 
 cat2_standardization_organism_abx <- function() {
   data.frame(
@@ -142,9 +138,7 @@ cat2_standardization_organism_abx <- function() {
 }
 
 
-# ---------------------------------------------------------------------------
 # AST
-# ---------------------------------------------------------------------------
 
 cat2_ast_long_clean <- function() {
   data.frame(
@@ -240,9 +234,7 @@ cat2_ast_wide_matrix <- function() {
 }
 
 
-# ---------------------------------------------------------------------------
 # Enrichment
-# ---------------------------------------------------------------------------
 
 cat2_enrichment_age_variants <- function() {
   data.frame(
@@ -291,9 +283,7 @@ cat2_enrichment_los_date_edge_cases <- function() {
 }
 
 
-# ---------------------------------------------------------------------------
 # HAI / CAI
-# ---------------------------------------------------------------------------
 
 cat2_hai_gap_logic <- function() {
   data.frame(
@@ -383,9 +373,7 @@ cat2_hai_realistic_integrated <- function() {
 }
 
 
-# ---------------------------------------------------------------------------
 # Events / polymicrobial / outputs
-# ---------------------------------------------------------------------------
 
 cat2_events_episode_timing <- function() {
   data.frame(
@@ -432,9 +420,7 @@ cat2_outputs_ready <- function() {
 }
 
 
-# ---------------------------------------------------------------------------
 # Backward-compatible wrappers used by the current Cat 2 test scripts
-# ---------------------------------------------------------------------------
 
 cat2_intake_df <- function() {
   cat2_intake_minimal_valid()

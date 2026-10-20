@@ -6,6 +6,9 @@
 \usage{
 detect_key_columns(data)
 }
+\value{
+Character vector of column names that look like identifiers.
+}
 \description{
 Detect Key Columns
 }

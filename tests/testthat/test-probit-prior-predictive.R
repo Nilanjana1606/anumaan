@@ -5,13 +5,22 @@
 # a fixed_param LKJ sampler plus base-R RNG draws.
 
 .priorppc_cmdstan_available <- function() {
-  if (!requireNamespace("cmdstanr", quietly = TRUE)) return(FALSE)
-  isTRUE(tryCatch({ cmdstanr::cmdstan_path(); TRUE }, error = function(e) FALSE))
+  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
+    return(FALSE)
+  }
+  isTRUE(tryCatch(
+    {
+      cmdstanr::cmdstan_path()
+      TRUE
+    },
+    error = function(e) FALSE
+  ))
 }
 
 .priorppc_make_fit <- function(seed = 1L) {
   set.seed(seed)
-  n_hosp <- 3L; n_per_hosp <- 40L
+  n_hosp <- 3L
+  n_per_hosp <- 40L
   hosp_eff <- stats::rnorm(n_hosp, sd = 0.3)
   wide <- do.call(rbind, lapply(seq_len(n_hosp), function(h) {
     n <- n_per_hosp
@@ -31,24 +40,29 @@
     pathogen = "bug", pathogen_col = "pathogen", event_id_col = "event_id",
     residual_structure = "identity",
     prior_config = list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0),
-    sampler_config = list(chains = 2L, iter_warmup = 150L, iter_sampling = 150L,
-                          seed = seed, parallel_chains = 2L, adapt_delta = 0.9),
+    sampler_config = list(
+      chains = 2L, iter_warmup = 150L, iter_sampling = 150L,
+      seed = seed, parallel_chains = 2L, adapt_delta = 0.9
+    ),
     show_messages = FALSE
   ))
 }
 
 test_that("LKJ Cholesky-factor prior draws are valid across a range of eta", {
+  skip_on_cran()
   skip_if_not(.priorppc_cmdstan_available(), "cmdstanr/CmdStan not available")
   for (eta in c(1.0, 2.0, 5.0)) {
     arr <- .draw_lkj_cholesky_prior(D = 3L, eta = eta, n_matrices = 2L, n_states = 4L, seed = 1L)
     expect_equal(dim(arr), c(4L, 2L, 3L, 3L))
-    for (s in 1:4) for (m in 1:2) {
-      L <- matrix(arr[s, m, , ], nrow = 3, ncol = 3)
-      expect_true(all(L[upper.tri(L)] == 0))                    # lower-triangular
-      Om <- L %*% t(L)
-      expect_equal(diag(Om), rep(1, 3), tolerance = 1e-6)         # unit diagonal
-      ev <- eigen(Om, symmetric = TRUE, only.values = TRUE)$values
-      expect_true(all(ev > -1e-8))                                # positive semi-definite
+    for (s in 1:4) {
+      for (m in 1:2) {
+        L <- matrix(arr[s, m, , ], nrow = 3, ncol = 3)
+        expect_true(all(L[upper.tri(L)] == 0)) # lower-triangular
+        Om <- L %*% t(L)
+        expect_equal(diag(Om), rep(1, 3), tolerance = 1e-6) # unit diagonal
+        ev <- eigen(Om, symmetric = TRUE, only.values = TRUE)$values
+        expect_true(all(ev > -1e-8)) # positive semi-definite
+      }
     }
   }
 })
@@ -60,6 +74,7 @@ test_that("D = 1 LKJ shortcut returns a trivial [1] correlation without invoking
 })
 
 test_that("simulate_probit_prior_predictive() is reproducible under a fixed seed", {
+  skip_on_cran()
   skip_if_not(.priorppc_cmdstan_available(), "cmdstanr/CmdStan not available")
   fit <- .priorppc_make_fit()
   d1 <- simulate_probit_prior_predictive(fit, n_states = 15L, seed = 42L)
@@ -74,6 +89,7 @@ test_that("simulate_probit_prior_predictive() is reproducible under a fixed seed
 })
 
 test_that("simulate_probit_prior_predictive() respects the observation mask and never conditions on observed AST", {
+  skip_on_cran()
   skip_if_not(.priorppc_cmdstan_available(), "cmdstanr/CmdStan not available")
   fit <- .priorppc_make_fit()
   draws <- simulate_probit_prior_predictive(fit, n_states = 5L, seed = 1L)
@@ -85,17 +101,21 @@ test_that("simulate_probit_prior_predictive() respects the observation mask and 
 })
 
 test_that("compute_prior_predictive_status() flags an artificially extreme prior as implausible", {
+  skip_on_cran()
   skip_if_not(.priorppc_cmdstan_available(), "cmdstanr/CmdStan not available")
   fit <- .priorppc_make_fit()
-  extreme <- simulate_probit_prior_predictive(fit, n_states = 20L, seed = 3L,
-                                               prior_config_override = list(beta_sd = 30))
+  extreme <- simulate_probit_prior_predictive(fit,
+    n_states = 20L, seed = 3L,
+    prior_config_override = list(beta_sd = 30)
+  )
   status <- compute_prior_predictive_status(extreme)
   expect_equal(status$status, "fail_implausible_prior_predictive")
   expect_true(status$summary$fraction_probability_lt_0.001 +
-              status$summary$fraction_probability_gt_0.999 > 0.5)
+    status$summary$fraction_probability_gt_0.999 > 0.5)
 })
 
 test_that("compute_prior_predictive_status() on default (project) priors does not fail outright", {
+  skip_on_cran()
   skip_if_not(.priorppc_cmdstan_available(), "cmdstanr/CmdStan not available")
   fit <- .priorppc_make_fit()
   reasonable <- simulate_probit_prior_predictive(fit, n_states = 30L, seed = 3L)
@@ -111,6 +131,7 @@ test_that("compute_prior_predictive_status() reports insufficient_prior_check fo
 })
 
 test_that("compute_prior_predictive_fingerprint() is stable under no change and sensitive to prior/config changes", {
+  skip_on_cran()
   skip_if_not(.priorppc_cmdstan_available(), "cmdstanr/CmdStan not available")
   fit <- .priorppc_make_fit()
   fp1 <- compute_prior_predictive_fingerprint(fit)
@@ -129,6 +150,7 @@ test_that("compute_prior_predictive_fingerprint() is stable under no change and 
 })
 
 test_that("compute_probit_ppc_statistics() accepts prior predictive draws directly (shared amr_ppc_draws shape)", {
+  skip_on_cran()
   skip_if_not(.priorppc_cmdstan_available(), "cmdstanr/CmdStan not available")
   fit <- .priorppc_make_fit()
   prior_draws <- simulate_probit_prior_predictive(fit, n_states = 10L, seed = 1L)

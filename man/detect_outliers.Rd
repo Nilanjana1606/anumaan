@@ -6,6 +6,9 @@
 \usage{
 detect_outliers(data)
 }
+\value{
+A list summarising outliers per numeric column.
+}
 \description{
 Detect Outliers
 }

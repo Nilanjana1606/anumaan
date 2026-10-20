@@ -1,7 +1,6 @@
 # Tests for prep_daly_plots.R
 
-# -- Fixtures ------------------------------------------------------------------
-
+# Fixtures
 make_hospital_counts <- function() {
   data.frame(
     center_name = c("Centre A", "Centre B", "Centre C"),
@@ -56,8 +55,7 @@ make_yld <- function() {
   )
 }
 
-# -- compute_hospital_daly() ---------------------------------------------------
-
+# compute_hospital_daly()
 test_that("compute_hospital_daly returns data frame with per-1000 columns", {
   result <- make_hospital_daly()
   expect_s3_class(result, "data.frame")
@@ -69,8 +67,7 @@ test_that("compute_hospital_daly returns data frame with per-1000 columns", {
   expect_equal(nrow(result), 3L)
 })
 
-# -- plot_burden_by_hospital() -------------------------------------------------
-
+# plot_burden_by_hospital()
 test_that("plot_burden_by_hospital returns ggplot and errors on missing column", {
   expect_s3_class(plot_burden_by_hospital(make_hospital_daly(), metric = "YLL"), "ggplot")
   bad <- make_hospital_daly()
@@ -78,8 +75,7 @@ test_that("plot_burden_by_hospital returns ggplot and errors on missing column",
   expect_error(plot_burden_by_hospital(bad, metric = "YLL"), "Column\\(s\\) not found")
 })
 
-# -- plot_burden_by_organism() -------------------------------------------------
-
+# plot_burden_by_organism()
 test_that("plot_burden_by_organism returns ggplot and errors on missing column", {
   expect_s3_class(plot_burden_by_organism(make_organism_yll(), metric = "YLL"), "ggplot")
   bad <- make_organism_yll()
@@ -92,8 +88,7 @@ test_that("plot_burden_by_organism normalises when n_admissions is provided", {
   expect_s3_class(p, "ggplot")
 })
 
-# -- plot_yll_heatmap() --------------------------------------------------------
-
+# plot_yll_heatmap()
 test_that("plot_yll_heatmap errors when value_col is missing and returns ggplot when supplied", {
   expect_error(
     plot_yll_heatmap(make_yll_heatmap(),
@@ -122,8 +117,7 @@ test_that("plot_yll_heatmap errors on missing value_col column in data", {
   )
 })
 
-# -- plot_yld_heatmap() --------------------------------------------------------
-
+# plot_yld_heatmap()
 test_that("plot_yld_heatmap returns ggplot and errors on missing column", {
   expect_s3_class(plot_yld_heatmap(make_yld()), "ggplot")
   bad <- make_yld()

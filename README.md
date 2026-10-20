@@ -1,4 +1,4 @@
-# anumaan
+# anumaan <img src="man/figures/logo.png" align="right" height="139" alt="anumaan logo" />
 
 R package for preprocessing antimicrobial resistance (AMR) surveillance data.
 
@@ -9,7 +9,7 @@ R package for preprocessing antimicrobial resistance (AMR) surveillance data.
 library(anumaan)
 
 # Process your AMR data with one function
-result <- amr_preprocess(raw_data)
+result <- run_preprocess(raw_data)
 clean_data <- result$data
 ```
 

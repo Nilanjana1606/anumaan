@@ -149,28 +149,19 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' report <- validate_profile_inputs(
-#'   data = my_ast_data,
-#'   col_map = list(
-#'     isolate_col = "isolate_id",
-#'     pathogen_col = "organism",
-#'     ast_col = "result",
-#'     patient_col = "pid",
-#'     date_col = "culture_date",
-#'     geography_col = "state",
-#'     specimen_col = "specimen",
-#'     age_col = "age_years",
-#'     dob_col = NULL,
-#'     antibiotic_col = "drug_name",
-#'     class_col = NULL,
-#'     location_col = "ward",
-#'     outcome_col = "discharge_status"
-#'   ),
-#'   stratify_by = c("geography", "year"),
-#'   outcome_col = "discharge_status"
+#' ast_long <- data.frame(
+#'   isolate_id = rep(sprintf("ISO%02d", 1:6), each = 2),
+#'   patient_id = rep(sprintf("P%02d", 1:6), each = 2),
+#'   pathogen = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 6),
+#'   antibiotic_name = rep(c("Meropenem", "Ceftriaxone"), 6),
+#'   ast_value = rep(c("R", "S", "S", "R"), 3),
+#'   date_of_culture = as.Date("2024-01-01") + rep(0:5, each = 2),
+#'   specimen_type = "Blood",
+#'   state = "Maharashtra",
+#'   age = 40
 #' )
-#' }
+#' report <- validate_profile_inputs(ast_long)
+#' names(report)
 validate_profile_inputs <- function(
   data,
   col_map = list(
@@ -545,32 +536,24 @@ validate_profile_inputs <- function(
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' result <- preprocess_for_profiles(
-#'   data = raw_ast,
-#'   col_map = list(
-#'     isolate_col = "isolate_id",
-#'     pathogen_col = "organism",
-#'     ast_col = "result",
-#'     patient_col = "pid",
-#'     date_col = "culture_date",
-#'     geography_col = "state",
-#'     specimen_col = "specimen",
-#'     age_col = "age",
-#'     antibiotic_col = "drug_name"
-#'   ),
-#'   panel_map = list(
-#'     "Klebsiella pneumoniae" = c("3GC", "Carbapenems", "Fluoroquinolones"),
-#'     "Escherichia coli"      = c("3GC", "Fluoroquinolones", "Aminoglycosides")
-#'   ),
-#'   stratify_by = c("geography", "year"),
-#'   outcome_col = "final_outcome"
+#' ast_long <- data.frame(
+#'   isolate_id = rep(sprintf("ISO%02d", 1:6), each = 2),
+#'   patient_id = rep(sprintf("P%02d", 1:6), each = 2),
+#'   pathogen = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 6),
+#'   antibiotic_name = rep(c("Meropenem", "Ceftriaxone"), 6),
+#'   ast_value = rep(c("R", "S", "S", "R"), 3),
+#'   date_of_culture = as.Date("2024-01-01") + rep(0:5, each = 2),
+#'   specimen_type = "Blood",
+#'   state = "Maharashtra",
+#'   age = 40
 #' )
-#'
-#' result$data_wide # ready for compute_marginals_from_data()
-#' result$preprocessing_log # step-by-step row counts
-#' result$panel_exclusions # classes dropped per organism
-#' }
+#' res <- preprocess_for_profiles(ast_long,
+#'   panel_map = list(
+#'     "Klebsiella pneumoniae" = c("Carbapenems", "Third-generation-cephalosporins"),
+#'     "Escherichia coli" = c("Carbapenems", "Third-generation-cephalosporins")
+#'   )
+#' )
+#' res$preprocessing_log
 preprocess_for_profiles <- function(
   data,
   col_map = list(
@@ -613,6 +596,7 @@ preprocess_for_profiles <- function(
   # Resolve column names with defaults
   isolate_col <- .null_default(col_map$isolate_col, "isolate_id")
   pathogen_col <- .null_default(col_map$pathogen_col, "pathogen")
+  panel_map <- .align_panel_map(panel_map, data[[pathogen_col]])
   ast_col <- .null_default(col_map$ast_col, "ast_value")
   patient_col <- .null_default(col_map$patient_col, "patient_id")
   date_col <- .null_default(col_map$date_col, "date_of_culture")
@@ -746,6 +730,50 @@ preprocess_for_profiles <- function(
     sprintf("Antibiotic class column resolved to '%s'.", class_col)
   )
 
+  # Step 4b: Isolate deduplication
+  #   Same isolate_id x antibiotic combination can appear more than once
+  #   (e.g. duplicate data entry, multi-join artefact). Keep the worst
+  #   phenotype per isolate x drug (R > I > S > NA).
+  message("\n[preprocess_for_profiles] Step 4b: Deduplicating isolate x drug rows...")
+  n_in <- nrow(data)
+
+  abx_dedup_col <- if ("antibiotic_normalized" %in% names(data)) {
+    "antibiotic_normalized"
+  } else if (antibiotic_col %in% names(data)) {
+    antibiotic_col
+  } else {
+    NULL
+  }
+
+  if (!is.null(abx_dedup_col)) {
+    sir_rank <- c("R" = 3L, "I" = 2L, "S" = 1L)
+    data <- data %>%
+      dplyr::mutate(
+        .sir_rank = dplyr::coalesce(
+          sir_rank[.data[[harmonised_ast_col]]],
+          0L
+        )
+      ) %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(c(isolate_col, abx_dedup_col)))) %>%
+      dplyr::arrange(dplyr::desc(.sir_rank), .by_group = TRUE) %>%
+      dplyr::slice(1L) %>%
+      dplyr::ungroup() %>%
+      dplyr::select(-.sir_rank)
+    n_removed <- n_in - nrow(data)
+    plog <- .log_step(
+      plog, "4b_dedup", n_in, nrow(data),
+      sprintf(
+        "Dedup: %d duplicate isolate-drug row(s) removed (kept worst phenotype).",
+        n_removed
+      )
+    )
+  } else {
+    plog <- .log_step(plog, "4b_dedup", n_in, nrow(data),
+      "Dedup skipped: no antibiotic name column identified.",
+      status = "warn"
+    )
+  }
+
   # Step 4: Class-level collapse
   #   Rule: any R in class => class = R   (ertapenem NA + imipenem S + meropenem R -> Carbapenems R)
   #   Counting unit: isolate_id (not patient_id)
@@ -792,50 +820,6 @@ preprocess_for_profiles <- function(
     )
   )
   data <- data_collapsed
-
-  # Step 4b: Isolate deduplication
-  #   Same isolate_id x antibiotic combination can appear more than once
-  #   (e.g. duplicate data entry, multi-join artefact). Keep the worst
-  #   phenotype per isolate x drug (R > I > S > NA).
-  message("\n[preprocess_for_profiles] Step 4b: Deduplicating isolate x drug rows...")
-  n_in <- nrow(data)
-
-  abx_dedup_col <- if ("antibiotic_normalized" %in% names(data)) {
-    "antibiotic_normalized"
-  } else if (antibiotic_col %in% names(data)) {
-    antibiotic_col
-  } else {
-    NULL
-  }
-
-  if (!is.null(abx_dedup_col)) {
-    sir_rank <- c("R" = 3L, "I" = 2L, "S" = 1L)
-    data <- data %>%
-      dplyr::mutate(
-        .sir_rank = dplyr::coalesce(
-          sir_rank[.data[[harmonised_ast_col]]],
-          0L
-        )
-      ) %>%
-      dplyr::group_by(dplyr::across(dplyr::all_of(c(isolate_col, abx_dedup_col)))) %>%
-      dplyr::arrange(dplyr::desc(.sir_rank), .by_group = TRUE) %>%
-      dplyr::slice(1L) %>%
-      dplyr::ungroup() %>%
-      dplyr::select(-.sir_rank)
-    n_removed <- n_in - nrow(data)
-    plog <- .log_step(
-      plog, "4b_dedup", n_in, nrow(data),
-      sprintf(
-        "Dedup: %d duplicate isolate-drug row(s) removed (kept worst phenotype).",
-        n_removed
-      )
-    )
-  } else {
-    plog <- .log_step(plog, "4b_dedup", n_in, nrow(data),
-      "Dedup skipped: no antibiotic name column identified.",
-      status = "warn"
-    )
-  }
 
   # Step 5: Year derivation -- always performed when date_col is present.
   #   Year is always added to the output so downstream stratification
@@ -1075,24 +1059,27 @@ preprocess_for_profiles <- function(
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' marg <- compute_marginal_resistance(amr_clean)
-#' co_res <- compute_pairwise_coresistance(marg)
-#' rp <- compute_resistance_profiles(marg, co_res)
-#'
-#' # Using stored constraint residuals only
-#' checks <- check_profile_constraints(rp)
-#'
-#' # Full re-verification with original rates
-#' checks <- check_profile_constraints(
-#'   rp,
-#'   marginals = marg$marginal,
-#'   pairwise  = NULL,
-#'   tolerance = 1e-5
-#' )
-#'
-#' # Inspect failures
-#' checks[!checks$pass, ]
+#' if (requireNamespace("quadprog", quietly = TRUE)) {
+#'   set.seed(1)
+#'   ast_class <- data.frame(
+#'     isolate_id       = rep(sprintf("ISO%02d", 1:80), each = 3),
+#'     organism_name    = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 120),
+#'     org_group        = "Enterobacterales",
+#'     antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), times = 80),
+#'     antibiotic_value = sample(c("S", "R"), 240, replace = TRUE)
+#'   )
+#'   marg <- compute_marginal_resistance(ast_class)
+#'   marg$marginal
+#'   co_res <- compute_pairwise_coresistance(marg)
+#'   co_res[["Klebsiella pneumoniae"]]$prevalence
+#'   rp <- compute_resistance_profiles(marg, co_res, exclude_near_zero = FALSE)
+#'   rp[["Klebsiella pneumoniae"]]$profiles
+#'   checks <- check_profile_constraints(rp,
+#'     marginals = marg$marginal,
+#'     pathogen_col = "organism_name", class_col = "antibiotic_class",
+#'     rate_col = "marginal_resistance"
+#'   )
+#'   checks[!checks$pass, ]
 #' }
 check_profile_constraints <- function(
   profiles_output,
@@ -1361,22 +1348,19 @@ check_profile_constraints <- function(
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' marg <- compute_marginal_resistance(amr_clean)
-#' co_res <- compute_pairwise_coresistance(marg)
-#'
-#' boot <- bootstrap_profiles_convex(
-#'   marginals = marg$marginal,
-#'   coresistance_output = co_res,
-#'   B = 500,
-#'   seed = 42
-#' )
-#'
-#' # 95% intervals for K. pneumoniae
-#' boot[["Klebsiella pneumoniae"]]
-#'
-#' # Point estimate
-#' attr(boot[["Klebsiella pneumoniae"]], "point_estimate")
+#' if (requireNamespace("quadprog", quietly = TRUE)) {
+#'   marginals <- data.frame(
+#'     pathogen = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 3),
+#'     antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), 2),
+#'     n_tested = c(420L, 460L, 390L, 280L, 310L, 265L),
+#'     n_resistant = c(126L, 299L, 195L, 45L, 155L, 133L)
+#'   )
+#'   marginals$marginal_resistance <- marginals$n_resistant / marginals$n_tested
+#'   boot <- bootstrap_profiles_convex(marginals,
+#'     B = 20L, seed = 42L,
+#'     pathogen_col = "pathogen", class_col = "antibiotic_class"
+#'   )
+#'   head(boot[["Klebsiella pneumoniae"]])
 #' }
 bootstrap_profiles_convex <- function(
   marginals,
@@ -1455,7 +1439,7 @@ bootstrap_profiles_convex <- function(
   }
 
   # Bootstrap replicates
-  set.seed(seed)
+  .local_seed(seed)
   # Pre-draw all random seeds for replicates (ensures reproducibility
   # regardless of parallel vs sequential execution order)
   rep_seeds <- sample.int(.Machine$integer.max, B, replace = FALSE)
@@ -2015,6 +1999,19 @@ validate_aggregate_inputs <- function(
 }
 
 
+# preprocess_for_profiles() sanitises wide column names (gsub("[^A-Za-z0-9_]", "_")),
+# so "Third-generation-cephalosporins" arrives as "Third_generation_cephalosporins".
+# Rename such columns back to their panel_map spelling so classes are not dropped.
+.restore_panel_class_names <- function(data_wide, panel_map) {
+  for (cls in unique(unlist(panel_map, use.names = FALSE))) {
+    safe <- gsub("[^A-Za-z0-9_]", "_", cls)
+    if (!cls %in% names(data_wide) && safe %in% names(data_wide)) {
+      names(data_wide)[names(data_wide) == safe] <- cls
+    }
+  }
+  data_wide
+}
+
 #' Compute Marginal Resistance Rates from Preprocessed Wide Data
 #'
 #' Takes the wide-format tibble produced by \code{preprocess_for_profiles()}
@@ -2072,6 +2069,8 @@ compute_marginals_from_data <- function(
     rate_col      = "resistance_prevalence"
   )
 ) {
+  panel_map <- .align_panel_map(panel_map, data_wide[[col_map$pathogen_col %||% "pathogen"]])
+  data_wide <- .restore_panel_class_names(data_wide, panel_map)
   cols <- .resolve_class_cols(data_wide, col_map, panel_map, outcome_col)
   pathogen_col <- cols$pathogen_col
   geography_col <- cols$geography_col
@@ -2207,6 +2206,10 @@ compute_pairwise_from_data <- function(
   outcome_col = NULL,
   min_co_tested = 10L
 ) {
+  pcol <- col_map$pathogen_col %||% "pathogen"
+  panel_map <- .align_panel_map(panel_map, data_wide[[pcol]])
+  marginals <- .align_col(marginals, pcol, data_wide[[pcol]])
+  data_wide <- .restore_panel_class_names(data_wide, panel_map)
   cols <- .resolve_class_cols(data_wide, col_map, panel_map, outcome_col)
   pathogen_col <- cols$pathogen_col
   geography_col <- cols$geography_col
@@ -2387,10 +2390,23 @@ compute_pairwise_from_data <- function(
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' marg <- compute_marginals_from_data(result$data_wide, result$col_map_resolved, panel_map)
-#' pw <- compute_pairwise_from_data(result$data_wide, marg, result$col_map_resolved, panel_map)
-#' out <- estimate_profiles_convex(marg, pw, panel_map)
+#' if (requireNamespace("quadprog", quietly = TRUE)) {
+#'   marginals <- data.frame(
+#'     pathogen = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 3),
+#'     antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), 2),
+#'     n_tested = c(420L, 460L, 390L, 280L, 310L, 265L),
+#'     n_resistant = c(126L, 299L, 195L, 45L, 155L, 133L)
+#'   )
+#'   marginals$marginal_resistance <- marginals$n_resistant / marginals$n_tested
+#'   out <- estimate_profiles_convex(marginals,
+#'     panel_map = list(
+#'       "Klebsiella pneumoniae" = c("Carbapenems", "3GC"),
+#'       "Escherichia coli" = c("Carbapenems", "3GC")
+#'     ),
+#'     pathogen_col = "pathogen", class_col = "antibiotic_class",
+#'     rate_col = "marginal_resistance", n_tested_col = "n_tested"
+#'   )
+#'   out[, c("pathogen", "profile_delta", "profile_probability")]
 #' }
 estimate_profiles_convex <- function(
   marginals,
@@ -2408,6 +2424,8 @@ estimate_profiles_convex <- function(
   rate_col = "marginal_resistance",
   n_tested_col = "n_tested"
 ) {
+  panel_map <- .align_panel_map(panel_map, marginals[[pathogen_col]])
+  pairwise <- .align_col(pairwise, pathogen_col, marginals[[pathogen_col]])
   solver <- match.arg(solver)
   n_cores <- as.integer(n_cores)
 
@@ -2533,18 +2551,17 @@ estimate_profiles_convex <- function(
             Matrix::Matrix(1.0, nrow = 1L, ncol = n_profiles, sparse = TRUE),
             Matrix::Diagonal(n_profiles)
           )
-          prob <- osqp::osqp(
+          res <- osqp::solve_osqp(
             P = Matrix::forceSymmetric(Matrix::Matrix(H_mat)),
             q = -d_qp,
             A = A_sp,
             l = c(1.0, rep(0.0, n_profiles)),
             u = c(1.0, rep(Inf, n_profiles)),
-            pars = osqp::osqpSettings(
+            pars = .osqp_settings(
               verbose = FALSE, eps_abs = 1e-8,
-              eps_rel = 1e-8, max_iter = 10000L, polish = TRUE
+              eps_rel = 1e-8, max_iter = 10000L
             )
           )
-          res <- prob$solve()
           if (!(res$info$status %in% c("solved", "solved_inaccurate"))) stop(res$info$status)
           pmax(res$x, 0.0)
         } else {
@@ -2633,7 +2650,6 @@ estimate_profiles_convex <- function(
 }
 
 
-# ===========================================================================
 # Pathway 1 -- Isolate-level engine
 #
 # Computes resistance profiles directly from line-level isolate data in a
@@ -2664,13 +2680,11 @@ estimate_profiles_convex <- function(
 # Class-level resistance rule: R_{e,k,c} = 1 if resistant to ANY drug in c.
 #
 # Reference: Antimicrobial Resistance Collaborators. Lancet. 2022.
-# ===========================================================================
 
 
-# -- Internal helper -----------------------------------------------------------
-
+# Internal helper
 #' Validate that required columns exist in a data frame
-#' @keywords internal
+#' @noRd
 .check_cols <- function(data, cols) {
   missing <- setdiff(cols, names(data))
   if (length(missing) > 0) {
@@ -2682,8 +2696,7 @@ estimate_profiles_convex <- function(
 }
 
 
-# -- Step 1 --------------------------------------------------------------------
-
+# Step 1
 #' Compute Marginal Resistance per Pathogen and Antibiotic Class
 #'
 #' Collapses drug-level susceptibility data to antibiotic-class level per
@@ -2756,19 +2769,16 @@ estimate_profiles_convex <- function(
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' marg <- compute_marginal_resistance(
-#'   data                 = amr_clean,
-#'   pathogen_col         = "organism_name",
-#'   org_group_col        = "org_group",
-#'   isolate_col          = "isolate_id",
-#'   antibiotic_class_col = "antibiotic_class",
-#'   antibiotic_value_col = "antibiotic_value"
+#' set.seed(1)
+#' ast_class <- data.frame(
+#'   isolate_id       = rep(sprintf("ISO%02d", 1:80), each = 3),
+#'   organism_name    = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 120),
+#'   org_group        = "Enterobacterales",
+#'   antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), times = 80),
+#'   antibiotic_value = sample(c("S", "R"), 240, replace = TRUE)
 #' )
-#'
-#' marg$marginal # full marginal resistance table
-#' marg$near_zero # classes flagged as near-zero
-#' }
+#' marg <- compute_marginal_resistance(ast_class)
+#' marg$marginal
 compute_marginal_resistance <- function(
   data,
   pathogen_col = "organism_name",
@@ -2788,8 +2798,7 @@ compute_marginal_resistance <- function(
     antibiotic_class_col, antibiotic_value_col
   ))
 
-  # -- Optional facility filter ----------------------------------------------
-
+  # Optional facility filter
   .check_paired_args(facility_col, facility_name, "facility_col", "facility_name")
   if (!is.null(facility_col)) {
     .check_cols(data, facility_col)
@@ -2804,8 +2813,7 @@ compute_marginal_resistance <- function(
     ))
   }
 
-  # -- Optional outcome filter -----------------------------------------------
-
+  # Optional outcome filter
   .check_paired_args(outcome_col, outcome_value, "outcome_col", "outcome_value")
   if (!is.null(outcome_col)) {
     .check_cols(data, outcome_col)
@@ -2820,7 +2828,7 @@ compute_marginal_resistance <- function(
     ))
   }
 
-  # -- Collapse to isolate x pathogen x class -------------------------------
+  # Collapse to isolate x pathogen x class
   #
   # R_{e,k,c} = 1 if resistant to ANY drug in class c.
 
@@ -2844,8 +2852,7 @@ compute_marginal_resistance <- function(
     dplyr::n_distinct(class_long[[antibiotic_class_col]])
   ))
 
-  # -- Marginal resistance per pathogen x class -----------------------------
-
+  # Marginal resistance per pathogen x class
   marg_grp <- c(pathogen_col, org_group_col, antibiotic_class_col)
   if (!is.null(facility_col)) marg_grp <- c(facility_col, marg_grp)
   if (!is.null(outcome_col)) marg_grp <- c(outcome_col, marg_grp)
@@ -2865,8 +2872,7 @@ compute_marginal_resistance <- function(
       dplyr::desc(marginal_resistance)
     )
 
-  # -- Flag near-zero classes ------------------------------------------------
-
+  # Flag near-zero classes
   near_zero <- marginal %>%
     dplyr::filter(marginal_resistance <= zero_threshold)
 
@@ -2875,7 +2881,7 @@ compute_marginal_resistance <- function(
       "%d pathogen-class combination(s) have marginal_resistance <= %g (listed in $near_zero):",
       nrow(near_zero), zero_threshold
     ))
-    print(
+    .msg_print(
       near_zero[, c(
         pathogen_col, antibiotic_class_col,
         "n_tested", "n_resistant", "marginal_resistance"
@@ -2888,7 +2894,7 @@ compute_marginal_resistance <- function(
     ))
   }
 
-  # -- Minimum-tests threshold (optional) ------------------------------------
+  # Minimum-tests threshold (optional)
   # Drop pathogen-class combinations with too few isolates tested.
   # class_long is filtered to match so the exclusion carries through to
   # compute_pairwise_coresistance() and compute_resistance_profiles().
@@ -2903,7 +2909,7 @@ compute_marginal_resistance <- function(
         "min_n_tested = %d: %d of %d pathogen-class combination(s) excluded (n_tested < %d):",
         min_n_tested, nrow(excluded), n_before, min_n_tested
       ))
-      print(
+      .msg_print(
         excluded[, c(pathogen_col, antibiotic_class_col, "n_tested"),
           drop = FALSE
         ],
@@ -2946,8 +2952,7 @@ compute_marginal_resistance <- function(
 }
 
 
-# -- Step 2 --------------------------------------------------------------------
-
+# Step 2
 #' Compute Pairwise Co-resistance Matrices per Pathogen
 #'
 #' For every pathogen and every pair of antibiotic classes \eqn{(c_i, c_j)}
@@ -3007,16 +3012,18 @@ compute_marginal_resistance <- function(
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' marg <- compute_marginal_resistance(amr_clean, ...)
+#' set.seed(1)
+#' ast_class <- data.frame(
+#'   isolate_id       = rep(sprintf("ISO%02d", 1:80), each = 3),
+#'   organism_name    = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 120),
+#'   org_group        = "Enterobacterales",
+#'   antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), times = 80),
+#'   antibiotic_value = sample(c("S", "R"), 240, replace = TRUE)
+#' )
+#' marg <- compute_marginal_resistance(ast_class)
+#' marg$marginal
 #' co_res <- compute_pairwise_coresistance(marg)
-#'
-#' # Prevalence matrix for K. pneumoniae
 #' co_res[["Klebsiella pneumoniae"]]$prevalence
-#'
-#' # Co-tested counts
-#' co_res[["Klebsiella pneumoniae"]]$T_matrix
-#' }
 compute_pairwise_coresistance <- function(
   marginal_output,
   pathogen_col = "organism_name",
@@ -3040,8 +3047,7 @@ compute_pairwise_coresistance <- function(
     org_group_col, antibiotic_class_col
   ))
 
-  # -- Optional facility filter ----------------------------------------------
-
+  # Optional facility filter
   .check_paired_args(facility_col, facility_name, "facility_col", "facility_name")
   if (!is.null(facility_col)) {
     if (!facility_col %in% names(class_long)) {
@@ -3065,8 +3071,7 @@ compute_pairwise_coresistance <- function(
     ))
   }
 
-  # -- Optional outcome filter -----------------------------------------------
-
+  # Optional outcome filter
   .check_paired_args(outcome_col, outcome_value, "outcome_col", "outcome_value")
   if (!is.null(outcome_col)) {
     if (!outcome_col %in% names(class_long)) {
@@ -3160,8 +3165,7 @@ compute_pairwise_coresistance <- function(
 }
 
 
-# -- Step 3 --------------------------------------------------------------------
-
+# Step 3
 #' Compute Resistance Profile Probabilities per Pathogen
 #'
 #' For each pathogen \eqn{k} with \eqn{n_k} antibiotic classes, enumerates all
@@ -3281,22 +3285,21 @@ compute_pairwise_coresistance <- function(
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' marg <- compute_marginal_resistance(amr_clean)
-#' co_res <- compute_pairwise_coresistance(marg)
-#' rp <- compute_resistance_profiles(marg, co_res)
-#'
-#' # All profiles and probabilities for K. pneumoniae
-#' rp[["Klebsiella pneumoniae"]]$profiles
-#'
-#' # Constraint residuals (quality check)
-#' rp[["Klebsiella pneumoniae"]]$constraint_residuals
-#'
-#' # Single pathogen
-#' rp_kp <- compute_resistance_profiles(
-#'   marg, co_res,
-#'   pathogens = "Klebsiella pneumoniae"
-#' )
+#' if (requireNamespace("quadprog", quietly = TRUE)) {
+#'   set.seed(1)
+#'   ast_class <- data.frame(
+#'     isolate_id       = rep(sprintf("ISO%02d", 1:80), each = 3),
+#'     organism_name    = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 120),
+#'     org_group        = "Enterobacterales",
+#'     antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), times = 80),
+#'     antibiotic_value = sample(c("S", "R"), 240, replace = TRUE)
+#'   )
+#'   marg <- compute_marginal_resistance(ast_class)
+#'   marg$marginal
+#'   co_res <- compute_pairwise_coresistance(marg)
+#'   co_res[["Klebsiella pneumoniae"]]$prevalence
+#'   rp <- compute_resistance_profiles(marg, co_res, exclude_near_zero = FALSE)
+#'   rp[["Klebsiella pneumoniae"]]$profiles
 #' }
 compute_resistance_profiles <- function(
   marginal_output,
@@ -3315,7 +3318,7 @@ compute_resistance_profiles <- function(
   outcome_value = NULL,
   n_cores = 1L
 ) {
-  # -- Input validation -------------------------------------------------------
+  # Input validation
   if (!is.list(marginal_output) ||
     !all(c("marginal", "near_zero", "class_long") %in% names(marginal_output))) {
     stop("marginal_output must be the list returned by compute_marginal_resistance().")
@@ -3353,8 +3356,7 @@ compute_resistance_profiles <- function(
     top_n_classes <- as.integer(top_n_classes)
   }
 
-  # -- Optional facility filter ----------------------------------------------
-
+  # Optional facility filter
   .check_paired_args(facility_col, facility_name, "facility_col", "facility_name")
   if (!is.null(facility_col)) {
     if (!facility_col %in% names(marginal_output$marginal)) {
@@ -3383,8 +3385,7 @@ compute_resistance_profiles <- function(
     ))
   }
 
-  # -- Optional outcome filter -----------------------------------------------
-
+  # Optional outcome filter
   .check_paired_args(outcome_col, outcome_value, "outcome_col", "outcome_value")
   if (!is.null(outcome_col)) {
     if (!outcome_col %in% names(marginal_output$marginal)) {
@@ -3426,7 +3427,7 @@ compute_resistance_profiles <- function(
     all_pathogens <- pathogens
   }
 
-  # -- Restrict to top N most-tested pathogens ---------------------------------
+  # Restrict to top N most-tested pathogens
   if (!is.null(top_n_pathogens)) {
     path_tested <- marginal_output$marginal %>%
       dplyr::filter(!!rlang::sym(pathogen_col) %in% all_pathogens) %>%
@@ -3447,7 +3448,7 @@ compute_resistance_profiles <- function(
       message("  Excluded: ", paste(excluded, collapse = ", "))
     }
     message("  Selected (ranked by total isolates tested):")
-    print(path_tested[path_tested[[pathogen_col]] %in% top_paths, ],
+    .msg_print(path_tested[path_tested[[pathogen_col]] %in% top_paths, ],
       row.names = FALSE
     )
 
@@ -3465,7 +3466,7 @@ compute_resistance_profiles <- function(
     ))
   }
 
-  # -- Per-pathogen worker (closure over outer env) --------------------------
+  # Per-pathogen worker (closure over outer env)
   .process_one <- function(path_idx) {
     path <- all_pathogens[path_idx]
 
@@ -3476,7 +3477,7 @@ compute_resistance_profiles <- function(
       ))
     }
 
-    # -- Determine antibiotic classes ---------------------------------------
+    # Determine antibiotic classes
     marg_k <- marginal_output$marginal[
       marginal_output$marginal[[pathogen_col]] == path,
     ]
@@ -3530,26 +3531,26 @@ compute_resistance_profiles <- function(
       ))
     }
 
-    # -- Marginal resistance vector r_kd ------------------------------------
+    # Marginal resistance vector r_kd
     r_marg <- setNames(
       marg_k$marginal_resistance,
       marg_k[[antibiotic_class_col]]
     )[classes]
 
-    # -- Pairwise co-resistance matrix (may be NULL) ------------------------
+    # Pairwise co-resistance matrix (may be NULL)
     co_mat <- if (path %in% names(coresistance_output)) {
       coresistance_output[[path]]$prevalence
     } else {
       NULL
     }
 
-    # -- Enumerate 2^n resistance profiles ---------------------------------
+    # Enumerate 2^n resistance profiles
     profiles_enum <- enumerate_binary_profiles(classes)
     n_profiles <- nrow(profiles_enum)
     profile_labels <- profiles_enum$profile_delta
     profiles_mat <- as.matrix(profiles_enum[, classes, drop = FALSE])
 
-    # -- Constraint matrix M (m x 2^n) and target vector v -----------------
+    # Constraint matrix M (m x 2^n) and target vector v
     cm <- build_constraint_matrix(profiles_enum, r_marg, co_mat)
     M <- cm$M
     v <- cm$v
@@ -3569,7 +3570,7 @@ compute_resistance_profiles <- function(
       ))
     }
 
-    # -- QP: simplex-constrained weighted least-squares ---------------------
+    # QP: simplex-constrained weighted least-squares
     #
     # Minimise  (1/2) p^T H p  -  d^T p
     #   H = (2/sigma_sq) * M^T M  +  ridge * I   (guaranteed pos-def)
@@ -3591,21 +3592,19 @@ compute_resistance_profiles <- function(
             Matrix::Matrix(1.0, nrow = 1L, ncol = n_profiles, sparse = TRUE),
             Matrix::Diagonal(n_profiles)
           )
-          prob <- osqp::osqp(
+          res <- osqp::solve_osqp(
             P = Matrix::forceSymmetric(Matrix::Matrix(H_mat)),
             q = -d_qp,
             A = A_sp,
             l = c(1.0, rep(0.0, n_profiles)),
             u = c(1.0, rep(Inf, n_profiles)),
-            pars = osqp::osqpSettings(
+            pars = .osqp_settings(
               verbose  = FALSE,
               eps_abs  = 1e-8,
               eps_rel  = 1e-8,
-              max_iter = 10000L,
-              polish   = TRUE
+              max_iter = 10000L
             )
           )
-          res <- prob$solve()
           if (!(res$info$status %in% c("solved", "solved_inaccurate"))) {
             stop(paste("OSQP status:", res$info$status))
           }
@@ -3632,7 +3631,7 @@ compute_resistance_profiles <- function(
 
     p_hat <- p_hat / sum(p_hat)
 
-    # -- Constraint residuals -----------------------------------------------
+    # Constraint residuals
     residuals <- drop(M %*% p_hat) - v
     names(residuals) <- cm$constraint_names
 
@@ -3662,7 +3661,7 @@ compute_resistance_profiles <- function(
     )
   }
 
-  # -- Execute: parallel or sequential ---------------------------------------
+  # Execute: parallel or sequential
   if (n_cores > 1L) {
     all_results <- parallel::mclapply(
       seq_along(all_pathogens), .process_one,
@@ -3673,7 +3672,7 @@ compute_resistance_profiles <- function(
     all_results <- lapply(seq_along(all_pathogens), .process_one)
   }
 
-  # -- Collect results --------------------------------------------------------
+  # Collect results
   for (res in all_results) {
     if (is.null(res) || inherits(res, "try-error")) next
     if (res$type == "success") {
@@ -3683,7 +3682,7 @@ compute_resistance_profiles <- function(
     }
   }
 
-  # -- Summary: pathogens skipped because only 1 class remained --------------
+  # Summary: pathogens skipped because only 1 class remained
   if (length(skipped_single) > 0) {
     skipped_tbl <- do.call(rbind, skipped_single)
     message(sprintf(
@@ -3695,7 +3694,7 @@ compute_resistance_profiles <- function(
       "  Tip: use top_n_classes, reduce zero_threshold, or set exclude_near_zero = FALSE",
       " to include them.\n"
     ))
-    print(skipped_tbl, row.names = FALSE)
+    .msg_print(skipped_tbl, row.names = FALSE)
   }
 
   return(out)
@@ -3787,7 +3786,7 @@ select_resistance_class <- function(data,
     dplyr::arrange(dplyr::desc(n_events)) %>%
     utils::head(10)
   message("\nTop 10 selected classes:")
-  print(selection_summary)
+  .msg_print(selection_summary)
 
   return(selected)
 }
@@ -3864,7 +3863,6 @@ prioritize_resistance <- function(data,
 }
 
 
-# ===========================================================================
 # Pathway 2 -- Bayesian hierarchical multivariate probit (revised)
 #
 # Key design decisions in this implementation:
@@ -3911,7 +3909,6 @@ prioritize_resistance <- function(data,
 # This is NOT the whole-hospital profile distribution unless the stewardship
 # beds are a census of all infection events. This distinction is essential for
 # the AMR burden pipeline.
-# ===========================================================================
 
 
 # Internal helpers
@@ -3924,7 +3921,7 @@ prioritize_resistance <- function(data,
 #' resistant-resistant) -- such a pair carries no information about residual
 #' cross-class correlation, so \code{sufficient} additionally requires all
 #' four cells to have at least \code{min_pairwise_cell} observations.
-#' @keywords internal
+#' @noRd
 .check_pairwise_cotesting <- function(event_class_data, class_cols, upper_re_col,
                                       min_pairwise_cotested = 30L,
                                       min_pairwise_cell = 1L) {
@@ -3968,7 +3965,7 @@ prioritize_resistance <- function(data,
 
 
 #' Check panel eligibility thresholds per hospital x class cell
-#' @keywords internal
+#' @noRd
 .validate_panel_eligibility <- function(
   event_class_data,
   class_cols,
@@ -4076,7 +4073,7 @@ prioritize_resistance <- function(data,
   }
 
   sub <- marginal[marginal[[upper_re_col]] == hospital &
-    marginal[[pathogen_col]] == pathogen, , drop = FALSE]
+    .name_key(marginal[[pathogen_col]]) == .name_key(pathogen), , drop = FALSE]
   elig_classes <- sub$antibiotic_class[sub$eligible]
   elig_classes <- intersect(class_cols, elig_classes) # preserve class_cols order
   marginal_excluded <- setdiff(class_cols, elig_classes)
@@ -4669,7 +4666,7 @@ fit_bayesian_multivariate_probit <- function(
 ) {
   residual_structure <- match.arg(residual_structure)
 
-  # -- Package checks ---------------------------------------------------------
+  # Package checks
   if (!requireNamespace("cmdstanr", quietly = TRUE)) {
     stop(
       paste0(
@@ -4688,12 +4685,12 @@ fit_bayesian_multivariate_probit <- function(
 
   compute_cfg <- validate_compute_backend(compute)
 
-  # -- Data checks ------------------------------------------------------------
+  # Data checks
   if (!is.data.frame(event_class_data) || nrow(event_class_data) == 0L) {
     stop("`event_class_data` must be a non-empty data frame.", call. = FALSE)
   }
 
-  # -- Validate class_cols ----------------------------------------------------
+  # Validate class_cols
   if (missing(class_cols) || length(class_cols) == 0L) {
     stop("`class_cols` is required.", call. = FALSE)
   }
@@ -4705,7 +4702,7 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  # -- Validate fixed_effects -------------------------------------------------
+  # Validate fixed_effects
   if (missing(fixed_effects) || is.null(fixed_effects) || length(fixed_effects) == 0L) {
     stop("`fixed_effects` is required (no default).", call. = FALSE)
   }
@@ -4717,7 +4714,7 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  # -- Validate random_effects and profile grouping ----------------------------
+  # Validate random_effects and profile grouping
   # Accepts EITHER the legacy character vector (c("center_name", "readmission_id"))
   # or the generic list-of-blocks spec (list(list(name=, group_col=, terms=), ...));
   # see .normalize_random_effects_spec(). Arbitrarily many blocks are allowed now
@@ -4732,7 +4729,9 @@ fit_bayesian_multivariate_probit <- function(
   .re_blocks_early <- .normalize_random_effects_spec(random_effects)
   .re_group_cols_early <- if (length(.re_blocks_early) > 0L) {
     vapply(.re_blocks_early, function(b) b$group_col, character(1L))
-  } else character(0)
+  } else {
+    character(0)
+  }
   miss_re <- setdiff(.re_group_cols_early, names(event_class_data))
   if (length(miss_re) > 0L) {
     stop(sprintf(
@@ -4744,14 +4743,14 @@ fit_bayesian_multivariate_probit <- function(
   upper_re_col <- profile_group_col %||%
     if (length(.re_group_cols_early) > 0L) .re_group_cols_early[1L] else NULL
   if (is.null(upper_re_col) || !is.character(upper_re_col) || length(upper_re_col) != 1L ||
-      !nzchar(upper_re_col)) {
+    !nzchar(upper_re_col)) {
     stop("`profile_group_col` is required when `random_effects` is empty.", call. = FALSE)
   }
   if (!upper_re_col %in% names(event_class_data)) {
     stop(sprintf("profile_group_col '%s' not found in event_class_data.", upper_re_col), call. = FALSE)
   }
 
-  # -- Validate pathogen_col and optionally filter to one pathogen -----------
+  # Validate pathogen_col and optionally filter to one pathogen
   if (!pathogen_col %in% names(event_class_data)) {
     stop(sprintf("pathogen_col '%s' not found in event_class_data.", pathogen_col),
       call. = FALSE
@@ -4766,7 +4765,7 @@ fit_bayesian_multivariate_probit <- function(
         call. = FALSE
       )
     }
-    event_data <- event_data[event_data[[pathogen_col]] == pathogen, , drop = FALSE]
+    event_data <- event_data[.name_key(event_data[[pathogen_col]]) == .name_key(pathogen), , drop = FALSE]
     pathogen_fitted <- pathogen
     message(sprintf(
       "[fit_bayesian_multivariate_probit] Filtered to pathogen '%s': %d events.",
@@ -4774,7 +4773,7 @@ fit_bayesian_multivariate_probit <- function(
     ))
   }
 
-  # -- Enforce single-pathogen fit (mandatory) --------------------------------
+  # Enforce single-pathogen fit (mandatory)
   n_pathogens <- dplyr::n_distinct(event_data[[pathogen_col]])
   if (n_pathogens != 1L) {
     stop(sprintf(
@@ -4786,7 +4785,7 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  # -- Resolve prior_config ---------------------------------------------------
+  # Resolve prior_config
   pc <- list(beta_sd = 1.5, tau_sd = 1.0, lkj_eta = 2.0)
   for (nm in names(prior_config)) pc[[nm]] <- prior_config[[nm]]
   # Legacy lkj_eta deliberately resolves to both controls, reproducing the
@@ -4800,11 +4799,11 @@ fit_bayesian_multivariate_probit <- function(
     stop("`prior_config$tau_sd` must be a positive number.", call. = FALSE)
   }
   if (!is.numeric(pc$lkj_eta_residual) || pc$lkj_eta_residual < 1 ||
-      !is.numeric(pc$lkj_eta_random_effect) || pc$lkj_eta_random_effect < 1) {
+    !is.numeric(pc$lkj_eta_random_effect) || pc$lkj_eta_random_effect < 1) {
     stop("Resolved residual and random-effect LKJ eta values must be >= 1.", call. = FALSE)
   }
 
-  # -- Resolve sampler_config -------------------------------------------------
+  # Resolve sampler_config
   sc_defaults <- list(
     chains = 4L, iter_warmup = 1000L, iter_sampling = 1000L,
     seed = 123L, adapt_delta = NULL, max_treedepth = NULL,
@@ -4819,7 +4818,7 @@ fit_bayesian_multivariate_probit <- function(
     pc$beta_sd, pc$tau_sd, pc$lkj_eta_residual, pc$lkj_eta_random_effect
   ))
 
-  # -- Remove reserve drug columns --------------------------------------------
+  # Remove reserve drug columns
   if (!is.null(reserve_drug_cols)) {
     class_cols <- setdiff(class_cols, reserve_drug_cols)
     message(sprintf(
@@ -4831,7 +4830,7 @@ fit_bayesian_multivariate_probit <- function(
     stop("At least 2 class columns are required for the multivariate probit.", call. = FALSE)
   }
 
-  # -- Filter to eligible hospital-pathogen pairs -----------------------------
+  # Filter to eligible hospital-pathogen pairs
   if (!is.null(eligible_pairs)) {
     ep_req <- c(upper_re_col, pathogen_col)
     miss_ep <- setdiff(ep_req, names(eligible_pairs))
@@ -4872,7 +4871,7 @@ fit_bayesian_multivariate_probit <- function(
     ))
   }
 
-  # -- Panel eligibility report (warn, do not filter) -------------------------
+  # Panel eligibility report (warn, do not filter)
   pe <- list(
     min_tested = 30L, min_resistant = 5L, min_susceptible = 5L,
     min_pairwise_cotested = 30L, min_pairwise_cell = 1L
@@ -4936,7 +4935,7 @@ fit_bayesian_multivariate_probit <- function(
     )
   }
 
-  # -- Prepare the generic random-effect representation -----------------------
+  # Prepare the generic random-effect representation
   # Builds flattened level indices for an arbitrary number of blocks (Stage 1:
   # random-intercept-only). Composite-key scoping (e.g. ensuring a patient ID
   # doesn't collide across hospitals) is the CALLER's responsibility -- passing
@@ -4946,7 +4945,7 @@ fit_bayesian_multivariate_probit <- function(
   re_prep <- prepare_random_effects(event_data, random_effects)
   n_re_levels <- re_prep$R # kept as a field name for backward-compat call sites
 
-  # -- Validate event identifier (real uniqueness check, not seq_len trick) ---
+  # Validate event identifier (real uniqueness check, not seq_len trick)
   if (!event_id_col %in% names(event_data)) {
     # No external event ID: assign a warning-level fallback.
     warning(sprintf(
@@ -4969,7 +4968,7 @@ fit_bayesian_multivariate_probit <- function(
     }
   }
 
-  # -- Canonical event index (assigned BEFORE pivoting to long) ---------------
+  # Canonical event index (assigned BEFORE pivoting to long)
   event_data$.event_idx <- seq_len(nrow(event_data))
   N_events <- nrow(event_data)
 
@@ -4983,7 +4982,7 @@ fit_bayesian_multivariate_probit <- function(
     ), call. = FALSE)
   }
 
-  # -- Columns to carry into long format ---------------------------------------
+  # Columns to carry into long format
   meta_carry <- unique(c(
     ".event_idx", re_prep$group_cols, pathogen_col,
     if (!is.null(outcome_col) && outcome_col %in% names(event_data)) outcome_col,
@@ -4991,7 +4990,7 @@ fit_bayesian_multivariate_probit <- function(
   ))
   meta_carry <- meta_carry[!is.null(meta_carry) & meta_carry %in% names(event_data)]
 
-  # -- Pivot to long format ---------------------------------------------------
+  # Pivot to long format
   data_long <- event_data %>%
     dplyr::select(dplyr::all_of(c(meta_carry, class_cols))) %>%
     tidyr::pivot_longer(
@@ -5028,7 +5027,7 @@ fit_bayesian_multivariate_probit <- function(
     if (is.character(fe_df_check[[cc]])) fe_df_check[[cc]] <- factor(fe_df_check[[cc]])
   }
 
-  # -- Build integer index maps -----------------------------------------------
+  # Build integer index maps
   # Per-block level indices were already computed once, generically, by
   # prepare_random_effects() above (re_prep$group_index / $flat_group_index,
   # one row per event in event_data's original row order == .event_idx). No
@@ -5054,7 +5053,7 @@ fit_bayesian_multivariate_probit <- function(
       ev_idx = as.integer(.data$.event_idx)
     )
 
-  # -- Validate ev_idx (must span 1..N_events without gaps) -------------------
+  # Validate ev_idx (must span 1..N_events without gaps)
   stopifnot(all(data_long$ev_idx >= 1L & data_long$ev_idx <= N_events))
   stopifnot(!anyDuplicated(event_data$.event_idx))
 
@@ -5069,7 +5068,9 @@ fit_bayesian_multivariate_probit <- function(
   sign_obs <- as.integer(2L * data_long$resistance_binary - 1L)
   obs_idx <- data_long$ev_idx + (data_long$d_idx - 1L) * N_events
 
-  re_label <- if (re_prep$R == 0L) "none (fixed-only)" else {
+  re_label <- if (re_prep$R == 0L) {
+    "none (fixed-only)"
+  } else {
     paste(sprintf("%s(%d)", re_prep$block_names, re_prep$n_levels), collapse = "+")
   }
   message(sprintf(
@@ -5077,7 +5078,7 @@ fit_bayesian_multivariate_probit <- function(
     nrow(data_long), N_events, D, re_label
   ))
 
-  # -- Build Stan data list -----------------------------------------------------
+  # Build Stan data list
   stan_data <- list(
     N               = nrow(data_long), # observation pairs (for Jacobian)
     N_events        = N_events,
@@ -5092,12 +5093,12 @@ fit_bayesian_multivariate_probit <- function(
   )
   if (re_prep$R > 0L) {
     stan_data <- c(stan_data, list(
-      R               = re_prep$R,
+      R = re_prep$R,
       total_re_levels = re_prep$total_re_levels,
-      n_levels        = as.array(as.integer(re_prep$n_levels)),
-      level_start     = as.array(as.integer(re_prep$level_start)),
-      re_idx          = matrix(as.integer(re_idx_mat), nrow = N_events),
-      prior_tau_sd    = as.numeric(pc$tau_sd),
+      n_levels = as.array(as.integer(re_prep$n_levels)),
+      level_start = as.array(as.integer(re_prep$level_start)),
+      re_idx = matrix(as.integer(re_idx_mat), nrow = N_events),
+      prior_tau_sd = as.numeric(pc$tau_sd),
       lkj_eta_random_effect = as.numeric(pc$lkj_eta_random_effect)
     ))
   }
@@ -5105,7 +5106,7 @@ fit_bayesian_multivariate_probit <- function(
     stan_data$lkj_eta_residual <- as.numeric(pc$lkj_eta_residual)
   }
 
-  # -- Parameter-count preflight -----------------------------------------------
+  # Parameter-count preflight
   n_z_free <- N_events * D
   n_re_raw <- re_prep$total_re_levels * D
   n_beta <- K * D
@@ -5165,7 +5166,8 @@ fit_bayesian_multivariate_probit <- function(
     error = function(e) {
       if (identical(compute_cfg$backend, "opencl") && isTRUE(compute_cfg$allow_cpu_fallback)) {
         warning(sprintf("OpenCL compile failed; retrying on CPU. Reason: %s", conditionMessage(e)),
-          call. = FALSE)
+          call. = FALSE
+        )
         .amr_compile_stan_backend(
           stan_code = stan_code,
           residual_structure = residual_structure,
@@ -5194,7 +5196,7 @@ fit_bayesian_multivariate_probit <- function(
     )
   }
 
-  # -- Build sample() call args -----------------------------------------------
+  # Build sample() call args
   sample_args <- list(
     data          = stan_data,
     seed          = as.integer(sc$seed),
@@ -5216,7 +5218,7 @@ fit_bayesian_multivariate_probit <- function(
   extra_args <- list(...)
   sample_args <- c(sample_args, extra_args)
 
-  # -- Sample -----------------------------------------------------------------
+  # Sample
   message(sprintf(
     "[fit_bayesian_multivariate_probit] Sampling: %d chains x (%d warmup + %d sampling)...",
     sc$chains, sc$iter_warmup, sc$iter_sampling
@@ -5226,7 +5228,8 @@ fit_bayesian_multivariate_probit <- function(
     error = function(e) {
       if (identical(actual_compute_cfg$backend, "opencl") && isTRUE(actual_compute_cfg$allow_cpu_fallback)) {
         warning(sprintf("OpenCL sampling failed; retrying on CPU. Reason: %s", conditionMessage(e)),
-          call. = FALSE)
+          call. = FALSE
+        )
         backend_fallback <<- TRUE
         backend_fallback_reason <<- sprintf("OpenCL sampling failed: %s", conditionMessage(e))
         actual_compute_cfg <<- utils::modifyList(actual_compute_cfg, list(
@@ -5325,7 +5328,7 @@ fit_bayesian_multivariate_probit <- function(
     )
   }
 
-  # -- Strengthened diagnostics -----------------------------------------------
+  # Strengthened diagnostics
   # Primary diagnostics use the same monitored parameter set saved in draws_arr.
   # Full diagnostics include z_free and are reported separately for visibility.
   rhat_tbl_monitored <- fit$summary(variables = keep_vars, "rhat")
@@ -5360,7 +5363,7 @@ fit_bayesian_multivariate_probit <- function(
   min_ess_bulk_full <- min_bulk_all$value
   min_ess_tail_full <- min_tail_all$value
 
-  # -- Canonical per-chain diagnostics table -----------------------------------
+  # Canonical per-chain diagnostics table
   # This is the single source of chain-level diagnostics (chain id, sampling
   # count, divergences, tree-depth saturation, E-BFMI, and HMC tuning summary).
   # anumaan-analysis previously recomputed an equivalent table independently
@@ -5477,7 +5480,7 @@ fit_bayesian_multivariate_probit <- function(
     TRUE ~ "pass"
   )
 
-  # -- Warnings are based on the STRUCTURAL scope; z_free stragglers are ------
+  # Warnings are based on the STRUCTURAL scope; z_free stragglers are
   # -- reported separately below so they don't masquerade as model failure. --
   if (max_rhat_structural > 1.01) {
     warning(sprintf(
@@ -5570,7 +5573,7 @@ fit_bayesian_multivariate_probit <- function(
     min_ess_tail = round(min_ess_tail_structural, 1L)
   )
 
-  # -- Grouped (per parameter_group) diagnostic summary ------------------------
+  # Grouped (per parameter_group) diagnostic summary
   # Reports quantiles/percentages, not only the single worst parameter, so a
   # single outlier does not stand in for the whole group's convergence.
   # Consolidates what anumaan-analysis previously recomputed independently in
@@ -5937,7 +5940,7 @@ compute_event_profile_probabilities <- function(
     stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
   }
 
-  set.seed(as.integer(seed))
+  .local_seed(as.integer(seed))
 
   draws <- fitted_model$draws
   class_cols <- fitted_model$class_cols
@@ -5957,7 +5960,7 @@ compute_event_profile_probabilities <- function(
 
   K <- ncol(X_event_sim)
 
-  # -- Thin draws to n_posterior_draws_for_profiles ---------------------------
+  # Thin draws to n_posterior_draws_for_profiles
   draws_mat <- posterior::as_draws_matrix(draws)
   n_total <- nrow(draws_mat)
   if (is.null(posterior_draw_indices)) {
@@ -5972,7 +5975,7 @@ compute_event_profile_probabilities <- function(
   }
   draws_mat <- draws_mat[draw_idx, , drop = FALSE]
 
-  # -- Helper: extract [S, d1, d2] array from draws ---------------------------
+  # Helper: extract [S, d1, d2] array from draws
   .arr <- function(prefix, d1, d2) {
     cols <- as.vector(outer(
       seq_len(d1), seq_len(d2),
@@ -5984,7 +5987,9 @@ compute_event_profile_probabilities <- function(
   beta_arr <- .arr("beta", K, D) # S x K x D
   re_eff_arr <- if (re_prep$R > 0L) {
     .arr("re_effect", D, re_prep$total_re_levels)
-  } else NULL
+  } else {
+    NULL
+  }
   L_omega_arr <- if (residual_structure == "correlated") {
     .arr("L_Omega", D, D)
   } # S x D x D (lower triangular)
@@ -5992,7 +5997,7 @@ compute_event_profile_probabilities <- function(
     NULL
   }
 
-  # -- Canonical event table --------------------------------------------------
+  # Canonical event table
   stopifnot(".event_idx" %in% names(event_meta))
   stopifnot(!anyDuplicated(event_meta$.event_idx))
 
@@ -6020,7 +6025,7 @@ compute_event_profile_probabilities <- function(
   obs_ast_mat <- as.matrix(event_meta_obs[, class_cols, drop = FALSE])
   storage.mode(obs_ast_mat) <- "double"
 
-  # -- Outcome flags per event ------------------------------------------------
+  # Outcome flags per event
   oc_col_use <- if (!is.null(outcome_col) && outcome_col %in% names(event_meta_obs)) {
     outcome_col
   } else {
@@ -6036,7 +6041,7 @@ compute_event_profile_probabilities <- function(
     is_nonfatal <- rep(TRUE, N_ev)
   }
 
-  # -- Hospital-pathogen profile class panels ---------------------------------
+  # Hospital-pathogen profile class panels
   # Panels come from the approved eligibility rules (fitted_model$eligibility_
   # report), not from "tested at least once" -- see .resolve_profile_class_panel().
   hp_pairs <- unique(event_meta_obs[, c(upper_re_col, pathogen_col), drop = FALSE])
@@ -6067,7 +6072,7 @@ compute_event_profile_probabilities <- function(
     "conditional_analytic_identity"
   }
 
-  # -- Per-hp-key static info: panel, observed matrix, cohort masks ------------
+  # Per-hp-key static info: panel, observed matrix, cohort masks
   key_info <- stats::setNames(lapply(hp_keys, function(key) {
     d_hp <- match(hp_panel[[key]]$classes, class_cols)
     ev_idx <- hp_ev_idx[[key]]
@@ -6135,7 +6140,7 @@ compute_event_profile_probabilities <- function(
   .event_i <- 0L
   .agg_i <- 0L
 
-  # -- Main draw loop: mu_all computed once per draw, shared across hp-keys ---
+  # Main draw loop: mu_all computed once per draw, shared across hp-keys
   for (s in seq_len(S)) {
     beta_s <- matrix(beta_arr[s, , ], nrow = K, ncol = D)
     re_term <- if (re_prep$R > 0L) {
@@ -6243,7 +6248,7 @@ compute_event_profile_probabilities <- function(
     }
   }
 
-  # -- Finalize identity-residual event-level posterior means ------------------
+  # Finalize identity-residual event-level posterior means
   for (key in valid_keys) {
     ki <- key_info[[key]]
     h_nm <- hp_pairs[[upper_re_col]][match(key, hp_keys)]
@@ -6329,8 +6334,8 @@ assess_gibbs_profile_stability <- function(
   for (nm in required) {
     x <- schedules[[nm]]
     if (!is.list(x) || !all(c("burnin", "kept") %in% names(x)) ||
-        length(x$burnin) != 1L || length(x$kept) != 1L ||
-        is.na(x$burnin) || is.na(x$kept) || x$burnin < 0 || x$kept < 1) {
+      length(x$burnin) != 1L || length(x$kept) != 1L ||
+      is.na(x$burnin) || is.na(x$kept) || x$burnin < 0 || x$kept < 1) {
       stop(sprintf("Schedule `%s` must supply non-negative `burnin` and positive `kept`.", nm), call. = FALSE)
     }
     schedules[[nm]] <- list(burnin = as.integer(x$burnin), kept = as.integer(x$kept))
@@ -6357,11 +6362,13 @@ assess_gibbs_profile_stability <- function(
     gibbs_stability_status = "not_applicable"
   )
   if (!identical(residual_structure, "correlated")) {
-    return(list(summary = schedule_summary, event_comparison = empty,
+    return(list(
+      summary = schedule_summary, event_comparison = empty,
       aggregate_comparison = empty, selected_events = empty,
       schedules_used = schedules, posterior_draw_indices = integer(), seed = as.integer(seed),
       tolerance = tolerance, status = "not_applicable",
-      rng_scheme = "Not applicable: identity-residual completion is analytic."))
+      rng_scheme = "Not applicable: identity-residual completion is analytic."
+    ))
   }
 
   event_meta <- fitted_model$event_metadata
@@ -6372,26 +6379,32 @@ assess_gibbs_profile_stability <- function(
   candidate <- candidate[n_missing > 0L, , drop = FALSE]
   n_missing <- n_missing[n_missing > 0L]
   if (!nrow(candidate)) {
-    return(list(summary = schedule_summary, event_comparison = empty,
+    return(list(
+      summary = schedule_summary, event_comparison = empty,
       aggregate_comparison = empty, selected_events = empty,
       schedules_used = schedules, posterior_draw_indices = integer(), seed = as.integer(seed),
       tolerance = tolerance, status = "not_applicable",
-      rng_scheme = "Not applicable: no incomplete observed events."))
+      rng_scheme = "Not applicable: no incomplete observed events."
+    ))
   }
   observed_n <- rowSums(!is.na(candidate[, class_cols, drop = FALSE]))
   observed_r <- rowSums(candidate[, class_cols, drop = FALSE] == 1, na.rm = TRUE)
   pattern <- ifelse(observed_n == 0L, "no_observed_class",
     ifelse(observed_r / observed_n > 0.5, "mostly_R",
-      ifelse(observed_r / observed_n < 0.5, "mostly_S", "mixed_RS")))
+      ifelse(observed_r / observed_n < 0.5, "mostly_S", "mixed_RS")
+    )
+  )
   selected <- tibble::as_tibble(candidate) %>%
-    dplyr::mutate(n_classes_missing = n_missing,
+    dplyr::mutate(
+      n_classes_missing = n_missing,
       missingness_stratum = ifelse(.data$n_classes_missing == 1L, "missing_1", "missing_2_plus"),
-      observed_pattern_stratum = pattern)
+      observed_pattern_stratum = pattern
+    )
   if (event_selection == "stratified" && nrow(selected) > max_events) {
     grp_cols <- c(fitted_model$upper_re_col, "missingness_stratum", "observed_pattern_stratum")
     key <- do.call(paste, c(selected[grp_cols], sep = "||"))
     groups <- split(seq_len(nrow(selected)), key)
-    set.seed(as.integer(seed))
+    .local_seed(as.integer(seed))
     quota <- max(1L, floor(max_events / length(groups)))
     take <- unlist(lapply(groups, function(ii) sample(ii, min(length(ii), quota))), use.names = FALSE)
     if (length(take) < max_events) {
@@ -6400,20 +6413,23 @@ assess_gibbs_profile_stability <- function(
     }
     selected <- selected[sort(take), , drop = FALSE]
   } else if (nrow(selected) > max_events) {
-    set.seed(as.integer(seed)); selected <- selected[sort(sample.int(nrow(selected), max_events)), , drop = FALSE]
+    .local_seed(as.integer(seed))
+    selected <- selected[sort(sample.int(nrow(selected), max_events)), , drop = FALSE]
   }
-  selected_events <- selected %>% dplyr::transmute(event_idx = .data$.event_idx,
+  selected_events <- selected %>% dplyr::transmute(
+    event_idx = .data$.event_idx,
     n_classes_missing = .data$n_classes_missing,
     missingness_stratum = .data$missingness_stratum,
     observed_pattern_stratum = .data$observed_pattern_stratum,
     !!fitted_model$upper_re_col := .data[[fitted_model$upper_re_col]],
-    !!fitted_model$pathogen_col := .data[[fitted_model$pathogen_col]])
+    !!fitted_model$pathogen_col := .data[[fitted_model$pathogen_col]]
+  )
 
   if (!requireNamespace("posterior", quietly = TRUE)) {
     stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
   }
   total_draws <- nrow(posterior::as_draws_matrix(fitted_model$draws))
-  set.seed(as.integer(seed) + 1L)
+  .local_seed(as.integer(seed) + 1L)
   n_use <- min(as.integer(n_posterior_draws), total_draws)
   draw_idx <- if (n_use < total_draws) sort(sample.int(total_draws, n_use)) else seq_len(total_draws)
 
@@ -6421,34 +6437,47 @@ assess_gibbs_profile_stability <- function(
   # stream.  Together with explicit `draw_idx`/event IDs this is common-random-
   # number comparison; only burn-in/retained Gibbs iterations differ.
   outputs <- lapply(names(schedules), function(nm) {
-    set.seed(as.integer(seed) + 2L)
+    .local_seed(as.integer(seed) + 2L)
     compute_event_profile_probabilities(fitted_model,
       seed = as.integer(seed) + 2L, n_gibbs_burnin = schedules[[nm]]$burnin,
       n_gibbs_kept = schedules[[nm]]$kept, posterior_draw_indices = draw_idx,
-      event_indices = selected_events$event_idx)
+      event_indices = selected_events$event_idx
+    )
   })
   names(outputs) <- names(schedules)
   compare <- function(a, b, label) {
     ae <- outputs[[a]]$event_profiles %>%
       dplyr::select(event_idx, profile_class_set, profile_delta, p_a = profile_probability) %>%
-      dplyr::inner_join(outputs[[b]]$event_profiles %>%
-        dplyr::select(event_idx, profile_class_set, profile_delta, p_b = profile_probability),
-        by = c("event_idx", "profile_class_set", "profile_delta")) %>%
+      dplyr::inner_join(
+        outputs[[b]]$event_profiles %>%
+          dplyr::select(event_idx, profile_class_set, profile_delta, p_b = profile_probability),
+        by = c("event_idx", "profile_class_set", "profile_delta")
+      ) %>%
       dplyr::group_by(.data$event_idx, .data$profile_class_set) %>%
-      dplyr::summarise(comparison = label, max_abs_diff = max(abs(.data$p_a - .data$p_b)),
+      dplyr::summarise(
+        comparison = label, max_abs_diff = max(abs(.data$p_a - .data$p_b)),
         mean_abs_diff = mean(abs(.data$p_a - .data$p_b)), l1_distance = sum(abs(.data$p_a - .data$p_b)),
-        .groups = "drop")
+        .groups = "drop"
+      )
     aa <- outputs[[a]]$aggregate_draws %>%
-      dplyr::group_by(dplyr::across(dplyr::all_of(c(fitted_model$upper_re_col, fitted_model$pathogen_col,
-        "profile_class_set", "profile_delta")))) %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(c(
+        fitted_model$upper_re_col, fitted_model$pathogen_col,
+        "profile_class_set", "profile_delta"
+      )))) %>%
       dplyr::summarise(p_a = mean(.data$R_ALL_s), .groups = "drop") %>%
-      dplyr::inner_join(outputs[[b]]$aggregate_draws %>%
-        dplyr::group_by(dplyr::across(dplyr::all_of(c(fitted_model$upper_re_col, fitted_model$pathogen_col,
-          "profile_class_set", "profile_delta")))) %>%
-        dplyr::summarise(p_b = mean(.data$R_ALL_s), .groups = "drop"),
-        by = c(fitted_model$upper_re_col, fitted_model$pathogen_col, "profile_class_set", "profile_delta")) %>%
-      dplyr::transmute(dplyr::across(dplyr::all_of(c(fitted_model$upper_re_col, fitted_model$pathogen_col,
-        "profile_class_set", "profile_delta"))), comparison = label, abs_diff = abs(.data$p_a - .data$p_b))
+      dplyr::inner_join(
+        outputs[[b]]$aggregate_draws %>%
+          dplyr::group_by(dplyr::across(dplyr::all_of(c(
+            fitted_model$upper_re_col, fitted_model$pathogen_col,
+            "profile_class_set", "profile_delta"
+          )))) %>%
+          dplyr::summarise(p_b = mean(.data$R_ALL_s), .groups = "drop"),
+        by = c(fitted_model$upper_re_col, fitted_model$pathogen_col, "profile_class_set", "profile_delta")
+      ) %>%
+      dplyr::transmute(dplyr::across(dplyr::all_of(c(
+        fitted_model$upper_re_col, fitted_model$pathogen_col,
+        "profile_class_set", "profile_delta"
+      ))), comparison = label, abs_diff = abs(.data$p_a - .data$p_b))
     list(event = ae, aggregate = aa)
   }
   bl <- compare("baseline", "long", "baseline_vs_long")
@@ -6464,12 +6493,15 @@ assess_gibbs_profile_stability <- function(
     max_abs_aggregate_difference_medium_long = max(ml$aggregate$abs_diff, na.rm = TRUE),
     mean_abs_aggregate_difference_medium_long = mean(ml$aggregate$abs_diff),
     p95_event_max_abs_diff_baseline_long = stats::quantile(bl$event$max_abs_diff, 0.95, names = FALSE),
-    max_event_max_abs_diff_baseline_long = max(bl$event$max_abs_diff), gibbs_stability_status = status)
-  list(summary = summary, event_comparison = event_comparison,
+    max_event_max_abs_diff_baseline_long = max(bl$event$max_abs_diff), gibbs_stability_status = status
+  )
+  list(
+    summary = summary, event_comparison = event_comparison,
     aggregate_comparison = aggregate_comparison, selected_events = selected_events,
     schedules_used = schedules, posterior_draw_indices = draw_idx, seed = as.integer(seed),
     tolerance = tolerance, status = status,
-    rng_scheme = "Shared explicit posterior draw indices/event IDs; RNG reset to seed + 2 before each schedule.")
+    rng_scheme = "Shared explicit posterior draw indices/event IDs; RNG reset to seed + 2 before each schedule."
+  )
 }
 
 #' Aggregate Posterior Profile Draws into R_ALL / R_KNOWN_OUTCOME / R_NF Summaries
@@ -6813,7 +6845,7 @@ estimate_resistance_profiles <- function(
     sampler_config                 = sampler_config
   )
 
-  # ---- Pathway 1 -----------------------------------------------------------
+  # Pathway 1
   if (method == "convex") {
     message("[estimate_resistance_profiles] Running Pathway 1 (convex optimisation)...")
 
@@ -6843,7 +6875,7 @@ estimate_resistance_profiles <- function(
     ))
   }
 
-  # ---- Pathway 2 -----------------------------------------------------------
+  # Pathway 2
   message("[estimate_resistance_profiles] Running Pathway 2 (Bayesian multivariate probit)...")
   message(sprintf("  Estimand: %s", estimand))
   if (!is.null(pathogen)) {

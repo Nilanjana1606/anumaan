@@ -97,7 +97,7 @@ prep_standardize_final_outcome <- function(data, col = "final_outcome") {
 
   dist <- table(data$outcome_std, useNA = "ifany")
   message("Standardized final outcome distribution:")
-  print(dist)
+  .msg_print(dist)
 
   return(data)
 }
@@ -135,7 +135,7 @@ prep_standardize_infection_type <- function(data, col = "infection_type") {
 
   dist <- table(data[[col]], useNA = "ifany")
   message("Standardized infection type distribution:")
-  print(dist)
+  .msg_print(dist)
 
   return(data)
 }

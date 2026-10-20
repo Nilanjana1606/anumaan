@@ -43,7 +43,7 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
     return(out)
   }
 
-  # ---- Numeric probe -------------------------------------------------------
+  # Numeric probe
   x_num <- suppressWarnings(as.numeric(x_chr))
   is_numeric <- !is.na(x_num)
 
@@ -68,7 +68,7 @@ prep_parse_date_column <- function(x, col_name = "date", table_label = "table") 
     ))
   }
 
-  # ---- String parsing for remaining indices --------------------------------
+  # String parsing for remaining indices
   # Keep unresolved numeric-looking strings here as well, because patterns like
   # YYYYDDMM (e.g. 20201301) are numeric but still need the swap fallback.
   remaining <- idx_present[is.na(out[idx_present])]
@@ -180,9 +180,7 @@ prep_coerce_dates <- function(data, cols = NULL, table_label = "table") {
 }
 
 
-# ---------------------------------------------------------------------------
 # New functions (Layer 3a)
-# ---------------------------------------------------------------------------
 
 #' Validate Date Logic
 #'

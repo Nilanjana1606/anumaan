@@ -94,23 +94,26 @@ The function uses two complementary sources of evidence:
 }
 }
 \examples{
-\dontrun{
-marg <- compute_marginal_resistance(amr_clean)
-co_res <- compute_pairwise_coresistance(marg)
-rp <- compute_resistance_profiles(marg, co_res)
-
-# Using stored constraint residuals only
-checks <- check_profile_constraints(rp)
-
-# Full re-verification with original rates
-checks <- check_profile_constraints(
-  rp,
-  marginals = marg$marginal,
-  pairwise  = NULL,
-  tolerance = 1e-5
-)
-
-# Inspect failures
-checks[!checks$pass, ]
+if (requireNamespace("quadprog", quietly = TRUE)) {
+  set.seed(1)
+  ast_class <- data.frame(
+    isolate_id       = rep(sprintf("ISO\%02d", 1:80), each = 3),
+    organism_name    = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 120),
+    org_group        = "Enterobacterales",
+    antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), times = 80),
+    antibiotic_value = sample(c("S", "R"), 240, replace = TRUE)
+  )
+  marg <- compute_marginal_resistance(ast_class)
+  marg$marginal
+  co_res <- compute_pairwise_coresistance(marg)
+  co_res[["Klebsiella pneumoniae"]]$prevalence
+  rp <- compute_resistance_profiles(marg, co_res, exclude_near_zero = FALSE)
+  rp[["Klebsiella pneumoniae"]]$profiles
+  checks <- check_profile_constraints(rp,
+    marginals = marg$marginal,
+    pathogen_col = "organism_name", class_col = "antibiotic_class",
+    rate_col = "marginal_resistance"
+  )
+  checks[!checks$pass, ]
 }
 }

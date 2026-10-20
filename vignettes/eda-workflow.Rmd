@@ -93,27 +93,31 @@ vignette's `prepped` object, scaled up to two hospitals so the `mode =
 set.seed(42)
 n_pts <- 60
 centers <- c("General Hospital", "City Medical Center")
-organisms <- c("Escherichia coli", "Klebsiella pneumoniae",
-                "Staphylococcus aureus", "Pseudomonas aeruginosa")
+organisms <- c(
+  "Escherichia coli", "Klebsiella pneumoniae",
+  "Staphylococcus aureus", "Pseudomonas aeruginosa"
+)
 antibiotics <- c("Amikacin", "Ciprofloxacin", "Meropenem", "Ceftriaxone")
 
 eda_data <- data.frame(
-  patient_id             = paste0("pt_", sprintf("%03d", rep(1:n_pts, each = 3))),
-  center_name            = rep(sample(centers, n_pts, replace = TRUE), each = 3),
-  organism_normalized    = rep(sample(organisms, n_pts, replace = TRUE), each = 3),
-  antibiotic_normalized  = rep(antibiotics, length.out = n_pts * 3),
-  ast_value_harmonized   = sample(c("R", "S"), n_pts * 3, replace = TRUE, prob = c(0.4, 0.6)),
-  specimen_normalized    = rep(sample(c("Blood", "Urine", "Sputum"), n_pts, replace = TRUE), each = 3),
-  final_outcome          = rep(sample(c("Death", "Discharged", "LAMA", "Transferred to other hospital"),
-                                       n_pts, replace = TRUE, prob = c(0.15, 0.65, 0.1, 0.1)), each = 3),
-  date_of_final_outcome  = rep(as.Date("2024-01-01") + sample(1:300, n_pts, replace = TRUE), each = 3),
-  is_polymicrobial       = rep(sample(c(0, 1), n_pts, replace = TRUE, prob = c(0.75, 0.25)), each = 3),
-  date_of_admission      = rep(as.Date("2024-01-01") + sample(1:300, n_pts, replace = TRUE), each = 3),
-  location               = rep(sample(c("ICU", "Ward"), n_pts, replace = TRUE), each = 3),
-  infection_type         = rep(sample(c("HAI", "CAI"), n_pts, replace = TRUE), each = 3),
-  Age_bin                = rep(sample(c("<1", "1-5", "18-45", "45-65", "65+"), n_pts, replace = TRUE), each = 3),
-  Age                    = rep(sample(0:85, n_pts, replace = TRUE), each = 3),
-  infectious_syndrome    = rep(sample(c("BSI", "UTI", "RTI"), n_pts, replace = TRUE), each = 3),
+  patient_id = paste0("pt_", sprintf("%03d", rep(1:n_pts, each = 3))),
+  center_name = rep(sample(centers, n_pts, replace = TRUE), each = 3),
+  organism_normalized = rep(sample(organisms, n_pts, replace = TRUE), each = 3),
+  antibiotic_normalized = rep(antibiotics, length.out = n_pts * 3),
+  ast_value_harmonized = sample(c("R", "S"), n_pts * 3, replace = TRUE, prob = c(0.4, 0.6)),
+  specimen_normalized = rep(sample(c("Blood", "Urine", "Sputum"), n_pts, replace = TRUE), each = 3),
+  final_outcome = rep(sample(c("Death", "Discharged", "LAMA", "Transferred to other hospital"),
+    n_pts,
+    replace = TRUE, prob = c(0.15, 0.65, 0.1, 0.1)
+  ), each = 3),
+  date_of_final_outcome = rep(as.Date("2024-01-01") + sample(1:300, n_pts, replace = TRUE), each = 3),
+  is_polymicrobial = rep(sample(c(0, 1), n_pts, replace = TRUE, prob = c(0.75, 0.25)), each = 3),
+  date_of_admission = rep(as.Date("2024-01-01") + sample(1:300, n_pts, replace = TRUE), each = 3),
+  location = rep(sample(c("ICU", "Ward"), n_pts, replace = TRUE), each = 3),
+  infection_type = rep(sample(c("HAI", "CAI"), n_pts, replace = TRUE), each = 3),
+  Age_bin = rep(sample(c("<1", "1-5", "18-45", "45-65", "65+"), n_pts, replace = TRUE), each = 3),
+  Age = rep(sample(0:85, n_pts, replace = TRUE), each = 3),
+  infectious_syndrome = rep(sample(c("BSI", "UTI", "RTI"), n_pts, replace = TRUE), each = 3),
   stringsAsFactors = FALSE
 )
 eda_data$date_of_culture <- eda_data$date_of_admission + sample(0:5, nrow(eda_data), replace = TRUE)
@@ -138,7 +142,8 @@ eda_theme(base_size = 14)
 
 ```{r top-organisms, fig.width = 14, fig.height = 5.5}
 plot_top_organisms(
-  eda_data, n = 3, mode = "faceted",
+  eda_data,
+  n = 3, mode = "faceted",
   patient_col = "patient_id", organism_col = "organism_normalized", center_col = "center_name"
 )
 ```
@@ -155,7 +160,8 @@ episode are not double-counted.
 
 ```{r abx-susceptibility}
 plot_abx_susceptibility(
-  eda_data, n = 3, mode = "overall",
+  eda_data,
+  n = 3, mode = "overall",
   patient_col = "patient_id", antibiotic_col = "antibiotic_normalized",
   value_col = "ast_value_harmonized", organism_col = "organism_normalized",
   center_col = "center_name"
@@ -166,7 +172,8 @@ plot_abx_susceptibility(
 
 ```{r abx-heatmap, fig.width = 11, fig.height = 4.5}
 plot_abx_heatmap(
-  eda_data, mode = "all",
+  eda_data,
+  mode = "all",
   patient_col = "patient_id", antibiotic_col = "antibiotic_normalized",
   value_col = "ast_value_harmonized", organism_col = "organism_normalized",
   center_col = "center_name"
@@ -177,7 +184,8 @@ plot_abx_heatmap(
 
 ```{r resistance-by-sample}
 plot_resistance_by_sample(
-  eda_data, n = 3, mode = "overall",
+  eda_data,
+  n = 3, mode = "overall",
   patient_col = "patient_id", sample_col = "specimen_normalized",
   organism_col = "organism_normalized", antibiotic_col = "antibiotic_normalized",
   value_col = "ast_value_harmonized", center_col = "center_name"
@@ -188,7 +196,8 @@ plot_resistance_by_sample(
 
 ```{r resistance-by-agebin, fig.width = 12, fig.height = 5}
 plot_resistance_by_agebin(
-  eda_data, mode = "overall",
+  eda_data,
+  mode = "overall",
   patient_col = "patient_id", organism_col = "organism_normalized",
   antibiotic_col = "antibiotic_normalized", value_col = "ast_value_harmonized",
   agebin_col = "Age_bin", center_col = "center_name"
@@ -197,7 +206,8 @@ plot_resistance_by_agebin(
 
 ```{r resistance-by-organism, fig.width = 12, fig.height = 5}
 plot_resistance_by_organism(
-  eda_data, n = 3, mode = "overall",
+  eda_data,
+  n = 3, mode = "overall",
   patient_col = "patient_id", organism_col = "organism_normalized",
   antibiotic_col = "antibiotic_normalized", value_col = "ast_value_harmonized",
   center_col = "center_name"
@@ -213,7 +223,8 @@ to `"Referred"`, since both represent the same clinical event across centres.
 
 ```{r outcome-distribution}
 plot_outcome_distribution(
-  eda_data, mode = "overall",
+  eda_data,
+  mode = "overall",
   patient_col = "patient_id", outcome_col = "final_outcome", center_col = "center_name"
 )
 ```
@@ -226,7 +237,8 @@ overlap, calling the function once for each gives the fuller picture.
 
 ```{r outcome-by-organism}
 plot_outcome_by_organism(
-  eda_data, n = 3, resistance_filter = "R", mode = "overall",
+  eda_data,
+  n = 3, resistance_filter = "R", mode = "overall",
   patient_col = "patient_id", organism_col = "organism_normalized",
   antibiotic_col = "antibiotic_normalized", value_col = "ast_value_harmonized",
   outcome_col = "final_outcome", center_col = "center_name"
@@ -237,7 +249,8 @@ plot_outcome_by_organism(
 
 ```{r death-discharged}
 plot_death_discharged(
-  eda_data, n = 3, mode = "overall",
+  eda_data,
+  n = 3, mode = "overall",
   patient_col = "patient_id", organism_col = "organism_normalized",
   outcome_col = "final_outcome", center_col = "center_name",
   antibiotic_col = "antibiotic_normalized", value_col = "ast_value_harmonized"
@@ -248,7 +261,8 @@ plot_death_discharged(
 
 ```{r outcome-by-agebin}
 plot_outcome_by_agebin(
-  eda_data, mode = "overall",
+  eda_data,
+  mode = "overall",
   patient_col = "patient_id", agebin_col = "Age_bin",
   outcome_col = "final_outcome", center_col = "center_name"
 )
@@ -256,7 +270,8 @@ plot_outcome_by_agebin(
 
 ```{r outcome-by-year}
 plot_outcome_by_year(
-  eda_data, mode = "overall",
+  eda_data,
+  mode = "overall",
   patient_col = "patient_id", outcome_col = "final_outcome",
   date_col = "date_of_final_outcome", center_col = "center_name"
 )
@@ -274,7 +289,8 @@ plot_patients_by_hospital(eda_data, patient_col = "patient_id", center_col = "ce
 
 ```{r mono-poly}
 plot_mono_poly_by_facility(
-  eda_data, patient_col = "patient_id", poly_col = "is_polymicrobial", center_col = "center_name"
+  eda_data,
+  patient_col = "patient_id", poly_col = "is_polymicrobial", center_col = "center_name"
 )
 ```
 
@@ -286,7 +302,8 @@ is not already available.
 
 ```{r hai-cai}
 plot_hai_cai_by_facility(
-  eda_data, patient_col = "patient_id", center_col = "center_name",
+  eda_data,
+  patient_col = "patient_id", center_col = "center_name",
   admission_col = "date_of_admission", culture_col = "date_of_culture"
 )
 ```
@@ -295,7 +312,8 @@ plot_hai_cai_by_facility(
 
 ```{r location-facility}
 plot_location_by_facility(
-  eda_data, patient_col = "patient_id", location_col = "location", center_col = "center_name"
+  eda_data,
+  patient_col = "patient_id", location_col = "location", center_col = "center_name"
 )
 ```
 
@@ -303,7 +321,8 @@ plot_location_by_facility(
 
 ```{r infection-type-location}
 plot_infection_type_by_location(
-  eda_data, style = "bar", patient_col = "patient_id", center_col = "center_name",
+  eda_data,
+  style = "bar", patient_col = "patient_id", center_col = "center_name",
   location_col = "location", infection_col = "infection_type"
 )
 ```
@@ -312,7 +331,8 @@ plot_infection_type_by_location(
 
 ```{r syndrome-distribution}
 plot_syndrome_distribution(
-  eda_data, mode = "overall", patient_col = "patient_id",
+  eda_data,
+  mode = "overall", patient_col = "patient_id",
   syndrome_col = "infectious_syndrome", center_col = "center_name"
 )
 ```
@@ -323,7 +343,8 @@ plot_syndrome_distribution(
 
 ```{r los-ridge, fig.width = 11, fig.height = 5.5}
 plot_los_ridge(
-  eda_data, mode = "all", patient_col = "patient_id", center_col = "center_name",
+  eda_data,
+  mode = "all", patient_col = "patient_id", center_col = "center_name",
   admission_col = "date_of_admission", discharge_col = "date_of_final_outcome"
 )
 ```
@@ -338,7 +359,8 @@ plot_age_ridge(eda_data, mode = "all", patient_col = "patient_id", age_col = "Ag
 
 ```{r los-by-agebin, fig.width = 12, fig.height = 5.5}
 plot_los_by_agebin(
-  eda_data, mode = "overall", patient_col = "patient_id", agebin_col = "Age_bin",
+  eda_data,
+  mode = "overall", patient_col = "patient_id", agebin_col = "Age_bin",
   age_col = "Age", center_col = "center_name",
   admission_col = "date_of_admission", discharge_col = "date_of_final_outcome"
 )

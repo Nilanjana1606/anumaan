@@ -10,12 +10,10 @@ daly_load_rr_reference()
 Data frame with Pathogen, Drug, and RR columns
 }
 \description{
-Loads the rr_list_gbd.xlsx file containing pathogen-drug combinations
+Loads the bundled rr_list_gbd.csv file containing pathogen-drug combinations
 with relative risk values for burden estimation.
 }
 \examples{
-\dontrun{
 rr_data <- daly_load_rr_reference()
 head(rr_data)
-}
 }

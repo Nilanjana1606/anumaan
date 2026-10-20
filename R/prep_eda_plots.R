@@ -148,7 +148,7 @@ plot_top_organisms <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -450,7 +450,7 @@ plot_abx_susceptibility <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -799,7 +799,7 @@ plot_abx_heatmap <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -1127,19 +1127,19 @@ plot_abx_complex_heatmap <- function(data,
   ht <- ComplexHeatmap::Heatmap(
     heat_matrix,
     name = legend_name,
-    col  = col_fun,
-    cluster_rows    = cluster_rows,
+    col = col_fun,
+    cluster_rows = cluster_rows,
     cluster_columns = cluster_columns,
-    show_row_dend    = FALSE,
+    show_row_dend = FALSE,
     show_column_dend = FALSE,
-    row_title    = row_title,
+    row_title = row_title,
     column_title = column_title,
-    row_title_gp    = grid::gpar(fontsize = base_size, fontface = "bold"),
+    row_title_gp = grid::gpar(fontsize = base_size, fontface = "bold"),
     column_title_gp = grid::gpar(fontsize = base_size, fontface = "bold"),
     column_names_rot = 45,
     column_names_gp = grid::gpar(fontsize = base_size - 2),
     column_names_max_height = column_names_max_height,
-    row_names_gp    = grid::gpar(fontsize = base_size - 2),
+    row_names_gp = grid::gpar(fontsize = base_size - 2),
     heatmap_legend_param = list(
       title_gp  = grid::gpar(fontsize = base_size, fontface = "bold"),
       labels_gp = grid::gpar(fontsize = base_size - 2)
@@ -1282,7 +1282,7 @@ plot_outcome_distribution <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -1612,7 +1612,7 @@ plot_outcome_by_organism <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -2001,7 +2001,7 @@ plot_death_discharged <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -2389,7 +2389,7 @@ plot_resistance_by_sample <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -2724,7 +2724,7 @@ plot_outcome_by_agebin <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -3045,7 +3045,7 @@ plot_mono_poly_by_facility <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -3205,7 +3205,7 @@ plot_hai_cai_by_facility <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -3399,7 +3399,7 @@ plot_location_by_facility <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -3578,7 +3578,7 @@ plot_los_ridge <- function(
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -3814,7 +3814,7 @@ plot_age_ridge <- function(
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -4077,7 +4077,7 @@ plot_los_by_agebin <- function(
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -4149,7 +4149,7 @@ plot_los_by_agebin <- function(
     dplyr::filter(!is.na(!!adm_sym), !is.na(!!dis_sym), !is.na(!!bin_sym)) %>%
     dplyr::distinct(!!pt_sym, !!ctr_sym, !!bin_sym, !!adm_sym, !!dis_sym) %>%
     dplyr::mutate(
-      LOS_days    = as.numeric(difftime(!!dis_sym, !!adm_sym, units = "days")),
+      LOS_days = as.numeric(difftime(!!dis_sym, !!adm_sym, units = "days")),
       !!bin_col := factor(!!bin_sym, levels = lvls)
     ) %>%
     dplyr::filter(LOS_days >= min_los, LOS_days <= max_los)
@@ -4337,7 +4337,7 @@ plot_outcome_by_year <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -4581,7 +4581,7 @@ plot_patients_by_hospital <- function(data,
   # syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
     data <- data[!is.na(data[[syndrome_col]]) &
-      data[[syndrome_col]] == syndrome_name, ]
+      .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -4817,6 +4817,7 @@ plot_syndrome_distribution <- function(data,
 #' @param title          Optional title override.
 #' @param syndrome_col   Optional column used to pre-filter by syndrome.
 #' @param syndrome_name  Optional value of \code{syndrome_col} to keep.
+#' @return A \code{ggplot} object.
 #' @export
 plot_resistance_by_agebin <- function(
   data,
@@ -4860,7 +4861,7 @@ plot_resistance_by_agebin <- function(
 
   # 2. syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
+    data <- data[!is.na(data[[syndrome_col]]) & .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0L) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }
@@ -5040,6 +5041,7 @@ plot_resistance_by_agebin <- function(
 #' @param title          Optional title override.
 #' @param syndrome_col   Optional column used to pre-filter by syndrome.
 #' @param syndrome_name  Optional value of \code{syndrome_col} to keep.
+#' @return A \code{ggplot} object.
 #' @export
 plot_resistance_by_organism <- function(
   data,
@@ -5083,7 +5085,7 @@ plot_resistance_by_organism <- function(
 
   # 2. syndrome pre-filter
   if (!is.null(syndrome_col) && !is.null(syndrome_name)) {
-    data <- data[!is.na(data[[syndrome_col]]) & data[[syndrome_col]] == syndrome_name, ]
+    data <- data[!is.na(data[[syndrome_col]]) & .name_key(data[[syndrome_col]]) == .name_key(syndrome_name), ]
     if (nrow(data) == 0L) {
       stop(sprintf("No rows found where %s == '%s'.", syndrome_col, syndrome_name))
     }

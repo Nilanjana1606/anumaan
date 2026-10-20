@@ -11,6 +11,9 @@
 
 \item{...}{Additional arguments (not used)}
 }
+\value{
+The input object \code{x}, invisibly.
+}
 \description{
 Print AMR Configuration
 }

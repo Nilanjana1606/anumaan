@@ -1,4 +1,5 @@
 skip_if_no_cmdstan <- function() {
+  testthat::skip_on_cran()
   testthat::skip_if_not_installed("cmdstanr")
   path <- tryCatch(cmdstanr::cmdstan_path(), error = function(e) "")
   testthat::skip_if(!nzchar(path), "CmdStan is not configured")

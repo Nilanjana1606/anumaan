@@ -16,8 +16,10 @@
 
 .fake_diag <- function(n_divergent = 0, n_treedepth_sat = 0, ebfmi_min = 0.8,
                        max_rhat_structural = 1.005) {
-  list(n_divergent = n_divergent, n_treedepth_sat = n_treedepth_sat,
-      ebfmi_min = ebfmi_min, max_rhat_structural = max_rhat_structural)
+  list(
+    n_divergent = n_divergent, n_treedepth_sat = n_treedepth_sat,
+    ebfmi_min = ebfmi_min, max_rhat_structural = max_rhat_structural
+  )
 }
 
 test_that("1. divergences > 0 -> adapt_delta recommendation IS allowed, as primary", {
@@ -56,8 +58,10 @@ test_that("4. fixed-effect Rhat failures only -> fixed-effect/sparsity recommend
     diag = .fake_diag(n_divergent = 0, ebfmi_min = 0.8),
     grouped_diag = .fake_grouped(beta_pct = 25, omega_pct = 0),
     degeneracy_stats = NULL, residual_structure = "identity",
-    beta_summary = data.frame(family = c("Hospital", "Age"), pct_rhat_gt_1_01 = c(25, 0),
-                              worst_rhat = c(1.03, 1.0), min_ess_bulk = c(200, 900))
+    beta_summary = data.frame(
+      family = c("Hospital", "Age"), pct_rhat_gt_1_01 = c(25, 0),
+      worst_rhat = c(1.03, 1.0), min_ess_bulk = c(200, 900)
+    )
   )
   expect_identical(issues$bucket, "beta_rhat")
   expect_true(any(grepl("Hospital", issues$primary)))
@@ -103,10 +107,12 @@ test_that("8. Exp-17-like fixture: primary = energy/Omega geometry, adapt_delta 
   issues <- .probit_classify_fitting_issues(
     diag = .fake_diag(n_divergent = 0, n_treedepth_sat = 0, ebfmi_min = 0.109, max_rhat_structural = 1.0505),
     grouped_diag = grouped, degeneracy_stats = degeneracy, residual_structure = "correlated",
-    beta_summary = data.frame(family = c("Intercept", "Hospital", "Age", "Sex"),
-                              pct_rhat_gt_1_01 = c(50, 25, 0, 0),
-                              worst_rhat = c(1.0117, 1.0125, 1.0, 1.0),
-                              min_ess_bulk = c(307, 320, 1363, 1352))
+    beta_summary = data.frame(
+      family = c("Intercept", "Hospital", "Age", "Sex"),
+      pct_rhat_gt_1_01 = c(50, 25, 0, 0),
+      worst_rhat = c(1.0117, 1.0125, 1.0, 1.0),
+      min_ess_bulk = c(307, 320, 1363, 1352)
+    )
   )
   expect_identical(issues$bucket, "energy_or_omega_geometry")
   expect_true(any(grepl("energy exploration", issues$primary)))

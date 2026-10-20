@@ -97,6 +97,7 @@
 }
 
 test_that("identity residual: fully observed event gets a degenerate profile", {
+  skip_on_cran()
   skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
 
   wide <- .bprofile_make_wide_data()
@@ -127,6 +128,7 @@ test_that("identity residual: fully observed event gets a degenerate profile", {
 })
 
 test_that("identity residual: partially observed event's profile distribution sums to 1 and respects observed cells", {
+  skip_on_cran()
   skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
 
   wide <- .bprofile_make_wide_data()
@@ -161,6 +163,7 @@ test_that("identity residual: partially observed event's profile distribution su
 })
 
 test_that("identity residual: panel excludes marginally-ineligible class but not on pairwise grounds", {
+  skip_on_cran()
   skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
 
   wide <- .bprofile_make_wide_data()
@@ -185,6 +188,7 @@ test_that("identity residual: panel excludes marginally-ineligible class but not
 })
 
 test_that("aggregate_profiles_for_daly: zero-nonfatal cohort yields NA (not NaN) and an explicit exclusion reason", {
+  skip_on_cran()
   skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
 
   wide <- .bprofile_make_wide_data(
@@ -216,6 +220,7 @@ test_that("aggregate_profiles_for_daly: zero-nonfatal cohort yields NA (not NaN)
 })
 
 test_that("correlated residual: profile output uses conditional Gibbs imputation and is DALY-eligible", {
+  skip_on_cran()
   skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
 
   # Commit 6 replaced the old unconditional-simulation correlated path (which
@@ -257,6 +262,7 @@ test_that("correlated residual: profile output uses conditional Gibbs imputation
 })
 
 test_that("fixed-only identity fit supports diagnostics, profile generation, and DALY aggregation", {
+  skip_on_cran()
   skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
 
   wide <- .bprofile_make_wide_data(
@@ -308,6 +314,7 @@ test_that("fixed-only identity fit supports diagnostics, profile generation, and
 })
 
 test_that("fixed-only fit requires profile_group_col", {
+  skip_on_cran()
   skip_if_not(.bprofile_cmdstan_available(), "cmdstanr/CmdStan not available")
 
   wide <- .bprofile_make_wide_data(

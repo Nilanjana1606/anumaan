@@ -37,15 +37,12 @@ Converts long format (one row per organism-antibiotic) to wide format
 machine learning applications.
 }
 \examples{
-\dontrun{
-# Basic wide format
-wide_data <- prep_create_wide_ast_matrix(data)
-
-# Class-level wide format
-wide_data <- prep_create_wide_ast_matrix(
-  data,
-  antibiotic_col = "antibiotic_class",
-  prefix = "class_"
+ast <- data.frame(
+  event_id              = rep(c("E1", "E2"), each = 3),
+  organism_normalized   = rep(c("Escherichia coli", "Klebsiella pneumoniae"), each = 3),
+  antibiotic_normalized = rep(c("Meropenem", "Imipenem", "Ciprofloxacin"), 2),
+  antibiotic_class      = rep(c("Carbapenems", "Carbapenems", "Fluoroquinolones"), 2),
+  antibiotic_value      = c("S", "R", "R", "S", "S", "R")
 )
-}
+prep_create_wide_ast_matrix(ast, keep_cols = "organism_normalized")
 }

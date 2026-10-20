@@ -1,6 +1,6 @@
 # Category 2: prep_ast.R
 
-# prep_clean_ast_values --------------------------------------------------------
+# prep_clean_ast_values
 
 test_that("prep_clean_ast_values: valid behavior", {
   dat <- data.frame(antibiotic_value = c("R", "S", "I"), stringsAsFactors = FALSE)
@@ -24,7 +24,7 @@ test_that("prep_clean_ast_values: error handling", {
   expect_error(prep_clean_ast_values(data.frame(x = 1), value_col = "antibiotic_value"), "not found")
 })
 
-# prep_recode_intermediate_ast -------------------------------------------------
+# prep_recode_intermediate_ast
 
 test_that("prep_recode_intermediate_ast: valid behavior", {
   dat <- data.frame(antibiotic_name = c("colistin", "amikacin"), antibiotic_value = c("I", "I"), stringsAsFactors = FALSE)
@@ -48,7 +48,7 @@ test_that("prep_recode_intermediate_ast: error handling", {
   expect_error(prep_recode_intermediate_ast(data.frame(x = 1), antibiotic_col = "antibiotic_name"), "not found")
 })
 
-# prep_harmonize_ast -----------------------------------------------------------
+# prep_harmonize_ast
 
 test_that("prep_harmonize_ast: valid behavior", {
   dat <- data.frame(antibiotic_name_std = c("colistin", "amikacin"), ast_value_raw = c("I", "Resistant"), stringsAsFactors = FALSE)
@@ -75,7 +75,7 @@ test_that("prep_harmonize_ast: error handling", {
   expect_true(all(is.na(out$ast_value_harmonized)))
 })
 
-# prep_check_organism_ast_consistency ------------------------------------------
+# prep_check_organism_ast_consistency
 
 test_that("prep_check_organism_ast_consistency: valid behavior", {
   dat <- data.frame(organism_normalized = "escherichia coli", antibiotic_normalized = "amikacin", organism_group = "Enterobacterales", stringsAsFactors = FALSE)
@@ -101,7 +101,7 @@ test_that("prep_check_organism_ast_consistency: error handling", {
   expect_true(all(is.na(out$is_ast_inconsistent)))
 })
 
-# prep_flag_invalid_ast --------------------------------------------------------
+# prep_flag_invalid_ast
 
 test_that("prep_flag_invalid_ast: valid behavior", {
   dat <- data.frame(ast_value_harmonized = c("S", "I", "R"), stringsAsFactors = FALSE)
@@ -126,7 +126,7 @@ test_that("prep_flag_invalid_ast: error handling", {
   expect_true(all(is.na(out$is_ast_invalid)))
 })
 
-# prep_deduplicate_ast ---------------------------------------------------------
+# prep_deduplicate_ast
 # Fixture: cat2_ast_long_df() = cat2_ast_duplicates_same_day() — 5 rows:
 #   rows 1-2: pt_020 | e.coli | amikacin | 2025-01-15 | S  (exact duplicate)
 #   row  3:   pt_020 | e.coli | amikacin | 2025-01-15 | R  (conflict with row 1 after exact-dedup)
@@ -181,7 +181,7 @@ test_that("prep_deduplicate_ast: error handling — warns and returns unchanged 
   expect_identical(out, dat)
 })
 
-# prep_pivot_ast_wide_to_long --------------------------------------------------
+# prep_pivot_ast_wide_to_long
 
 test_that("prep_pivot_ast_wide_to_long: valid behavior", {
   dat <- data.frame(patient_id = c("p1", "p2"), AMK = c("S", "R"), CIP = c("R", "S"), stringsAsFactors = FALSE)
@@ -207,7 +207,7 @@ test_that("prep_pivot_ast_wide_to_long: error handling", {
   expect_error(prep_pivot_ast_wide_to_long(dat, antibiotic_cols = NULL, pattern = NULL), "must be provided")
 })
 
-# prep_create_wide_ast_matrix --------------------------------------------------
+# prep_create_wide_ast_matrix
 
 test_that("prep_create_wide_ast_matrix: valid behavior", {
   dat <- data.frame(event_id = c("e1", "e1", "e2"), antibiotic_normalized = c("amikacin", "ciprofloxacin", "amikacin"), antibiotic_value = c("S", "R", "R"), patient_id = c("p1", "p1", "p2"), organism_normalized = c("e coli", "e coli", "k pn"), date_of_culture = as.Date(c("2020-01-01", "2020-01-01", "2020-01-02")), stringsAsFactors = FALSE)

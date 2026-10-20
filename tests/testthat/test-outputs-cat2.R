@@ -1,6 +1,6 @@
 # Category 2: prep_outputs.R
 
-# prep_filter_minimally_usable -------------------------------------------------
+# prep_filter_minimally_usable
 
 test_that("prep_filter_minimally_usable: valid behavior", {
   dat <- cat2_outputs_df()
@@ -26,7 +26,7 @@ test_that("prep_filter_minimally_usable: error handling", {
   expect_equal(nrow(out), 1)
 })
 
-# prep_filter_analysis_ready ---------------------------------------------------
+# prep_filter_analysis_ready
 
 test_that("prep_filter_analysis_ready: valid behavior", {
   dat <- cat2_outputs_df()
@@ -53,7 +53,7 @@ test_that("prep_filter_analysis_ready: error handling", {
   expect_equal(nrow(out), 1)
 })
 
-# prep_build_fatal_cohort ------------------------------------------------------
+# prep_build_fatal_cohort
 
 test_that("prep_build_fatal_cohort: valid behavior", {
   dat <- cat2_outputs_df()
@@ -78,7 +78,7 @@ test_that("prep_build_fatal_cohort: error handling", {
   expect_equal(nrow(out), 0)
 })
 
-# prep_build_nonfatal_cohort ---------------------------------------------------
+# prep_build_nonfatal_cohort
 
 test_that("prep_build_nonfatal_cohort: valid behavior", {
   dat <- cat2_outputs_df()
@@ -103,7 +103,7 @@ test_that("prep_build_nonfatal_cohort: error handling", {
   expect_equal(nrow(out), 0)
 })
 
-# prep_attrition_flow ----------------------------------------------------------
+# prep_attrition_flow
 
 test_that("prep_attrition_flow: valid behavior", {
   flow <- NULL
@@ -130,7 +130,7 @@ test_that("prep_attrition_flow: error handling", {
   expect_equal(flow$stage[1], "nonexistent_centre_name")
 })
 
-# prep_missingness_report ------------------------------------------------------
+# prep_missingness_report
 
 test_that("prep_missingness_report: valid behavior", {
   dat <- cat2_outputs_df()
@@ -156,7 +156,7 @@ test_that("prep_missingness_report: error handling", {
   expect_true(all(out$col_name == "a"))
 })
 
-# prep_validate_analysis_ready -------------------------------------------------
+# prep_validate_analysis_ready
 
 test_that("prep_validate_analysis_ready: valid behavior", {
   dat <- cat2_outputs_df()

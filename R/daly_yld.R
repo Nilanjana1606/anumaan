@@ -1,8 +1,7 @@
 # daly_yld.R
 # YLD (Years Lived with Disability) calculation functions for AMR burden estimation
 
-# -- PAF_LOS : population attributable fraction for length of stay ---------------
-
+# PAF_LOS : population attributable fraction for length of stay
 #' Compute PAF for length of stay per resistance profile
 #'
 #' Computes the population attributable fraction (PAF) for length of stay
@@ -88,7 +87,7 @@ daly_calc_paf_los <- function(
 }
 
 
-# -- Direct profile-specific YLD equations (associated / attributable) --------
+# Direct profile-specific YLD equations (associated / attributable)
 #
 # Shared machinery behind daly_calc_yld_associated() and
 # daly_calc_yld_attributable(). Not exported; both public functions are thin
@@ -113,7 +112,7 @@ daly_calc_paf_los <- function(
   loss_col,
   out_col
 ) {
-  # -- Input validation -------------------------------------------------------
+  # Input validation
   if (!is.list(profiles_with_los) || is.data.frame(profiles_with_los)) {
     stop(
       "profiles_with_los must be the named list returned by ",
@@ -167,7 +166,7 @@ daly_calc_paf_los <- function(
     stop("facility_col must be provided when facility_name is specified.")
   }
 
-  # -- Optional single-facility restriction -----------------------------------
+  # Optional single-facility restriction
   if (!is.null(facility_name) && !is.null(facility_col) &&
     facility_col %in% names(P_Lk_prime_tbl)) {
     P_Lk_prime_tbl <- P_Lk_prime_tbl[P_Lk_prime_tbl[[facility_col]] == facility_name, , drop = FALSE]
@@ -178,7 +177,7 @@ daly_calc_paf_los <- function(
 
   n_row <- nrow(P_Lk_prime_tbl)
 
-  # -- Resolve DW_L: one value per row of P_Lk_prime_tbl -----------------------
+  # Resolve DW_L: one value per row of P_Lk_prime_tbl
   has_facility_col <- !is.null(facility_col) && facility_col %in% names(P_Lk_prime_tbl)
 
   if (use_scalar_dw) {
@@ -215,7 +214,7 @@ daly_calc_paf_los <- function(
     dw_vec <- rep(as.numeric(dw_scalar[1]), n_row)
   }
 
-  # -- Per-row profile term: sum over RESISTANT profiles only ------------------
+  # Per-row profile term: sum over RESISTANT profiles only
   # D_k = profiles with a dominant class (dominant_class != "all_susceptible").
   # The all-susceptible profile is excluded rather than included with an
   # implied LOSR==LOSS(->0) term, matching the pre-existing convention

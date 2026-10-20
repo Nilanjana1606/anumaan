@@ -1,6 +1,6 @@
 # Category 1: prep_types.R
 
-# prep_standardize_sex ---------------------------------------------------------
+# prep_standardize_sex
 
 test_that("prep_standardize_sex: valid behavior", {
   dat <- data.frame(gender = c("M", "female", "man", "WOMAN"), stringsAsFactors = FALSE)
@@ -24,7 +24,7 @@ test_that("prep_standardize_sex: error handling", {
   expect_error(prep_standardize_sex(data.frame(sex = "M"), col = "gender"), "not found")
 })
 
-# prep_standardize_outcome -----------------------------------------------------
+# prep_standardize_outcome
 
 test_that("prep_standardize_outcome: valid behavior", {
   dat <- data.frame(final_outcome = c("alive", "expired"), stringsAsFactors = FALSE)
@@ -50,7 +50,7 @@ test_that("prep_standardize_outcome: error handling", {
   expect_true(all(is.na(out$outcome_std)))
 })
 
-# prep_standardize_final_outcome -----------------------------------------------
+# prep_standardize_final_outcome
 
 test_that("prep_standardize_final_outcome: valid behavior", {
   dat <- cat1_min_outcome()
@@ -76,7 +76,7 @@ test_that("prep_standardize_final_outcome: error handling", {
   expect_true(all(is.na(out$outcome_std)))
 })
 
-# prep_standardize_infection_type ----------------------------------------------
+# prep_standardize_infection_type
 
 test_that("prep_standardize_infection_type: valid behavior", {
   out <- prep_standardize_infection_type(cat1_min_infection())

@@ -2,8 +2,10 @@
 # and R/plot_worst_offender_diagnostics.R.
 
 .omega_draws_2x2 <- function(rho, n_draws = 50L, n_chains = 2L) {
-  arr <- array(0, dim = c(n_draws, n_chains, 4),
-              dimnames = list(NULL, NULL, c("Omega[1,1]", "Omega[2,1]", "Omega[1,2]", "Omega[2,2]")))
+  arr <- array(0,
+    dim = c(n_draws, n_chains, 4),
+    dimnames = list(NULL, NULL, c("Omega[1,1]", "Omega[2,1]", "Omega[1,2]", "Omega[2,2]"))
+  )
   arr[, , "Omega[1,1]"] <- 1
   arr[, , "Omega[2,2]"] <- 1
   arr[, , "Omega[2,1]"] <- rho
@@ -53,8 +55,10 @@ test_that("plot_omega_summary_table() returns NULL for empty input and includes 
 
 .fake_worst_offender_fit <- (function() {
   vars <- c("beta[1,1]", "beta[2,1]", "Omega[1,2]", "lp__")
-  arr <- array(rnorm(200 * length(vars)), dim = c(50, 4, length(vars)),
-              dimnames = list(NULL, NULL, vars))
+  arr <- array(rnorm(200 * length(vars)),
+    dim = c(50, 4, length(vars)),
+    dimnames = list(NULL, NULL, vars)
+  )
   draws <- posterior::as_draws_array(arr)
   monitored <- data.frame(
     variable = vars,
@@ -90,10 +94,13 @@ test_that("plot_probit_worst_offender_diagnostics() returns NULL when monitored_
 test_that(".probit_interpretation_text() picks the energy-failure issue as primary and the fixed-effect Rhat issue as secondary when both apply", {
   diag <- list(ebfmi_min = 0.1, n_divergent = 0)
   beta_summary <- data.frame(family = "Hospital", pct_rhat_gt_1_01 = 90, worst_rhat = 1.05, min_ess_bulk = 50)
-  grouped_diag <- data.frame(parameter_group = "beta", n_parameters = 10, pct_rhat_above_1_01 = 90,
-                             max_rhat = 1.05, min_ess_bulk = 50, stringsAsFactors = FALSE)
+  grouped_diag <- data.frame(
+    parameter_group = "beta", n_parameters = 10, pct_rhat_above_1_01 = 90,
+    max_rhat = 1.05, min_ess_bulk = 50, stringsAsFactors = FALSE
+  )
   txt <- .probit_interpretation_text(diag, "fail_energy", "FAIL", beta_summary, NULL, "identity",
-                                     grouped_diag = grouped_diag)
+    grouped_diag = grouped_diag
+  )
   primary_line <- txt[grepl("^PRIMARY ISSUE:", txt)]
   secondary_line <- txt[grepl("^SECONDARY ISSUE:", txt)]
   expect_true(any(grepl("energy exploration", primary_line)))
@@ -105,12 +112,15 @@ test_that(".probit_interpretation_text() picks the fixed-effect Rhat issue as pr
   diag <- list(ebfmi_min = 0.8, n_divergent = 0)
   beta_summary <- data.frame(family = "Hospital", pct_rhat_gt_1_01 = 40, worst_rhat = 1.03, min_ess_bulk = 200)
   degeneracy_stats <- list(pct_near_degenerate = 5, med_condition_number = 10, degenerate_threshold = 0.05)
-  grouped_diag <- data.frame(parameter_group = c("beta", "Omega"), n_parameters = c(10, 6),
-                             pct_rhat_above_1_01 = c(40, 0), max_rhat = c(1.03, 1.005),
-                             min_ess_bulk = c(200, 300), stringsAsFactors = FALSE)
+  grouped_diag <- data.frame(
+    parameter_group = c("beta", "Omega"), n_parameters = c(10, 6),
+    pct_rhat_above_1_01 = c(40, 0), max_rhat = c(1.03, 1.005),
+    min_ess_bulk = c(200, 300), stringsAsFactors = FALSE
+  )
 
   txt_corr <- .probit_interpretation_text(diag, "warning_rhat", "WARNING", beta_summary, degeneracy_stats, "correlated",
-                                          grouped_diag = grouped_diag)
+    grouped_diag = grouped_diag
+  )
   primary_line <- txt_corr[grepl("^PRIMARY ISSUE:", txt_corr)]
   expect_true(any(grepl("Hospital", primary_line)))
   expect_true(any(grepl("^Omega", txt_corr)))
@@ -128,22 +138,26 @@ test_that(".probit_interpretation_text() names the specific worst-converging Ome
     rhat = c(1.05, 1.001), stringsAsFactors = FALSE
   )
   txt <- .probit_interpretation_text(diag, "pass", "PASS", beta_summary, degeneracy_stats, "correlated",
-                                     corr_summary = corr_summary_bad)
+    corr_summary = corr_summary_bad
+  )
   omega_line <- txt[grepl("^Omega", txt)]
   expect_true(grepl("least-converged Omega element is AMG x FQ", omega_line))
 
   corr_summary_ok <- corr_summary_bad
   corr_summary_ok$rhat <- c(1.005, 1.001)
   txt_ok <- .probit_interpretation_text(diag, "pass", "PASS", beta_summary, degeneracy_stats, "correlated",
-                                        corr_summary = corr_summary_ok)
+    corr_summary = corr_summary_ok
+  )
   omega_line_ok <- txt_ok[grepl("^Omega", txt_ok)]
   expect_false(grepl("least-converged Omega element", omega_line_ok))
 })
 
 test_that(".probit_interpretation_text() reports a clean pass with no concerns", {
   diag <- list(ebfmi_min = 0.8, n_divergent = 0)
-  beta_summary <- data.frame(family = c("Hospital", "Age"), pct_rhat_gt_1_01 = c(0, 0),
-                             worst_rhat = c(1.0, 1.0), min_ess_bulk = c(900, 900))
+  beta_summary <- data.frame(
+    family = c("Hospital", "Age"), pct_rhat_gt_1_01 = c(0, 0),
+    worst_rhat = c(1.0, 1.0), min_ess_bulk = c(900, 900)
+  )
   txt <- .probit_interpretation_text(diag, "pass", "PASS", beta_summary, NULL, "identity")
   expect_true(any(grepl("No divergence, energy, treedepth, or Rhat concerns", txt)))
 })

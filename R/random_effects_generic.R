@@ -19,7 +19,7 @@
 #'      list(list(name = "hospital", group_col = "center_name", terms = "intercept"),
 #'           list(name = "admission", group_col = "admission_key", terms = "intercept"))
 #'
-#' @keywords internal
+#' @noRd
 .normalize_random_effects_spec <- function(random_effects) {
   if (is.character(random_effects)) {
     if (anyDuplicated(random_effects)) {
@@ -90,9 +90,9 @@
 #'   maps, per-event flattened group indices, nesting diagnostics.
 #' @export
 prepare_random_effects <- function(data, random_effects,
-                                    min_repeated_levels = NULL,
-                                    singleton_threshold = 0.90,
-                                    on_mostly_singleton = c("warn", "stop")) {
+                                   min_repeated_levels = NULL,
+                                   singleton_threshold = 0.90,
+                                   on_mostly_singleton = c("warn", "stop")) {
   on_mostly_singleton <- match.arg(on_mostly_singleton)
   blocks <- .normalize_random_effects_spec(random_effects)
 
@@ -162,14 +162,18 @@ prepare_random_effects <- function(data, random_effects,
       for (parent in seq_len(R)) {
         if (child == parent) next
         parents_per_child_level <- tapply(group_index[, parent], group_index[, child], function(x) length(unique(x)))
-        n_child_one_parent  <- sum(parents_per_child_level == 1L)
+        n_child_one_parent <- sum(parents_per_child_level == 1L)
         n_child_multi_parent <- sum(parents_per_child_level > 1L)
         is_nested <- n_child_multi_parent == 0L
         children_per_parent_level <- tapply(group_index[, child], group_index[, parent], function(x) length(unique(x)))
         is_reverse_nested <- all(children_per_parent_level == 1L)
-        relationship <- if (is_nested && is_reverse_nested) "identical_partition"
-                        else if (is_nested) "nested"
-                        else "crossed_or_non_nested"
+        relationship <- if (is_nested && is_reverse_nested) {
+          "identical_partition"
+        } else if (is_nested) {
+          "nested"
+        } else {
+          "crossed_or_non_nested"
+        }
         rows[[length(rows) + 1L]] <- data.frame(
           child_block = block_names[child],
           parent_block = block_names[parent],
@@ -183,11 +187,13 @@ prepare_random_effects <- function(data, random_effects,
     }
     do.call(rbind, rows)
   } else {
-    data.frame(child_block = character(0), parent_block = character(0),
-               n_child_levels = integer(0),
-               n_child_levels_mapping_to_one_parent = integer(0),
-               n_child_levels_mapping_to_multiple_parents = integer(0),
-               relationship = character(0), stringsAsFactors = FALSE)
+    data.frame(
+      child_block = character(0), parent_block = character(0),
+      n_child_levels = integer(0),
+      n_child_levels_mapping_to_one_parent = integer(0),
+      n_child_levels_mapping_to_multiple_parents = integer(0),
+      relationship = character(0), stringsAsFactors = FALSE
+    )
   }
 
   # Compact per-block summary retained for print()/backward-compat callers --
@@ -199,7 +205,8 @@ prepare_random_effects <- function(data, random_effects,
     for (r in 2:R) {
       rel <- pairwise_relationships$relationship[
         pairwise_relationships$child_block == block_names[r] &
-        pairwise_relationships$parent_block == block_names[r - 1L]]
+          pairwise_relationships$parent_block == block_names[r - 1L]
+      ]
       nesting[r] <- if (length(rel) == 1L) rel else NA_character_
     }
   }
@@ -218,30 +225,32 @@ prepare_random_effects <- function(data, random_effects,
     if (!is.null(min_repeated_levels) && n_repeated < min_repeated_levels) {
       .signal(sprintf(
         "random_effects block '%s': only %d of its %d levels have >=2 observations (need >= %d) -- this block's variance may be weakly identified.",
-        block_names[r], n_repeated, n_levels[r], min_repeated_levels))
+        block_names[r], n_repeated, n_levels[r], min_repeated_levels
+      ))
     }
 
     if (singleton_fraction[r] > singleton_threshold) {
       .signal(sprintf(
         "random_effects block '%s': %.1f%% of its %d levels are singletons (exactly 1 observation), above the %.0f%% threshold -- this block's variance may be weakly identified.",
-        block_names[r], 100 * singleton_fraction[r], n_levels[r], 100 * singleton_threshold))
+        block_names[r], 100 * singleton_fraction[r], n_levels[r], 100 * singleton_threshold
+      ))
     }
   }
 
   structure(list(
-    blocks             = blocks,
-    block_names        = block_names,
-    group_cols         = group_cols,
-    R                  = R,
-    n_levels           = n_levels,
-    level_start        = level_start,
-    level_end          = level_end,
-    total_re_levels    = total_re_levels,
-    level_maps         = level_maps,
-    group_index        = group_index,
-    flat_group_index   = flat_group_index,
-    n_obs_per_level    = n_obs_per_level,
-    nesting            = nesting,
+    blocks = blocks,
+    block_names = block_names,
+    group_cols = group_cols,
+    R = R,
+    n_levels = n_levels,
+    level_start = level_start,
+    level_end = level_end,
+    total_re_levels = total_re_levels,
+    level_maps = level_maps,
+    group_index = group_index,
+    flat_group_index = flat_group_index,
+    n_obs_per_level = n_obs_per_level,
+    nesting = nesting,
     pairwise_relationships = pairwise_relationships,
     singleton_fraction = singleton_fraction
   ), class = "amr_random_effects")
@@ -283,7 +292,9 @@ re_contribution <- function(re_effect, flat_group_index) {
     out
   } else {
     R <- length(flat_group_index)
-    if (R == 0L) return(rep(0, nrow(re_effect)))
+    if (R == 0L) {
+      return(rep(0, nrow(re_effect)))
+    }
     Reduce(`+`, lapply(seq_len(R), function(r) re_effect[, flat_group_index[r]]))
   }
 }

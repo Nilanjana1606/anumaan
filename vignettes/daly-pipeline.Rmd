@@ -67,13 +67,13 @@ a tibble and validate before running the QP.
 
 ```{r aggregate-marginals}
 marginals <- tibble::tibble(
-  pathogen         = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 3),
+  pathogen = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 3),
   antibiotic_class = rep(
     c("Carbapenems", "3GC", "Fluoroquinolones"),
     times = 2
   ),
-  n_tested    = c(420L, 460L, 390L, 280L, 310L, 265L),
-  n_resistant = c(126L, 299L, 195L,  45L, 155L, 133L)
+  n_tested = c(420L, 460L, 390L, 280L, 310L, 265L),
+  n_resistant = c(126L, 299L, 195L, 45L, 155L, 133L)
 ) %>%
   dplyr::mutate(marginal_resistance = n_resistant / n_tested)
 
@@ -97,7 +97,7 @@ validate_aggregate_inputs(
 given ordered class set. This is the profile space the QP optimises over.
 
 ```{r enumerate-profiles}
-classes  <- c("Carbapenems", "3GC", "Fluoroquinolones")
+classes <- c("Carbapenems", "3GC", "Fluoroquinolones")
 profiles <- enumerate_binary_profiles(classes)
 profiles
 ```
@@ -112,10 +112,10 @@ and must stay consistent throughout the pipeline.
 vector v that encode the marginal and pairwise constraints fed into the QP.
 
 ```{r constraint-matrix}
-kp      <- marginals[marginals$pathogen == "Klebsiella pneumoniae", ]
-r_marg  <- setNames(kp$marginal_resistance, kp$antibiotic_class)
+kp <- marginals[marginals$pathogen == "Klebsiella pneumoniae", ]
+r_marg <- setNames(kp$marginal_resistance, kp$antibiotic_class)
 profiles_enum <- enumerate_binary_profiles(names(r_marg))
-cm      <- build_constraint_matrix(profiles_enum, r_marg)
+cm <- build_constraint_matrix(profiles_enum, r_marg)
 
 cat("M dimension (constraints x profiles):", dim(cm$M), "\n")
 cat("Constraint targets (marginals + pairwise independence fallback):\n")
@@ -133,12 +133,16 @@ prefers `osqp` (sparse, fast) with `quadprog` as fallback.
 
 ```{r estimate-profiles}
 panel_map <- list(
-  "Klebsiella pneumoniae"  = c("Carbapenems",
-                                "3GC",
-                                "Fluoroquinolones"),
-  "Escherichia coli"       = c("Carbapenems",
-                                "3GC",
-                                "Fluoroquinolones")
+  "Klebsiella pneumoniae" = c(
+    "Carbapenems",
+    "3GC",
+    "Fluoroquinolones"
+  ),
+  "Escherichia coli" = c(
+    "Carbapenems",
+    "3GC",
+    "Fluoroquinolones"
+  )
 )
 
 profiles_out <- estimate_profiles_convex(
@@ -155,8 +159,10 @@ profiles_out <- estimate_profiles_convex(
 
 ```{r show-profiles}
 profiles_out %>%
-  dplyr::select(pathogen, profile_delta, profile_probability,
-                convergence_flag, max_abs_residual) %>%
+  dplyr::select(
+    pathogen, profile_delta, profile_probability,
+    convergence_flag, max_abs_residual
+  ) %>%
   dplyr::filter(profile_probability > 0.005) %>%
   dplyr::arrange(pathogen, dplyr::desc(profile_probability))
 ```
@@ -179,15 +185,16 @@ three-step pipeline that feeds the same QP engine.
 set.seed(101)
 # Minimal long-format AST data: one row per isolate x antibiotic class
 ast_class <- data.frame(
-  isolate_id       = rep(paste0("ISO", sprintf("%03d", 1:80)), each = 3),
-  organism_name    = rep(
+  isolate_id = rep(paste0("ISO", sprintf("%03d", 1:80)), each = 3),
+  organism_name = rep(
     ifelse(seq_len(80) <= 50, "Klebsiella pneumoniae", "Escherichia coli"),
     each = 3
   ),
-  org_group        = "Enterobacterales",
+  org_group = "Enterobacterales",
   antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), times = 80),
   antibiotic_value = sample(
-    c("S", "R"), 240, replace = TRUE, prob = c(0.60, 0.40)
+    c("S", "R"), 240,
+    replace = TRUE, prob = c(0.60, 0.40)
   ),
   stringsAsFactors = FALSE
 )
@@ -259,8 +266,10 @@ checks <- check_profile_constraints(
 )
 
 checks %>%
-  dplyr::select(pathogen, constraint_type, constraint_name,
-                target, reconstructed, abs_residual, pass)
+  dplyr::select(
+    pathogen, constraint_type, constraint_name,
+    target, reconstructed, abs_residual, pass
+  )
 ```
 
 ### 1.7 Bootstrap Uncertainty Intervals
@@ -312,7 +321,7 @@ One row per organism-event. Antibiotic class columns hold `0` (susceptible),
 ```{r probit-data, eval = FALSE}
 set.seed(123)
 n_events <- 150
-centers  <- c("Hospital A", "Hospital B", "Hospital C")
+centers <- c("Hospital A", "Hospital B", "Hospital C")
 
 event_class_data <- tibble::tibble(
   event_id       = paste0("EV", sprintf("%04d", 1:n_events)),
@@ -326,7 +335,7 @@ event_class_data <- tibble::tibble(
 true_p <- c(Carbapenems = 0.35, Fluoroquinolones = 0.55, Aminoglycosides = 0.30)
 for (cls in names(true_p)) {
   vals <- rbinom(n_events, 1, true_p[[cls]])
-  vals[sample.int(n_events, size = floor(0.15 * n_events))] <- NA  # some untested
+  vals[sample.int(n_events, size = floor(0.15 * n_events))] <- NA # some untested
   event_class_data[[cls]] <- vals
 }
 
@@ -347,16 +356,18 @@ identifiable (`fit$eligibility_report$pairwise`).
 
 ```{r probit-fit, eval = FALSE}
 fit <- fit_bayesian_multivariate_probit(
-  event_class_data   = event_class_data,
-  class_cols         = class_cols,
-  fixed_effects      = c("Age_normalised", "gender"),
-  random_effects     = c("center_name"),
-  pathogen           = "Klebsiella pneumoniae",
-  outcome_col        = "final_outcome",
+  event_class_data = event_class_data,
+  class_cols = class_cols,
+  fixed_effects = c("Age_normalised", "gender"),
+  random_effects = c("center_name"),
+  pathogen = "Klebsiella pneumoniae",
+  outcome_col = "final_outcome",
   residual_structure = "identity",
-  prior_config       = list(beta_sd = 1.5, tau_sd = 1.0),
-  sampler_config     = list(chains = 2, iter_warmup = 200, iter_sampling = 200,
-                             seed = 123, parallel_chains = 2, adapt_delta = 0.9)
+  prior_config = list(beta_sd = 1.5, tau_sd = 1.0),
+  sampler_config = list(
+    chains = 2, iter_warmup = 200, iter_sampling = 200,
+    seed = 123, parallel_chains = 2, adapt_delta = 0.9
+  )
 )
 
 fit$diagnostics
@@ -445,8 +456,10 @@ profiles.
 ```{r probit-validate, eval = FALSE}
 val_marginal <- validate_marginal_calibration(fit, n_posterior_draws_for_validation = 200L, seed = 123L)
 val_pairwise <- validate_pairwise_calibration(fit, n_posterior_draws_for_validation = 200L, seed = 123L)
-val_complete <- validate_complete_profile_calibration(fit, n_posterior_draws_for_validation = 200L,
-                                                       seed = 123L, min_complete_events = 5L)
+val_complete <- validate_complete_profile_calibration(fit,
+  n_posterior_draws_for_validation = 200L,
+  seed = 123L, min_complete_events = 5L
+)
 
 compute_profile_validation_status(
   marginal_tbl          = val_marginal,
@@ -484,7 +497,8 @@ compute_prior_predictive_status(prior_pred)
 #> [1] 0.0857
 
 ppc_stats <- compute_probit_ppc_statistics(
-  fit, n_states = 100L, seed = 123L,
+  fit,
+  n_states = 100L, seed = 123L,
   statistics = c("marginal", "resistant_count", "pairwise")
 )
 compute_posterior_predictive_status(ppc_stats)

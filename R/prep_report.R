@@ -19,16 +19,24 @@
 #'
 #' @export
 #' @examples
-#' \dontrun{
-#' # Generate report
-#' report <- generate_preprocessing_report(
-#'   raw_data = my_raw_data,
-#'   processed_data = result$data,
-#'   preprocessing_log = result$log,
-#'   config = result$config,
-#'   output_file = "preprocessing_report.html"
+#' raw <- data.frame(
+#'   PID = c("pt_001", "pt_001", "pt_002", "pt_003"),
+#'   Date.of.admission = c("2021-01-01", "2021-01-01", "2021-01-05", "2021-01-10"),
+#'   CultureDate = c("2021-01-03", "2021-01-03", "2021-01-08", "2021-01-11"),
+#'   Final.outcome = c("alive", "alive", "expired", "Discharged Alive"),
+#'   Organism = c("E. coli", "E. coli", "Klebsiella pneumoniae", "Staphylococcus aureus"),
+#'   Sample_type1_name = c("Blood", "Blood", "Urine", "Blood"),
+#'   Antibiotic = c("Amikacin", "Ciprofloxacin", "Meropenem", "Vancomycin"),
+#'   Result = c("Resistant", "Susceptible", "R", "S"),
+#'   Gender = c("M", "M", "female", "F"),
+#'   Age = c(34, 34, 61, 47)
 #' )
-#' }
+#' result <- run_preprocess(raw, verbose = FALSE, generate_report = FALSE)
+#' report <- generate_preprocessing_report(raw, result$data, result$log,
+#'   result$config,
+#'   include_plots = FALSE
+#' )
+#' report
 generate_preprocessing_report <- function(raw_data,
                                           processed_data,
                                           preprocessing_log,
@@ -393,6 +401,7 @@ compute_processing_statistics <- function(raw_data, processed_data, preprocessin
 #' @param x An amr_preprocessing_report object
 #' @param ... Additional arguments (not used)
 #'
+#' @return The input object \code{x}, invisibly.
 #' @export
 print.amr_preprocessing_report <- function(x, ...) {
   cat("===================================================\n")
@@ -495,6 +504,7 @@ export_report <- function(report, file) {
 #'
 #' @param report Report object
 #' @param file Output file path
+#' @return Called for its side effect of writing \code{file}; returns \code{NULL} invisibly.
 #' @keywords internal
 export_report_html <- function(report, file) {
   html <- c(
@@ -542,6 +552,7 @@ export_report_html <- function(report, file) {
 #'
 #' @param report Report object
 #' @param file Output file path
+#' @return Does not return; always signals an error.
 #' @keywords internal
 export_report_pdf <- function(report, file) {
   stop(
@@ -555,6 +566,7 @@ export_report_pdf <- function(report, file) {
 #'
 #' @param report Report object
 #' @param file Output file path
+#' @return Called for its side effect of writing \code{file}; returns \code{NULL} invisibly.
 #' @keywords internal
 export_report_txt <- function(report, file) {
   sink(file)
@@ -564,13 +576,14 @@ export_report_txt <- function(report, file) {
   print(report$column_mapping)
   cat("\n\n=== DATA QUALITY METRICS ===\n")
   print(report$data_quality$completeness)
-  sink()
+  invisible(NULL)
 }
 
 
 # ===== Helper Functions =====
 
 #' Detect Key Columns
+#' @return Character vector of column names that look like identifiers.
 #' @keywords internal
 detect_key_columns <- function(data) {
   key_patterns <- c("id", "patient", "event", "subject", "mrn", "uhid")
@@ -587,6 +600,7 @@ detect_key_columns <- function(data) {
 
 
 #' Find Raw Column by Aliases
+#' @return The matching column name, or \code{NULL} if none is found.
 #' @keywords internal
 find_raw_column <- function(data, aliases) {
   for (alias in aliases) {
@@ -599,6 +613,7 @@ find_raw_column <- function(data, aliases) {
 
 
 #' Summarize Value Mapping
+#' @return A list with a raw-versus-processed value contingency table.
 #' @keywords internal
 summarize_value_mapping <- function(raw_data, processed_data, raw_col, processed_col) {
   if (is.null(raw_col) || !processed_col %in% names(processed_data)) {
@@ -617,6 +632,7 @@ summarize_value_mapping <- function(raw_data, processed_data, raw_col, processed
 
 
 #' Detect Outliers
+#' @return A list summarising outliers per numeric column.
 #' @keywords internal
 detect_outliers <- function(data) {
   numeric_cols <- names(data)[sapply(data, is.numeric)]
@@ -647,6 +663,7 @@ detect_outliers <- function(data) {
 
 
 #' Convert Data Frame to HTML Table
+#' @return A single character string containing an HTML table.
 #' @keywords internal
 convert_df_to_html_table <- function(df) {
   if (nrow(df) == 0) {

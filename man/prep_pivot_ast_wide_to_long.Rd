@@ -48,23 +48,18 @@ Converts wide format data (where each antibiotic is a column) to long format
 normalization and analysis.
 }
 \examples{
-\dontrun{
-# Specify antibiotic columns explicitly
-long_data <- prep_pivot_ast_wide_to_long(
-  data = raw_data,
-  antibiotic_cols = c("AMIKACIN", "GENTAMICIN", "CIPROFLOXACIN")
+wide <- data.frame(
+  patient_id      = c("P01", "P02", "P03"),
+  organism_name   = c("Escherichia coli", "Klebsiella pneumoniae", "Escherichia coli"),
+  date_of_culture = as.Date(c("2024-01-02", "2024-01-05", "2024-01-09")),
+  Amikacin        = c("S", "R", "S"),
+  Meropenem       = c("S", "R", NA),
+  Ciprofloxacin   = c("R", "R", "S")
 )
-
-# Auto-detect columns by pattern (columns 12-53)
-long_data <- prep_pivot_ast_wide_to_long(
-  data = raw_data,
-  antibiotic_cols = names(raw_data)[12:53]
+long <- prep_pivot_ast_wide_to_long(wide,
+  antibiotic_cols = c("Amikacin", "Meropenem", "Ciprofloxacin"),
+  id_cols = c("patient_id", "organism_name", "date_of_culture"),
+  create_event_id = TRUE
 )
-
-# Auto-detect uppercase antibiotic names
-long_data <- prep_pivot_ast_wide_to_long(
-  data = raw_data,
-  pattern = "^[A-Z]+$"
-)
-}
+long
 }

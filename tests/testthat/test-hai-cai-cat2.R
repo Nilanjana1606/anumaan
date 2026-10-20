@@ -1,6 +1,6 @@
 # Category 2: prep_hai_cai.R
 
-# prep_derive_hai_cai ----------------------------------------------------------
+# prep_derive_hai_cai
 
 test_that("prep_derive_hai_cai: valid behavior", {
   dat <- cat2_hai_gap_logic()[c(1, 4), c("date_of_admission", "date_of_culture", "infection_type"), drop = FALSE]
@@ -27,7 +27,7 @@ test_that("prep_derive_hai_cai: error handling", {
   expect_true("infection_type" %in% names(out))
 })
 
-# prep_flag_hai_inferred -------------------------------------------------------
+# prep_flag_hai_inferred
 
 test_that("prep_flag_hai_inferred: valid behavior", {
   dat <- cat2_hai_observed_labels()[c(1, 2), c("infection_type", "infection_type_method"), drop = FALSE]
@@ -55,7 +55,7 @@ test_that("prep_flag_hai_inferred: error handling", {
   expect_true(all(is.na(out$infection_type_src)))
 })
 
-# prep_reconcile_hai_observed_inferred -----------------------------------------
+# prep_reconcile_hai_observed_inferred
 
 test_that("prep_reconcile_hai_observed_inferred: valid behavior", {
   dat <- cat2_hai_observed_vs_inferred()[c(1, 3), , drop = FALSE]
@@ -83,7 +83,7 @@ test_that("prep_reconcile_hai_observed_inferred: error handling", {
   expect_identical(out, dat)
 })
 
-# prep_derive_icu_flag ---------------------------------------------------------
+# prep_derive_icu_flag
 
 test_that("prep_derive_icu_flag: valid behavior", {
   dat <- cat2_icu_location_variants()[c(1, 2), , drop = FALSE]

@@ -1,6 +1,6 @@
 # Category 1: prep_standardize_antibiotics.R (target helper subset)
 
-# prep_classify_aware ----------------------------------------------------------
+# prep_classify_aware
 
 test_that("prep_classify_aware: valid behavior", {
   dat <- data.frame(antibiotic_normalized = c("Amikacin", "Ampicillin"), stringsAsFactors = FALSE)
@@ -33,7 +33,7 @@ test_that("prep_classify_aware: error handling", {
   expect_equal(out$aware_source, "needs_who_table")
 })
 
-# prep_decode_antibiotic_code --------------------------------------------------
+# prep_decode_antibiotic_code
 
 test_that("prep_decode_antibiotic_code: valid behavior", {
   map <- tempfile(fileext = ".csv")

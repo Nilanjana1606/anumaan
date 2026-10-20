@@ -51,7 +51,7 @@ prep_flag_polymicrobial <- function(data,
     message(sprintf("Filtered to facility: %s (%d rows)", facility_name, nrow(data)))
   }
   if (!is.null(syndrome_name)) {
-    data <- data %>% dplyr::filter(.data[[syndrome_col]] == syndrome_name)
+    data <- data %>% dplyr::filter(.name_key(.data[[syndrome_col]]) == .name_key(syndrome_name))
     message(sprintf("Filtered to syndrome: %s (%d rows)", syndrome_name, nrow(data)))
   }
 
@@ -95,7 +95,7 @@ prep_flag_polymicrobial <- function(data,
     n_poly, n_groups, pct_poly
   ))
   message("\nOrganism count distribution per patient-context:")
-  print(dplyr::arrange(dplyr::count(poly_counts, n_organisms, name = "n_groups"), n_organisms))
+  .msg_print(dplyr::arrange(dplyr::count(poly_counts, n_organisms, name = "n_groups"), n_organisms))
 
   data <- data %>% dplyr::select(-dplyr::starts_with(".temp_"))
   return(data)
@@ -168,7 +168,7 @@ prep_compute_poly_weights <- function(data,
     message(sprintf("Filtered to facility: %s (%d rows)", facility_name, nrow(data)))
   }
   if (!is.null(syndrome_name)) {
-    data <- data %>% dplyr::filter(.data[[syndrome_col]] == syndrome_name)
+    data <- data %>% dplyr::filter(.name_key(.data[[syndrome_col]]) == .name_key(syndrome_name))
     message(sprintf("Filtered to syndrome: %s (%d rows)", syndrome_name, nrow(data)))
   }
 
@@ -287,7 +287,7 @@ prep_compute_poly_weights <- function(data,
   }
 
   message("\nWeight statistics (polymicrobial isolates only):")
-  print(dplyr::summarise(
+  .msg_print(dplyr::summarise(
     dplyr::filter(data, .data[[polymicrobial_col]] == 1),
     mean_weight = mean(poly_weight, na.rm = TRUE),
     median_weight = median(poly_weight, na.rm = TRUE),
@@ -308,9 +308,7 @@ prep_compute_poly_weights <- function(data,
 compute_polymicrobial_weight <- prep_compute_poly_weights
 
 
-# ---------------------------------------------------------------------------
 # New functions (Layer 6d)
-# ---------------------------------------------------------------------------
 
 #' Split Polymicrobial Episodes by Strategy
 #'

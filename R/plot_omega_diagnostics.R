@@ -8,7 +8,7 @@
 #' Mirror an upper-triangle class_1/class_2 correlation table into a full
 #' symmetric matrix (both (i,j) and (j,i), plus a diagonal of 1s/NA), for a
 #' complete-looking heatmap instead of a half-populated triangle.
-#' @keywords internal
+#' @noRd
 .omega_full_matrix <- function(corr_summary, classes, diagonal_value) {
   mirrored <- corr_summary
   mirrored$class_1 <- corr_summary$class_2
@@ -44,8 +44,12 @@
 #' @export
 plot_omega_correlation_heatmap <- function(corr_summary, class_cols, title_base = "",
                                            rhat_flag_threshold = 1.01) {
-  if (is.null(corr_summary) || nrow(corr_summary) == 0L) return(NULL)
-  if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+  if (is.null(corr_summary) || nrow(corr_summary) == 0L) {
+    return(NULL)
+  }
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    return(NULL)
+  }
 
   full <- .omega_full_matrix(corr_summary, class_cols, "correlation_median")
   full$label <- ifelse(is.na(full$correlation_median), "1.00", sprintf("%.2f", full$correlation_median))
@@ -55,18 +59,22 @@ plot_omega_correlation_heatmap <- function(corr_summary, class_cols, title_base 
   ggplot2::ggplot(full, ggplot2::aes(x = .data$class_1, y = .data$class_2, fill = .data$correlation_median)) +
     ggplot2::geom_tile(colour = "white") +
     ggplot2::geom_text(ggplot2::aes(label = .data$label), size = 3) +
-    ggplot2::scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B",
-                                  midpoint = 0, limits = c(-1, 1), na.value = "grey90",
-                                  name = "Posterior\nmedian rho") +
+    ggplot2::scale_fill_gradient2(
+      low = "#2166AC", mid = "white", high = "#B2182B",
+      midpoint = 0, limits = c(-1, 1), na.value = "grey90",
+      name = "Posterior\nmedian rho"
+    ) +
     ggplot2::coord_fixed() +
     ggplot2::labs(
       title = paste(title_base, "-- Latent Within-Event Cross-Class Correlation (Omega)"),
       subtitle = "Posterior median latent correlations -- NOT empirical correlations of observed resistance.",
       caption = paste(
         "Z is a latent, unobserved probit-scale variable; Omega describes correlation among Z, not among the observed AST results.",
-        if (any(full$flag, na.rm = TRUE))
+        if (any(full$flag, na.rm = TRUE)) {
           sprintf("\n* = Rhat > %.2f -- see the companion convergence heatmap; do not treat that cell as a settled estimate.", rhat_flag_threshold)
-        else NULL
+        } else {
+          NULL
+        }
       ),
       x = NULL, y = NULL
     ) +
@@ -94,8 +102,12 @@ plot_omega_correlation_heatmap <- function(corr_summary, class_cols, title_base 
 #'   older \code{summarize_fit_correlation_matrix()} call).
 #' @export
 plot_omega_convergence_heatmap <- function(corr_summary, class_cols, title_base = "") {
-  if (is.null(corr_summary) || nrow(corr_summary) == 0L || !"rhat" %in% names(corr_summary)) return(NULL)
-  if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+  if (is.null(corr_summary) || nrow(corr_summary) == 0L || !"rhat" %in% names(corr_summary)) {
+    return(NULL)
+  }
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    return(NULL)
+  }
 
   full <- .omega_full_matrix(corr_summary, class_cols, "rhat")
   full$label <- ifelse(is.na(full$rhat), "--", sprintf("%.3f", full$rhat))
@@ -103,8 +115,10 @@ plot_omega_convergence_heatmap <- function(corr_summary, class_cols, title_base 
   ggplot2::ggplot(full, ggplot2::aes(x = .data$class_1, y = .data$class_2, fill = .data$rhat)) +
     ggplot2::geom_tile(colour = "white") +
     ggplot2::geom_text(ggplot2::aes(label = .data$label), size = 3) +
-    ggplot2::scale_fill_gradient(low = "white", high = "#B2182B", limits = c(1, NA),
-                                 na.value = "grey90", name = "Rhat") +
+    ggplot2::scale_fill_gradient(
+      low = "white", high = "#B2182B", limits = c(1, NA),
+      na.value = "grey90", name = "Rhat"
+    ) +
     ggplot2::coord_fixed() +
     ggplot2::labs(
       title = paste(title_base, "-- Sampling Diagnostics for Omega"),
@@ -132,8 +146,12 @@ plot_omega_convergence_heatmap <- function(corr_summary, class_cols, title_base 
 #'   is \code{NULL}/empty.
 #' @export
 plot_omega_summary_table <- function(corr_summary, class_cols, title_base = "") {
-  if (is.null(corr_summary) || nrow(corr_summary) == 0L) return(NULL)
-  if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+  if (is.null(corr_summary) || nrow(corr_summary) == 0L) {
+    return(NULL)
+  }
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    return(NULL)
+  }
 
   tbl <- corr_summary
   tbl$pair <- sprintf("%s x %s", class_short_label(tbl$class_1), class_short_label(tbl$class_2))
@@ -141,15 +159,20 @@ plot_omega_summary_table <- function(corr_summary, class_cols, title_base = "") 
   ess_tail <- if ("ess_tail" %in% names(tbl)) tbl$ess_tail else rep(NA_real_, nrow(tbl))
 
   header <- sprintf("%-16s %8s %18s %10s %10s %10s", "Pair", "rho", "95% CrI", "Rhat", "ESSbulk", "ESStail")
-  body <- sprintf("%-16s %8.3f %8.3f,%8.3f %10.4f %10.0f %10.0f",
-                  tbl$pair, tbl$correlation_median, tbl$correlation_lower, tbl$correlation_upper,
-                  tbl$rhat, tbl$ess_bulk, ess_tail)
+  body <- sprintf(
+    "%-16s %8.3f %8.3f,%8.3f %10.4f %10.0f %10.0f",
+    tbl$pair, tbl$correlation_median, tbl$correlation_lower, tbl$correlation_upper,
+    tbl$rhat, tbl$ess_bulk, ess_tail
+  )
   table_lines <- c(header, strrep("-", nchar(header)), body)
 
   ggplot2::ggplot() +
-    ggplot2::annotate("text", x = 0, y = rev(seq_along(table_lines)), label = table_lines,
-                      hjust = 0, size = 3.2, family = "mono") +
-    ggplot2::xlim(0, 1) + ggplot2::ylim(0, length(table_lines) + 1) +
+    ggplot2::annotate("text",
+      x = 0, y = rev(seq_along(table_lines)), label = table_lines,
+      hjust = 0, size = 3.2, family = "mono"
+    ) +
+    ggplot2::xlim(0, 1) +
+    ggplot2::ylim(0, length(table_lines) + 1) +
     ggplot2::labs(
       title = paste(title_base, "-- Omega Pairwise Correlation Summary"),
       subtitle = "Posterior median latent correlation, 95% credible interval, and per-pair convergence, for every class pair."
@@ -159,15 +182,23 @@ plot_omega_summary_table <- function(corr_summary, class_cols, title_base = "") 
 }
 
 #' Smallest-eigenvalue/condition-number stats for the posterior Omega matrix
-#' @keywords internal
+#' @noRd
 .omega_degeneracy_stats <- function(fit, class_cols, degenerate_threshold = 0.05) {
-  if (!requireNamespace("posterior", quietly = TRUE)) return(NULL)
-  if (!identical(fit$residual_structure, "correlated") || is.null(fit$draws)) return(NULL)
+  if (!requireNamespace("posterior", quietly = TRUE)) {
+    return(NULL)
+  }
+  if (!identical(fit$residual_structure, "correlated") || is.null(fit$draws)) {
+    return(NULL)
+  }
   D <- length(class_cols)
-  if (D < 2L) return(NULL)
+  if (D < 2L) {
+    return(NULL)
+  }
   omega_vars <- sprintf("Omega[%d,%d]", rep(seq_len(D), D), rep(seq_len(D), each = D))
   omega_vars <- intersect(omega_vars, posterior::variables(fit$draws))
-  if (length(omega_vars) < D * D) return(NULL)
+  if (length(omega_vars) < D * D) {
+    return(NULL)
+  }
 
   mat <- as.matrix(posterior::as_draws_matrix(posterior::subset_draws(fit$draws, variable = omega_vars)))
   mat <- mat[, omega_vars, drop = FALSE]
@@ -209,9 +240,13 @@ plot_omega_summary_table <- function(corr_summary, class_cols, title_base = "") 
 #'   fit, or Omega draws are unavailable.
 #' @export
 plot_omega_degeneracy_diagnostic <- function(fit, class_cols, title_base = "", degenerate_threshold = 0.05) {
-  if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    return(NULL)
+  }
   stats_out <- .omega_degeneracy_stats(fit, class_cols, degenerate_threshold)
-  if (is.null(stats_out)) return(NULL)
+  if (is.null(stats_out)) {
+    return(NULL)
+  }
   lambda_min <- stats_out$lambda_min
   pct_near_degenerate <- stats_out$pct_near_degenerate
   med_cond <- stats_out$med_condition_number

@@ -95,9 +95,22 @@ Stratification columns (geography, year, outcome) present in \code{marginals}
 are detected automatically and carried through to the output.
 }
 \examples{
-\dontrun{
-marg <- compute_marginals_from_data(result$data_wide, result$col_map_resolved, panel_map)
-pw <- compute_pairwise_from_data(result$data_wide, marg, result$col_map_resolved, panel_map)
-out <- estimate_profiles_convex(marg, pw, panel_map)
+if (requireNamespace("quadprog", quietly = TRUE)) {
+  marginals <- data.frame(
+    pathogen = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 3),
+    antibiotic_class = rep(c("Carbapenems", "3GC", "Fluoroquinolones"), 2),
+    n_tested = c(420L, 460L, 390L, 280L, 310L, 265L),
+    n_resistant = c(126L, 299L, 195L, 45L, 155L, 133L)
+  )
+  marginals$marginal_resistance <- marginals$n_resistant / marginals$n_tested
+  out <- estimate_profiles_convex(marginals,
+    panel_map = list(
+      "Klebsiella pneumoniae" = c("Carbapenems", "3GC"),
+      "Escherichia coli" = c("Carbapenems", "3GC")
+    ),
+    pathogen_col = "pathogen", class_col = "antibiotic_class",
+    rate_col = "marginal_resistance", n_tested_col = "n_tested"
+  )
+  out[, c("pathogen", "profile_delta", "profile_probability")]
 }
 }

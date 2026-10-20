@@ -95,30 +95,22 @@ resistance computation and convex optimisation. Calls existing
 per isolate, not one count per patient.
 }
 \examples{
-\dontrun{
-result <- preprocess_for_profiles(
-  data = raw_ast,
-  col_map = list(
-    isolate_col = "isolate_id",
-    pathogen_col = "organism",
-    ast_col = "result",
-    patient_col = "pid",
-    date_col = "culture_date",
-    geography_col = "state",
-    specimen_col = "specimen",
-    age_col = "age",
-    antibiotic_col = "drug_name"
-  ),
-  panel_map = list(
-    "Klebsiella pneumoniae" = c("3GC", "Carbapenems", "Fluoroquinolones"),
-    "Escherichia coli"      = c("3GC", "Fluoroquinolones", "Aminoglycosides")
-  ),
-  stratify_by = c("geography", "year"),
-  outcome_col = "final_outcome"
+ast_long <- data.frame(
+  isolate_id = rep(sprintf("ISO\%02d", 1:6), each = 2),
+  patient_id = rep(sprintf("P\%02d", 1:6), each = 2),
+  pathogen = rep(c("Klebsiella pneumoniae", "Escherichia coli"), each = 6),
+  antibiotic_name = rep(c("Meropenem", "Ceftriaxone"), 6),
+  ast_value = rep(c("R", "S", "S", "R"), 3),
+  date_of_culture = as.Date("2024-01-01") + rep(0:5, each = 2),
+  specimen_type = "Blood",
+  state = "Maharashtra",
+  age = 40
 )
-
-result$data_wide # ready for compute_marginals_from_data()
-result$preprocessing_log # step-by-step row counts
-result$panel_exclusions # classes dropped per organism
-}
+res <- preprocess_for_profiles(ast_long,
+  panel_map = list(
+    "Klebsiella pneumoniae" = c("Carbapenems", "Third-generation-cephalosporins"),
+    "Escherichia coli" = c("Carbapenems", "Third-generation-cephalosporins")
+  )
+)
+res$preprocessing_log
 }

@@ -9,7 +9,9 @@
 # page, so the trace/rank facet strips read as substance, not "beta[12,2]".
 
 .worst_offender_variables <- function(monitored, n_worst) {
-  if (is.null(monitored) || nrow(monitored) == 0L) return(character(0))
+  if (is.null(monitored) || nrow(monitored) == 0L) {
+    return(character(0))
+  }
   monitored$rhat <- suppressWarnings(as.numeric(monitored$rhat))
   monitored$ess_bulk <- suppressWarnings(as.numeric(monitored$ess_bulk))
   by_rhat <- monitored[order(-monitored$rhat), , drop = FALSE]
@@ -39,11 +41,15 @@
 #'   \code{NULL} if no structural parameter diagnostics are available.
 #' @export
 plot_probit_worst_offender_diagnostics <- function(fit, draws, title_base = "", n_worst = 6L) {
-  if (!requireNamespace("bayesplot", quietly = TRUE) || !requireNamespace("posterior", quietly = TRUE)) return(NULL)
+  if (!requireNamespace("bayesplot", quietly = TRUE) || !requireNamespace("posterior", quietly = TRUE)) {
+    return(NULL)
+  }
   monitored <- fit$diagnostics_detail$monitored_parameters
   worst_vars <- .worst_offender_variables(monitored, n_worst)
   worst_vars <- intersect(worst_vars, posterior::variables(draws))
-  if (length(worst_vars) == 0L) return(NULL)
+  if (length(worst_vars) == 0L) {
+    return(NULL)
+  }
 
   sub_draws <- posterior::subset_draws(draws, variable = worst_vars)
   parameter_group <- monitored$parameter_group[match(worst_vars, monitored$variable)]

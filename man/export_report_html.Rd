@@ -11,6 +11,9 @@ export_report_html(report, file)
 
 \item{file}{Output file path}
 }
+\value{
+Called for its side effect of writing \code{file}; returns \code{NULL} invisibly.
+}
 \description{
 Export Report as HTML
 }

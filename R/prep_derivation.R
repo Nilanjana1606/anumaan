@@ -356,7 +356,7 @@ prep_fill_age <- function(data,
   }
 
   message("\nAge enrichment summary:")
-  print(dplyr::count(data, age_method, age_confidence) %>% dplyr::arrange(dplyr::desc(n)))
+  .msg_print(dplyr::count(data, age_method, age_confidence) %>% dplyr::arrange(dplyr::desc(n)))
 
   n_still_missing <- sum(is.na(data[[age_col]]))
   if (n_still_missing > 0) {
@@ -444,7 +444,7 @@ prep_infer_department <- function(data,
   }
 
   message("\nDepartment distribution:")
-  print(dplyr::arrange(
+  .msg_print(dplyr::arrange(
     dplyr::count(data, !!rlang::sym(department_col), department_confidence),
     dplyr::desc(n)
   ))
@@ -453,9 +453,7 @@ prep_infer_department <- function(data,
 }
 
 
-# ---------------------------------------------------------------------------
 # New functions (Layer 5)
-# ---------------------------------------------------------------------------
 
 #' Derive Length of Stay from Date Columns
 #'
@@ -556,14 +554,14 @@ prep_derive_los_from_dates <- function(data,
   los_non_missing <- dplyr::filter(data, !is.na(!!rlang::sym(los_col)))
   message("\nLOS summary:")
   if (nrow(los_non_missing) == 0L) {
-    print(data.frame(
+    .msg_print(data.frame(
       mean_los = NA_real_,
       median_los = NA_real_,
       min_los = NA_real_,
       max_los = NA_real_
     ))
   } else {
-    print(dplyr::summarise(
+    .msg_print(dplyr::summarise(
       los_non_missing,
       mean_los   = mean(!!rlang::sym(los_col), na.rm = TRUE),
       median_los = median(!!rlang::sym(los_col), na.rm = TRUE),

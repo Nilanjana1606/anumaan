@@ -267,21 +267,16 @@ prep_extract_species <- function(data, organism_col = "organism_normalized") {
 prep_assign_organism_group <- function(data, organism_col = "organism_normalized") {
   if (!organism_col %in% names(data)) stop(sprintf("Column '%s' not found", organism_col))
   taxonomy <- get_organism_taxonomy()
-  data <- data %>%
-    dplyr::left_join(taxonomy,
-      by = stats::setNames("organism_name", organism_col)
-    )
-  data$org_group <- ifelse(is.na(data$org_group), "Other", data$org_group)
+  idx <- match(.name_key(data[[organism_col]]), taxonomy$organism_name)
+  data$org_group <- ifelse(is.na(idx), "Other", taxonomy$org_group[idx])
   group_counts <- table(data$org_group)
   message("Organism group distribution:")
-  print(group_counts)
+  .msg_print(group_counts)
   return(data)
 }
 
 
-# ---------------------------------------------------------------------------
 # New functions (Layer 4a)
-# ---------------------------------------------------------------------------
 
 #' Normalize sp/spp Variants
 #'
@@ -346,7 +341,7 @@ prep_flag_organism_unmatched <- function(data, organism_col = "organism_normaliz
       data[[organism_col]][data$is_organism_unmatched]
     ), decreasing = TRUE), 5)
     message("Top unmatched:")
-    print(top_unmatched)
+    .msg_print(top_unmatched)
   } else {
     message("[prep_flag_organism_unmatched] All organisms matched to reference.")
   }
@@ -355,9 +350,7 @@ prep_flag_organism_unmatched <- function(data, organism_col = "organism_normaliz
 }
 
 
-# ---------------------------------------------------------------------------
 # Moved function: get_organism_taxonomy (from prep_clean_and_standardize.R)
-# ---------------------------------------------------------------------------
 
 #' Get Organism Taxonomy Mapping
 #'
@@ -379,5 +372,6 @@ get_organism_taxonomy <- function() {
   if ("organism_group" %in% names(taxonomy) && !"org_group" %in% names(taxonomy)) {
     names(taxonomy)[names(taxonomy) == "organism_group"] <- "org_group"
   }
+  taxonomy$organism_name <- .name_key(taxonomy$organism_name)
   taxonomy[, c("organism_name", "org_group")]
 }

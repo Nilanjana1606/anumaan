@@ -41,21 +41,13 @@ are available, use \code{daly_calc_deaths_by_syndrome()} with
 \code{facility_data} instead, which directly counts deaths by syndrome.
 }
 \examples{
-\dontrun{
-# One row per death record
-d_j <- daly_calc_deaths_by_cause(
-  pop_data  = vital_reg,
-  cause_col = "icd10_cause"
+vital_reg <- data.frame(
+  cause_of_death     = c("A41.9", "A41.9", "J18.9", "J18.9", "I21.9", "N39.0"),
+  is_infection_death = c(TRUE, TRUE, TRUE, TRUE, FALSE, TRUE),
+  syndrome           = c("BSI", "BSI", "LRI", "LRI", NA, "UTI")
 )
-
-# Pre-aggregated counts, stratified by age and sex
-d_j <- daly_calc_deaths_by_cause(
-  pop_data     = vital_reg,
-  cause_col    = "icd10_cause",
-  deaths_col   = "n_deaths",
-  groupby_cols = c("Age_bin", "gender")
-)
-}
+d_j <- daly_calc_deaths_by_cause(vital_reg)
+d_j
 }
 \references{
 Antimicrobial Resistance Collaborators. Global burden of bacterial

@@ -72,15 +72,7 @@ preprocessing pipeline. Users can override default settings for their
 specific use case.
 }
 \examples{
-\dontrun{
-# Use defaults
 config <- amr_config()
-
-# Customize for specific hospital
-config <- amr_config(
-  hai_cutoff = 3,
-  mdr_definition = 5,
-  strict_validation = FALSE
-)
-}
+config <- amr_config(hai_cutoff = 3, mdr_definition = 5)
+config
 }

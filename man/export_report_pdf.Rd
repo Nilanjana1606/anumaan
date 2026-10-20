@@ -11,6 +11,9 @@ export_report_pdf(report, file)
 
 \item{file}{Output file path}
 }
+\value{
+Does not return; always signals an error.
+}
 \description{
 Export Report as PDF
 }

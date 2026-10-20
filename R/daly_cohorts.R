@@ -20,8 +20,7 @@
 #   GBD 2019 Diseases and Injuries Collaborators. Lancet. 2020.
 
 
-# -- D_J -----------------------------------------------------------------------
-
+# D_J
 #' Calculate Deaths by Underlying Cause (D_J)
 #'
 #' Computes D_J, the number of deaths for each underlying cause J from
@@ -52,21 +51,13 @@
 #' antimicrobial resistance in 2019. Lancet. 2022.
 #'
 #' @examples
-#' \dontrun{
-#' # One row per death record
-#' d_j <- daly_calc_deaths_by_cause(
-#'   pop_data  = vital_reg,
-#'   cause_col = "icd10_cause"
+#' vital_reg <- data.frame(
+#'   cause_of_death     = c("A41.9", "A41.9", "J18.9", "J18.9", "I21.9", "N39.0"),
+#'   is_infection_death = c(TRUE, TRUE, TRUE, TRUE, FALSE, TRUE),
+#'   syndrome           = c("BSI", "BSI", "LRI", "LRI", NA, "UTI")
 #' )
-#'
-#' # Pre-aggregated counts, stratified by age and sex
-#' d_j <- daly_calc_deaths_by_cause(
-#'   pop_data     = vital_reg,
-#'   cause_col    = "icd10_cause",
-#'   deaths_col   = "n_deaths",
-#'   groupby_cols = c("Age_bin", "gender")
-#' )
-#' }
+#' d_j <- daly_calc_deaths_by_cause(vital_reg)
+#' d_j
 daly_calc_deaths_by_cause <- function(pop_data,
                                       cause_col = "cause_of_death",
                                       deaths_col = NULL,
@@ -128,8 +119,7 @@ daly_calc_deaths_by_cause <- function(pop_data,
 }
 
 
-# -- S_J -----------------------------------------------------------------------
-
+# S_J
 #' Calculate Infection Fraction of Deaths by Cause (S_J)
 #'
 #' Computes S_J, the fraction of deaths for underlying cause J that were
@@ -161,14 +151,13 @@ daly_calc_deaths_by_cause <- function(pop_data,
 #' antimicrobial resistance in 2019. Lancet. 2022.
 #'
 #' @examples
-#' \dontrun{
-#' s_j <- daly_calc_infection_fraction(
-#'   pop_data           = vital_reg,
-#'   cause_col          = "icd10_cause",
-#'   infection_flag_col = "is_infectious",
-#'   groupby_cols       = c("Age_bin", "gender")
+#' vital_reg <- data.frame(
+#'   cause_of_death     = c("A41.9", "A41.9", "J18.9", "J18.9", "I21.9", "N39.0"),
+#'   is_infection_death = c(TRUE, TRUE, TRUE, TRUE, FALSE, TRUE),
+#'   syndrome           = c("BSI", "BSI", "LRI", "LRI", NA, "UTI")
 #' )
-#' }
+#' s_j <- daly_calc_infection_fraction(vital_reg)
+#' s_j
 daly_calc_infection_fraction <- function(pop_data,
                                          cause_col = "cause_of_death",
                                          infection_flag_col = "is_infection_death",
@@ -229,8 +218,7 @@ daly_calc_infection_fraction <- function(pop_data,
 }
 
 
-# -- M_LJ ----------------------------------------------------------------------
-
+# M_LJ
 #' Calculate Infectious Syndrome Fraction (M_LJ)
 #'
 #' Computes M_LJ, the fraction of infection-related deaths for underlying cause
@@ -266,15 +254,13 @@ daly_calc_infection_fraction <- function(pop_data,
 #' antimicrobial resistance in 2019. Lancet. 2022.
 #'
 #' @examples
-#' \dontrun{
-#' m_lj <- daly_calc_syndrome_fraction(
-#'   pop_data           = vital_reg,
-#'   cause_col          = "icd10_cause",
-#'   syndrome_col       = "infectious_syndrome",
-#'   infection_flag_col = "is_infectious",
-#'   groupby_cols       = c("Age_bin")
+#' vital_reg <- data.frame(
+#'   cause_of_death     = c("A41.9", "A41.9", "J18.9", "J18.9", "I21.9", "N39.0"),
+#'   is_infection_death = c(TRUE, TRUE, TRUE, TRUE, FALSE, TRUE),
+#'   syndrome           = c("BSI", "BSI", "LRI", "LRI", NA, "UTI")
 #' )
-#' }
+#' m_lj <- daly_calc_syndrome_fraction(vital_reg)
+#' m_lj
 daly_calc_syndrome_fraction <- function(pop_data,
                                         cause_col = "cause_of_death",
                                         syndrome_col = "syndrome",
@@ -357,8 +343,7 @@ daly_calc_syndrome_fraction <- function(pop_data,
 }
 
 
-# -- Deaths by Syndrome (D_L) --------------------------------------------------
-
+# Deaths by Syndrome (D_L)
 #' Calculate Deaths by Infectious Syndrome (D_L)
 #'
 #' Computes D_L, the number of deaths due to each infectious syndrome L.
@@ -429,46 +414,13 @@ daly_calc_syndrome_fraction <- function(pop_data,
 #' antimicrobial resistance in 2019. Lancet. 2022.
 #'
 #' @examples
-#' \dontrun{
-#' # Mode 1: pass pre-computed components, all syndromes
-#' d_j <- daly_calc_deaths_by_cause(pop_data = vr, cause_col = "icd10")
-#' s_j <- daly_calc_infection_fraction(pop_data = vr, cause_col = "icd10")
-#' m_lj <- daly_calc_syndrome_fraction(
-#'   pop_data = vr, cause_col = "icd10", syndrome_col = "syndrome"
+#' vital_reg <- data.frame(
+#'   cause_of_death     = c("A41.9", "A41.9", "J18.9", "J18.9", "I21.9", "N39.0"),
+#'   is_infection_death = c(TRUE, TRUE, TRUE, TRUE, FALSE, TRUE),
+#'   syndrome           = c("BSI", "BSI", "LRI", "LRI", NA, "UTI")
 #' )
-#' d_l <- daly_calc_deaths_by_syndrome(
-#'   d_j = d_j, s_j = s_j, m_lj = m_lj,
-#'   cause_col = "icd10", syndrome_col = "syndrome"
-#' )
-#'
-#' # Mode 2: raw population data, filter to one syndrome
-#' d_l <- daly_calc_deaths_by_syndrome(
-#'   pop_data     = vital_reg,
-#'   cause_col    = "icd10_cause",
-#'   syndrome_col = "infectious_syndrome",
-#'   syndrome     = "Bloodstream infection"
-#' )
-#'
-#' # Mode 3: facility fallback, one facility, all syndromes
-#' d_l <- daly_calc_deaths_by_syndrome(
-#'   facility_data = amr_data,
-#'   syndrome_col  = "specimen_normalized",
-#'   outcome_col   = "final_outcome",
-#'   death_value   = "Died",
-#'   patient_col   = "patient_id",
-#'   facility_col  = "location",
-#'   facility_name = "Mumbai"
-#' )
-#'
-#' # Mode 3: facility fallback, all facilities, one syndrome, stratified by age
-#' d_l <- daly_calc_deaths_by_syndrome(
-#'   facility_data = amr_data,
-#'   syndrome_col  = "specimen_normalized",
-#'   syndrome      = "Blood",
-#'   death_value   = "Died",
-#'   groupby_cols  = c("Age_bin")
-#' )
-#' }
+#' d_l <- daly_calc_deaths_by_syndrome(pop_data = vital_reg)
+#' d_l
 daly_calc_deaths_by_syndrome <- function(d_j = NULL,
                                          s_j = NULL,
                                          m_lj = NULL,
@@ -498,7 +450,7 @@ daly_calc_deaths_by_syndrome <- function(d_j = NULL,
     )
   }
 
-  # -- Mode 1: Pre-computed components ------------------------------------------
+  # Mode 1: Pre-computed components
   if (has_components) {
     message("Mode 1: Computing D_L from pre-computed D_J, S_J, M_LJ components...")
 
@@ -548,7 +500,7 @@ daly_calc_deaths_by_syndrome <- function(d_j = NULL,
     if (!is.null(syndrome)) {
       n_before <- nrow(result)
       result <- result %>%
-        dplyr::filter(!!rlang::sym(syndrome_col) == syndrome)
+        dplyr::filter(.name_key(!!rlang::sym(syndrome_col)) == .name_key(syndrome))
       if (nrow(result) == 0) {
         warning(sprintf(
           "Syndrome '%s' not found in results. Check values in '%s'.",
@@ -571,7 +523,7 @@ daly_calc_deaths_by_syndrome <- function(d_j = NULL,
     return(result)
   }
 
-  # -- Mode 2: Raw population data -- compute all components internally -----------
+  # Mode 2: Raw population data -- compute all components internally
   if (has_pop_data) {
     message("Mode 2: Computing D_L from raw population data (all components computed internally)...")
 
@@ -607,7 +559,7 @@ daly_calc_deaths_by_syndrome <- function(d_j = NULL,
     ))
   }
 
-  # -- Mode 3: Facility fallback -- count unique patients who died by syndrome ----
+  # Mode 3: Facility fallback -- count unique patients who died by syndrome
   message("Mode 3: No population data -- counting deaths by syndrome from facility data (LOW confidence)...")
 
   # Validate required columns
@@ -678,7 +630,7 @@ daly_calc_deaths_by_syndrome <- function(d_j = NULL,
   if (!is.null(syndrome)) {
     n_before <- nrow(working_data)
     working_data <- working_data %>%
-      dplyr::filter(!!rlang::sym(syndrome_col) == syndrome)
+      dplyr::filter(.name_key(!!rlang::sym(syndrome_col)) == .name_key(syndrome))
     n_after <- nrow(working_data)
     if (n_after == 0) {
       warning(sprintf(
@@ -733,8 +685,7 @@ daly_calc_deaths_by_syndrome <- function(d_j = NULL,
   return(result)
 }
 
-# -- Incident cases by syndrome (direct count) ---------------------------------
-
+# Incident cases by syndrome (direct count)
 #' Count incident cases by syndrome from facility data
 #'
 #' Counts the number of unique patients per infectious syndrome directly from
@@ -776,7 +727,7 @@ daly_count_incident_cases <- function(data,
                                       facility_name = NULL,
                                       pathogen_col = NULL,
                                       pathogen_name = NULL) {
-  # -- Input validation ------------------------------------------------------
+  # Input validation
   required_cols <- c(syndrome_col, patient_col)
   missing_cols <- setdiff(required_cols, names(data))
   if (length(missing_cols) > 0) {
@@ -798,18 +749,18 @@ daly_count_incident_cases <- function(data,
     stop(sprintf("pathogen_col '%s' not found in data.", pathogen_col))
   }
 
-  # -- Step 1: Filter to syndrome --------------------------------------------
+  # Step 1: Filter to syndrome
   df <- data %>%
-    dplyr::filter(.data[[syndrome_col]] == syndrome_name)
+    dplyr::filter(.name_key(.data[[syndrome_col]]) == .name_key(syndrome_name))
 
   if (nrow(df) == 0) {
     warning(sprintf("No records found for syndrome '%s'.", syndrome_name))
     return(data.frame())
   }
 
-  # -- Step 1b: Optional pathogen filter ------------------------------------
+  # Step 1b: Optional pathogen filter
   if (!is.null(pathogen_name)) {
-    df <- df %>% dplyr::filter(.data[[pathogen_col]] %in% pathogen_name)
+    df <- df %>% dplyr::filter(.name_key(.data[[pathogen_col]]) %in% .name_key(pathogen_name))
     if (nrow(df) == 0) {
       stop(sprintf(
         "No records found for pathogen(s): %s",
@@ -822,7 +773,7 @@ daly_count_incident_cases <- function(data,
     ))
   }
 
-  # -- Step 2: Optional single-facility restriction ---------------------------
+  # Step 2: Optional single-facility restriction
   if (!is.null(facility_name)) {
     n_before <- nrow(df)
     df <- df %>% dplyr::filter(.data[[facility_col]] == facility_name)
@@ -835,7 +786,7 @@ daly_count_incident_cases <- function(data,
     ))
   }
 
-  # -- Step 3: Count unique patients -----------------------------------------
+  # Step 3: Count unique patients
   # Group by facility if facility_col is supplied (and no specific facility
   # was requested -- i.e., return one row per facility).
   group_vars <- if (!is.null(facility_col)) {
@@ -862,8 +813,7 @@ daly_count_incident_cases <- function(data,
 }
 
 
-# -- CR_L : CFR adjustment factor -----------------------------------------------
-
+# CR_L : CFR adjustment factor
 #' Calculate the CFR adjustment factor (CR_L)
 #'
 #' Computes CR_L, the factor that adjusts a hospital-derived CFR to account for
@@ -920,7 +870,7 @@ daly_calc_cr_l <- function(data,
                            adjustment_ref,
                            facility_col = NULL,
                            facility_name = NULL) {
-  # -- Input validation ------------------------------------------------------
+  # Input validation
   required_cols <- c(syndrome_col, patient_col, visit_type_col)
   missing_cols <- setdiff(required_cols, names(data))
   if (length(missing_cols) > 0) {
@@ -937,9 +887,9 @@ daly_calc_cr_l <- function(data,
     stop("facility_col must be provided when facility_name is specified.")
   }
 
-  # -- Look up adjustment type -----------------------------------------------
+  # Look up adjustment type
   adj_type <- adjustment_ref %>%
-    dplyr::filter(.data[["infectious_syndrome"]] == syndrome_name) %>%
+    dplyr::filter(.name_key(.data[["infectious_syndrome"]]) == .name_key(syndrome_name)) %>%
     dplyr::pull(.data[["adjustment_factor_on_CFR"]])
 
   if (length(adj_type) == 0) {
@@ -964,9 +914,9 @@ daly_calc_cr_l <- function(data,
     ))
   }
 
-  # -- Filter to syndrome ----------------------------------------------------
+  # Filter to syndrome
   df <- data %>%
-    dplyr::filter(.data[[syndrome_col]] == syndrome_name)
+    dplyr::filter(.name_key(.data[[syndrome_col]]) == .name_key(syndrome_name))
 
   if (!is.null(facility_name)) {
     df <- df %>% dplyr::filter(.data[[facility_col]] == facility_name)
@@ -977,7 +927,7 @@ daly_calc_cr_l <- function(data,
 
   fac_grp <- if (!is.null(facility_col)) facility_col else character(0)
 
-  # -- Inpatient ratio -------------------------------------------------------
+  # Inpatient ratio
   if (adj_type == "Inpatient ratio") {
     result <- df %>%
       dplyr::group_by(dplyr::across(dplyr::all_of(c(fac_grp, patient_col)))) %>%
@@ -997,7 +947,7 @@ daly_calc_cr_l <- function(data,
         adjustment_type = "Inpatient ratio"
       )
 
-    # -- Outpatient to inpatient ratio -----------------------------------------
+    # Outpatient to inpatient ratio
   } else if (adj_type == "Outpatient to inpatient ratio") {
     result <- df %>%
       dplyr::group_by(dplyr::across(dplyr::all_of(c(fac_grp, patient_col)))) %>%
@@ -1041,8 +991,7 @@ daly_calc_cr_l <- function(data,
 }
 
 
-# -- Incidence (formula-based) --------------------------------------------------
-
+# Incidence (formula-based)
 #' Calculate syndrome incidence from deaths, CFR, and CR_L (formula-based)
 #'
 #' Estimates the number of incident cases of syndrome L using:
@@ -1095,7 +1044,7 @@ daly_calc_incidence_from_cfr <- function(deaths_L,
                                          plk_col = "P_Lk_prime",
                                          facility_col = NULL,
                                          deaths_col = "deaths") {
-  # -- Input validation ------------------------------------------------------
+  # Input validation
   for (tbl_name in c("cfr_lk_tbl", "P_Lk_prime_tbl")) {
     tbl <- get(tbl_name)
     if (!pathogen_col %in% names(tbl)) {
@@ -1126,7 +1075,7 @@ daly_calc_incidence_from_cfr <- function(deaths_L,
     }
   }
 
-  # -- Join P'LK and CFR_LK -------------------------------------------------
+  # Join P'LK and CFR_LK
   join_cols <- if (!is.null(facility_col)) c(facility_col, pathogen_col) else pathogen_col
 
   merged <- dplyr::inner_join(P_Lk_prime_tbl, cfr_lk_tbl, by = join_cols)
@@ -1139,7 +1088,7 @@ daly_calc_incidence_from_cfr <- function(deaths_L,
     ))
   }
 
-  # -- CFR_L = sum_K( P'_LK x CFR_LK ) per facility ------------------------
+  # CFR_L = sum_K( P'_LK x CFR_LK ) per facility
   grp <- if (!is.null(facility_col)) facility_col else character(0)
 
   cfr_L_tbl <- merged %>%
@@ -1149,7 +1098,7 @@ daly_calc_incidence_from_cfr <- function(deaths_L,
       .groups = "drop"
     )
 
-  # -- Attach deaths and compute I_L -----------------------------------------
+  # Attach deaths and compute I_L
   if (!is.null(facility_col)) {
     result <- dplyr::left_join(cfr_L_tbl, deaths_L, by = facility_col) %>%
       dplyr::rename(deaths = dplyr::all_of(deaths_col)) %>%

@@ -1,6 +1,6 @@
 # Category 2: prep_derivation.R enrichment functions
 
-# prep_fill_age ----------------------------------------------------------------
+# prep_fill_age
 
 test_that("prep_fill_age: valid behavior", {
   dat <- cat2_enrich_df()
@@ -28,7 +28,7 @@ test_that("prep_fill_age: error handling", {
   expect_true("Age" %in% names(out))
 })
 
-# prep_infer_department --------------------------------------------------------
+# prep_infer_department
 
 test_that("prep_infer_department: valid behavior", {
   dat <- cat2_enrich_df()
@@ -55,7 +55,7 @@ test_that("prep_infer_department: error handling", {
   expect_true("hospital_department" %in% names(out))
 })
 
-# prep_derive_los_from_dates ---------------------------------------------------
+# prep_derive_los_from_dates
 
 test_that("prep_derive_los_from_dates: valid behavior", {
   dat <- data.frame(admission_date = as.Date(c("2020-01-01", "2020-01-05")), outcome_date = as.Date(c("2020-01-03", "2020-01-05")), stringsAsFactors = FALSE)
@@ -90,7 +90,7 @@ test_that("prep_derive_los_from_dates: error handling", {
   expect_true("los_days" %in% names(out))
 })
 
-# prep_derive_dob_from_components ----------------------------------------------
+# prep_derive_dob_from_components
 
 test_that("prep_derive_dob_from_components: valid behavior", {
   dat <- data.frame(dob_year = 2000, dob_month = 1, dob_day = 15, stringsAsFactors = FALSE)

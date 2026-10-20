@@ -1,6 +1,6 @@
 # Category 1: prep_standardize_specimens.R
 
-# prep_standardize_specimens ---------------------------------------------------
+# prep_standardize_specimens
 
 test_that("prep_standardize_specimens: valid behavior", {
   dat <- data.frame(specimen_type = c("Blood culture", "midstream urine c/s"), stringsAsFactors = FALSE)

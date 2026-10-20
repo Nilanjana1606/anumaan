@@ -1,6 +1,6 @@
 # Category 1: zzz_utils_internal.R
 
-# parse_age_bin_labels ---------------------------------------------------------
+# parse_age_bin_labels
 
 test_that("parse_age_bin_labels: valid behavior", {
   out <- anumaan:::parse_age_bin_labels(c("<1", "1-5", "5-10", "85+"))
@@ -23,7 +23,7 @@ test_that("parse_age_bin_labels: error handling", {
   expect_error(anumaan:::parse_age_bin_labels("nonsense"), "Cannot parse age bin label")
 })
 
-# round_to_sum -----------------------------------------------------------------
+# round_to_sum
 
 test_that("round_to_sum: valid behavior", {
   x <- c(3.3, 3.3, 3.4)
@@ -46,7 +46,7 @@ test_that("round_to_sum: error handling", {
   expect_error(round_to_sum(c("a", "b"), target = 1), NA)
 })
 
-# shorten_drug_class -----------------------------------------------------------
+# shorten_drug_class
 
 test_that("shorten_drug_class: valid behavior", {
   out <- shorten_drug_class(c("Third-generation-cephalosporins", "Beta-lactam/beta-lactamase-inhibitor"))
@@ -68,7 +68,7 @@ test_that("shorten_drug_class: error handling", {
   expect_error(shorten_drug_class(1:3), NA)
 })
 
-# normalize_join ---------------------------------------------------------------
+# normalize_join
 
 test_that("normalize_join: valid behavior", {
   out <- anumaan:::normalize_join(c("  Blood-Culture ", "CSF (sample)"))

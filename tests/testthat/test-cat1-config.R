@@ -1,6 +1,6 @@
 # Category 1: config.R
 
-# amr_config -----------------------------------------------------------------
+# amr_config
 
 test_that("amr_config: valid behavior", {
   cfg <- amr_config(hai_cutoff = 3, strict_validation = TRUE)
@@ -26,7 +26,7 @@ test_that("amr_config: error handling", {
   expect_error(amr_config(age_bins = "wrong_mode_name"), "Unknown age bin type")
 })
 
-# validate_config --------------------------------------------------------------
+# validate_config
 
 test_that("validate_config: valid behavior", {
   expect_true(validate_config(amr_config()))

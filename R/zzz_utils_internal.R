@@ -131,3 +131,65 @@ normalize_join <- function(x) {
   x <- gsub("\\s+", " ", x)
   x
 }
+
+# ponytail: print() to console can't be suppressed; route tables through message()
+.msg_print <- function(x, ...) {
+  message(paste(utils::capture.output(print(x, ...)), collapse = "\n"))
+  invisible(x)
+}
+
+# Seed the RNG for the caller and restore the user's .Random.seed when the
+# caller exits (CRAN: functions must not leave global RNG state changed).
+.local_seed <- function(seed, envir = parent.frame()) {
+  old <- if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+    get(".Random.seed", envir = globalenv())
+  }
+  do.call(on.exit, list(bquote(.restore_seed(.(old))), add = TRUE, after = FALSE),
+    envir = envir
+  )
+  set.seed(seed)
+}
+
+.restore_seed <- function(old) {
+  if (is.null(old)) {
+    if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+      rm(".Random.seed", envir = globalenv())
+    }
+  } else {
+    assign(".Random.seed", old, envir = globalenv())
+  }
+}
+
+# osqp >= 1.0 renamed `polish` to `polishing`; pass whichever this version takes.
+.osqp_settings <- function(...) {
+  polish_arg <- intersect(c("polishing", "polish"), names(formals(osqp::osqpSettings)))[1]
+  args <- list(...)
+  if (!is.na(polish_arg)) args[[polish_arg]] <- TRUE
+  do.call(osqp::osqpSettings, args)
+}
+
+# Canonical internal key for organism and drug names: lower case, trimmed,
+# single-spaced. Every comparison against reference tables or user maps goes
+# through this so "Klebsiella pneumoniae", "klebsiella  pneumoniae " match.
+.name_key <- function(x) {
+  gsub("\\s+", " ", tolower(trimws(as.character(x))))
+}
+
+# Re-spell `x` (map names or a column) to match `reference` case-insensitively,
+# so matching ignores case but outputs keep the data's own labels.
+.align_names <- function(x, reference) {
+  hit <- match(.name_key(x), .name_key(reference))
+  ifelse(is.na(hit), x, as.character(reference)[hit])
+}
+
+.align_panel_map <- function(panel_map, values) {
+  if (!is.null(panel_map)) names(panel_map) <- .align_names(names(panel_map), unique(values))
+  panel_map
+}
+
+.align_col <- function(df, col, values) {
+  if (!is.null(df) && !is.null(col) && col %in% names(df)) {
+    df[[col]] <- .align_names(df[[col]], unique(values))
+  }
+  df
+}

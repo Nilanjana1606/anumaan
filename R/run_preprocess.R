@@ -29,25 +29,20 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Full pipeline with defaults
-#' result <- run_preprocess(raw_data)
-#' clean_data <- result$data
-#'
-#' # Custom configuration
-#' config <- amr_config(
-#'   hai_cutoff = 3,
-#'   mdr_definition = "CDC",
-#'   fuzzy_match = TRUE
+#' raw <- data.frame(
+#'   PID = c("pt_001", "pt_001", "pt_002", "pt_003"),
+#'   Date.of.admission = c("2021-01-01", "2021-01-01", "2021-01-05", "2021-01-10"),
+#'   CultureDate = c("2021-01-03", "2021-01-03", "2021-01-08", "2021-01-11"),
+#'   Final.outcome = c("alive", "alive", "expired", "Discharged Alive"),
+#'   Organism = c("E. coli", "E. coli", "Klebsiella pneumoniae", "Staphylococcus aureus"),
+#'   Sample_type1_name = c("Blood", "Blood", "Urine", "Blood"),
+#'   Antibiotic = c("Amikacin", "Ciprofloxacin", "Meropenem", "Vancomycin"),
+#'   Result = c("Resistant", "Susceptible", "R", "S"),
+#'   Gender = c("M", "M", "female", "F"),
+#'   Age = c(34, 34, 61, 47)
 #' )
-#' result <- run_preprocess(raw_data, config = config)
-#'
-#' # Run only standardization phase
-#' result <- run_preprocess(raw_data, phases = "standardize")
-#'
-#' # Summary
-#' summary(result)
-#' }
+#' result <- run_preprocess(raw, verbose = FALSE, generate_report = FALSE)
+#' head(result$data)
 run_preprocess <- function(data,
                            config = NULL,
                            phases = "all",
@@ -434,10 +429,20 @@ run_preprocess <- function(data,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' result <- run_preprocess(data)
+#' raw <- data.frame(
+#'   PID = c("pt_001", "pt_001", "pt_002", "pt_003"),
+#'   Date.of.admission = c("2021-01-01", "2021-01-01", "2021-01-05", "2021-01-10"),
+#'   CultureDate = c("2021-01-03", "2021-01-03", "2021-01-08", "2021-01-11"),
+#'   Final.outcome = c("alive", "alive", "expired", "Discharged Alive"),
+#'   Organism = c("E. coli", "E. coli", "Klebsiella pneumoniae", "Staphylococcus aureus"),
+#'   Sample_type1_name = c("Blood", "Blood", "Urine", "Blood"),
+#'   Antibiotic = c("Amikacin", "Ciprofloxacin", "Meropenem", "Vancomycin"),
+#'   Result = c("Resistant", "Susceptible", "R", "S"),
+#'   Gender = c("M", "M", "female", "F"),
+#'   Age = c(34, 34, 61, 47)
+#' )
+#' result <- run_preprocess(raw, verbose = FALSE, generate_report = FALSE)
 #' summary(result)
-#' }
 summary.amr_result <- function(object, ...) {
   cat("=======================================================\n")
   cat("  anumaan Preprocessing Summary\n")

@@ -189,7 +189,7 @@ prep_classify_mortality <- function(data,
   )
 
   message("\nMortality classification summary:")
-  print(mortality_summary)
+  .msg_print(mortality_summary)
 
   n_proxy <- sum(data$mortality_method == "proxy_outcome_only", na.rm = TRUE)
   if (n_proxy > 0) {
@@ -236,7 +236,7 @@ prep_classify_mdr_xdr <- function(data,
   thresholds <- get_magiorakos_thresholds()
   n_total <- dplyr::n_distinct(data$event_id)
 
-  # --- MDR ---------------------------------------------------------------
+  # MDR
   resistant_counts <- data %>%
     dplyr::filter(class_result_event == "R") %>%
     dplyr::group_by(event_id, !!rlang::sym(organism_group_col)) %>%
@@ -284,7 +284,7 @@ prep_classify_mdr_xdr <- function(data,
     definition, n_mdr, n_total, 100 * n_mdr / n_total
   ))
 
-  # --- XDR ---------------------------------------------------------------
+  # XDR
   susceptible_counts <- data %>%
     dplyr::filter(class_result_event == "S") %>%
     dplyr::group_by(event_id, !!rlang::sym(organism_group_col)) %>%
@@ -341,9 +341,14 @@ prep_classify_mdr_xdr <- function(data,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' class_level <- prep_collapse_class_level(data)
-#' }
+#' ast <- data.frame(
+#'   event_id              = rep(c("E1", "E2"), each = 3),
+#'   organism_normalized   = rep(c("Escherichia coli", "Klebsiella pneumoniae"), each = 3),
+#'   antibiotic_normalized = rep(c("Meropenem", "Imipenem", "Ciprofloxacin"), 2),
+#'   antibiotic_class      = rep(c("Carbapenems", "Carbapenems", "Fluoroquinolones"), 2),
+#'   antibiotic_value      = c("S", "R", "R", "S", "S", "R")
+#' )
+#' prep_collapse_class_level(ast)
 prep_collapse_class_level <- function(data,
                                       event_col = "event_id",
                                       organism_col = "organism_normalized",
@@ -419,7 +424,7 @@ prep_collapse_class_level <- function(data,
     )
 
   message("\nClass-level resistance distribution:")
-  print(class_summary)
+  .msg_print(class_summary)
 
   return(collapsed)
 }
@@ -445,22 +450,15 @@ prep_collapse_class_level <- function(data,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # List resistant drugs
-#' data_with_profile <- prep_create_resistance_profile(data)
-#'
-#' # Full S/R pattern
-#' data_with_profile <- prep_create_resistance_profile(
-#'   data,
-#'   format = "full_pattern"
+#' ast <- data.frame(
+#'   event_id              = rep(c("E1", "E2"), each = 3),
+#'   organism_normalized   = rep(c("Escherichia coli", "Klebsiella pneumoniae"), each = 3),
+#'   antibiotic_normalized = rep(c("Meropenem", "Imipenem", "Ciprofloxacin"), 2),
+#'   antibiotic_class      = rep(c("Carbapenems", "Carbapenems", "Fluoroquinolones"), 2),
+#'   antibiotic_value      = c("S", "R", "R", "S", "S", "R")
 #' )
-#'
-#' # Resistant classes only
-#' data_with_profile <- prep_create_resistance_profile(
-#'   data,
-#'   format = "class_summary"
-#' )
-#' }
+#' prep_create_resistance_profile(ast)
+#' prep_create_resistance_profile(ast, format = "full_pattern")
 prep_create_resistance_profile <- function(data,
                                            event_col = "event_id",
                                            antibiotic_col = "antibiotic_normalized",
@@ -544,7 +542,7 @@ prep_create_resistance_profile <- function(data,
     utils::head(10)
 
   message("\nTop 10 resistance profiles:")
-  print(profile_freq)
+  .msg_print(profile_freq)
 
   return(data)
 }

@@ -397,7 +397,7 @@ previous one, based on the gap in days:
 
 ```{r flag-readmission}
 readmit_demo <- data.frame(
-  patient_id     = rep("pt_101", 4),
+  patient_id = rep("pt_101", 4),
   admission_date = as.Date(c("2021-01-01", "2021-01-10", "2021-03-05", "2021-09-20")),
   stringsAsFactors = FALSE
 )
@@ -414,7 +414,7 @@ rather than being guessed at.
 
 ```{r classify-readmission}
 messy_readmit <- data.frame(
-  patient_id        = paste0("pt_", 1:5),
+  patient_id = paste0("pt_", 1:5),
   readmission_class = c("First", "READMIT", "Same_Episode", "late", "unmapped_value"),
   stringsAsFactors = FALSE
 )

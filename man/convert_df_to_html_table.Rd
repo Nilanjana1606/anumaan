@@ -6,6 +6,9 @@
 \usage{
 convert_df_to_html_table(df)
 }
+\value{
+A single character string containing an HTML table.
+}
 \description{
 Convert Data Frame to HTML Table
 }

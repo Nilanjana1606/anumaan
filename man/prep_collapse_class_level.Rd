@@ -35,7 +35,12 @@ Aggregates resistance at antibiotic class level instead of individual drugs.
 Uses "any R in class -> class R" logic.
 }
 \examples{
-\dontrun{
-class_level <- prep_collapse_class_level(data)
-}
+ast <- data.frame(
+  event_id              = rep(c("E1", "E2"), each = 3),
+  organism_normalized   = rep(c("Escherichia coli", "Klebsiella pneumoniae"), each = 3),
+  antibiotic_normalized = rep(c("Meropenem", "Imipenem", "Ciprofloxacin"), 2),
+  antibiotic_class      = rep(c("Carbapenems", "Carbapenems", "Fluoroquinolones"), 2),
+  antibiotic_value      = c("S", "R", "R", "S", "S", "R")
+)
+prep_collapse_class_level(ast)
 }

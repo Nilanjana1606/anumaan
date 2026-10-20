@@ -1,6 +1,6 @@
 # Category 1: prep_derivation.R
 
-# get_age_bins -----------------------------------------------------------------
+# get_age_bins
 
 test_that("get_age_bins: valid behavior", {
   gbd <- get_age_bins("GBD_standard")
@@ -27,7 +27,7 @@ test_that("get_age_bins: error handling", {
   expect_error(get_age_bins("wrong_mode_name"), "Unknown age bin type")
 })
 
-# prep_assign_age_bins ---------------------------------------------------------
+# prep_assign_age_bins
 
 test_that("prep_assign_age_bins: valid behavior", {
   dat <- cat1_age_years_edge()[c(4, 9, 12), c("age"), drop = FALSE]
@@ -170,7 +170,7 @@ test_that("prep_assign_age_bins: error handling", {
   )
 })
 
-# find_extdata_file ------------------------------------------------------------
+# find_extdata_file
 
 test_that("find_extdata_file: valid behavior", {
   p <- anumaan:::find_extdata_file("organisms.csv")

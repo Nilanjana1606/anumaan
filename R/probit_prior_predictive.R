@@ -35,9 +35,7 @@
 # implausible/extreme implications of the CHOSEN priors before conditioning
 # on any outcomes.
 
-# ---------------------------------------------------------------------------
 # Internal: LKJ correlation-matrix Cholesky-factor prior sampling
-# ---------------------------------------------------------------------------
 
 #' @keywords internal
 .amr_probit_stan_prior_lkj <- function() {
@@ -67,16 +65,21 @@ generated quantities {
 #' @return \code{array(dim = c(n_states, n_matrices, D, D))}.
 #' @keywords internal
 .draw_lkj_cholesky_prior <- function(D, eta, n_matrices, n_states, seed) {
-  if (n_matrices == 0L) return(array(0, dim = c(n_states, 0L, D, D)))
+  if (n_matrices == 0L) {
+    return(array(0, dim = c(n_states, 0L, D, D)))
+  }
   if (D == 1L) {
     # A 1x1 correlation "matrix" is trivially [1]; no need to invoke Stan.
     return(array(1, dim = c(n_states, n_matrices, 1L, 1L)))
   }
-  if (!requireNamespace("cmdstanr", quietly = TRUE))
+  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
     stop("Package 'cmdstanr' is required for prior-predictive LKJ correlation-matrix sampling.",
-         call. = FALSE)
-  if (!requireNamespace("posterior", quietly = TRUE))
+      call. = FALSE
+    )
+  }
+  if (!requireNamespace("posterior", quietly = TRUE)) {
     stop("Package 'posterior' is required (installed with cmdstanr).", call. = FALSE)
+  }
 
   stan_file <- cmdstanr::write_stan_file(.amr_probit_stan_prior_lkj())
   mod <- cmdstanr::cmdstan_model(stan_file)
@@ -89,34 +92,34 @@ generated quantities {
 
   arr <- array(0, dim = c(n_states, n_matrices, D, D))
   for (m in seq_len(n_matrices)) {
-    for (a in seq_len(D)) for (b in seq_len(D)) {
-      col <- sprintf("L[%d,%d,%d]", m, a, b)
-      arr[, m, a, b] <- draws_mat[, col]
+    for (a in seq_len(D)) {
+      for (b in seq_len(D)) {
+        col <- sprintf("L[%d,%d,%d]", m, a, b)
+        arr[, m, a, b] <- draws_mat[, col]
+      }
     }
   }
   arr
 }
 
-# ---------------------------------------------------------------------------
 # Internal: prior-predictive setup and per-state parameter/data draw
-# ---------------------------------------------------------------------------
 
 #' Static (non-stochastic) per-event setup for prior predictive simulation --
 #' mirrors the STATIC portion of \code{.probit_predictive_draws_setup()}
 #' (posterior draw arrays are irrelevant here; a prior predictive draw needs
 #' only the real design structure -- X_event, grouping indices, class
 #' panel -- as conditioning predictors, per Part 10).
-#' @keywords internal
+#' @noRd
 .prior_predictive_draws_setup <- function(fitted_model, prior_config_override) {
-  class_cols   <- fitted_model$class_cols
-  event_meta   <- fitted_model$event_metadata
+  class_cols <- fitted_model$class_cols
+  event_meta <- fitted_model$event_metadata
   upper_re_col <- fitted_model$upper_re_col
   pathogen_col <- fitted_model$pathogen_col
-  re_prep      <- fitted_model$random_effects_prep
+  re_prep <- fitted_model$random_effects_prep
   residual_structure <- .null_default(fitted_model$residual_structure, "identity")
 
   D <- length(fitted_model$index_maps$class_levels)
-  X_event_sim  <- if (!is.null(fitted_model$X_event)) fitted_model$X_event else fitted_model$X_design
+  X_event_sim <- if (!is.null(fitted_model$X_event)) fitted_model$X_event else fitted_model$X_design
   event_re_idx <- fitted_model$event_re_idx
   K <- ncol(X_event_sim)
 
@@ -161,17 +164,20 @@ generated quantities {
 #' @param lkj_re_arr LKJ Cholesky draws for random-effect correlation blocks.
 #' @param lkj_residual_arr LKJ Cholesky draws for the residual correlation.
 #' @param s Prior-state draw index.
-#' @keywords internal
+#' @noRd
 .prior_draw_state <- function(setup, lkj_re_arr, lkj_residual_arr, s) {
-  K <- setup$K; D <- setup$D; R <- setup$R
+  K <- setup$K
+  D <- setup$D
+  R <- setup$R
   pc <- setup$prior_config
 
   beta <- matrix(stats::rnorm(K * D, mean = 0, sd = pc$beta_sd), nrow = K, ncol = D)
 
   re_effect <- matrix(0, nrow = D, ncol = setup$total_re_levels)
   for (r in seq_len(R)) {
-    lo <- setup$level_start[r]; hi <- lo + setup$n_levels[r] - 1L
-    tau_r <- abs(stats::rnorm(D, mean = 0, sd = pc$tau_sd))     # half-normal
+    lo <- setup$level_start[r]
+    hi <- lo + setup$n_levels[r] - 1L
+    tau_r <- abs(stats::rnorm(D, mean = 0, sd = pc$tau_sd)) # half-normal
     L_r <- matrix(lkj_re_arr[s, r, , ], nrow = D, ncol = D)
     z_r <- matrix(stats::rnorm(D * setup$n_levels[r]), nrow = D, ncol = setup$n_levels[r])
     re_effect[, lo:hi] <- (diag(tau_r, nrow = D) %*% L_r) %*% z_r
@@ -179,18 +185,20 @@ generated quantities {
 
   L_Omega <- if (identical(setup$residual_structure, "correlated")) {
     matrix(lkj_residual_arr[s, 1L, , ], nrow = D, ncol = D)
-  } else NULL
+  } else {
+    NULL
+  }
 
-  re_term <- if (R > 0L) re_contribution(re_effect, setup$flat_re_idx_obs) else {
+  re_term <- if (R > 0L) {
+    re_contribution(re_effect, setup$flat_re_idx_obs)
+  } else {
     matrix(0, nrow = setup$N_ev, ncol = D)
   }
   mu <- (setup$X_event %*% beta) + re_term
   list(beta = beta, re_effect = re_effect, L_Omega = L_Omega, mu = mu)
 }
 
-# ---------------------------------------------------------------------------
 # simulate_probit_prior_predictive()
-# ---------------------------------------------------------------------------
 
 #' Simulate prior predictive replicate datasets for a probit model
 #'
@@ -239,29 +247,35 @@ generated quantities {
 #' User's Guide. \url{https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html}
 #' @export
 simulate_probit_prior_predictive <- function(
-    fitted_model,
-    n_states = 1000L,
-    seed = 123L,
-    prior_config_override = NULL,
-    preserve_observation_mask = TRUE,
-    return_replicates = FALSE
+  fitted_model,
+  n_states = 1000L,
+  seed = 123L,
+  prior_config_override = NULL,
+  preserve_observation_mask = TRUE,
+  return_replicates = FALSE
 ) {
   setup <- .prior_predictive_draws_setup(fitted_model, prior_config_override)
   S <- as.integer(n_states)
   if (is.na(S) || S < 1L) stop("`n_states` must resolve to a positive integer.", call. = FALSE)
 
   n_matrices <- setup$R + if (identical(setup$residual_structure, "correlated")) 1L else 0L
-  lkj_re_arr <- .draw_lkj_cholesky_prior(setup$D, setup$prior_config$lkj_eta_random_effect,
-    setup$R, S, seed)
-  lkj_residual_arr <- .draw_lkj_cholesky_prior(setup$D, setup$prior_config$lkj_eta_residual,
-    if (identical(setup$residual_structure, "correlated")) 1L else 0L, S, seed + 1L)
+  lkj_re_arr <- .draw_lkj_cholesky_prior(
+    setup$D, setup$prior_config$lkj_eta_random_effect,
+    setup$R, S, seed
+  )
+  lkj_residual_arr <- .draw_lkj_cholesky_prior(
+    setup$D, setup$prior_config$lkj_eta_residual,
+    if (identical(setup$residual_structure, "correlated")) 1L else 0L, S, seed + 1L
+  )
 
   generate_state <- local({
     cache <- new.env(parent = emptyenv())
     function(s) {
       key <- as.character(as.integer(s))
       cached <- cache[[key]]
-      if (!is.null(cached)) return(cached)
+      if (!is.null(cached)) {
+        return(cached)
+      }
 
       val <- .ppc_with_local_seed(.ppc_state_seed(seed, s), {
         theta <- .prior_draw_state(setup, lkj_re_arr, lkj_residual_arr, s)
@@ -303,7 +317,7 @@ simulate_probit_prior_predictive <- function(
         ), n_elements, S, setup$N_ev, setup$D, max_elements
       ), call. = FALSE)
     }
-    Y_rep_array          <- array(NA_integer_, dim = c(S, setup$N_ev, setup$D))
+    Y_rep_array <- array(NA_integer_, dim = c(S, setup$N_ev, setup$D))
     Y_rep_complete_array <- array(NA_integer_, dim = c(S, setup$N_ev, setup$D))
     for (s in seq_len(S)) {
       st <- generate_state(s)
@@ -318,9 +332,7 @@ simulate_probit_prior_predictive <- function(
   out
 }
 
-# ---------------------------------------------------------------------------
 # compute_prior_predictive_status()
-# ---------------------------------------------------------------------------
 
 #' Classify plausibility of the prior predictive distribution
 #'
@@ -363,19 +375,27 @@ compute_prior_predictive_status <- function(prior_draws, thresholds = list()) {
   )
   th <- utils::modifyList(th_defaults, thresholds)
 
-  if (is.null(prior_draws) || !inherits(prior_draws, "amr_prior_predictive_draws"))
-    return(list(status = "insufficient_prior_check", reasons = character(0),
-                thresholds_used = th, summary = list()))
+  if (is.null(prior_draws) || !inherits(prior_draws, "amr_prior_predictive_draws")) {
+    return(list(
+      status = "insufficient_prior_check", reasons = character(0),
+      thresholds_used = th, summary = list()
+    ))
+  }
 
   setup <- prior_draws$setup
   S <- prior_draws$n_states_used
-  if (is.null(S) || S < 1L)
-    return(list(status = "insufficient_prior_check", reasons = character(0),
-                thresholds_used = th, summary = list()))
+  if (is.null(S) || S < 1L) {
+    return(list(
+      status = "insufficient_prior_check", reasons = character(0),
+      thresholds_used = th, summary = list()
+    ))
+  }
 
   hospitals <- sort(unique(setup$event_meta_obs[[setup$upper_re_col]]))
-  frac_lt <- numeric(S); frac_gt <- numeric(S)
-  frac_all_r <- numeric(S); frac_all_s <- numeric(S)
+  frac_lt <- numeric(S)
+  frac_gt <- numeric(S)
+  frac_all_r <- numeric(S)
+  frac_all_s <- numeric(S)
   hosp_spread <- numeric(S)
 
   for (s in seq_len(S)) {
@@ -412,18 +432,21 @@ compute_prior_predictive_status <- function(prior_draws, thresholds = list()) {
   degenerate_frac <- summary$fraction_all_resistant + summary$fraction_all_susceptible
 
   reasons <- character(0)
-  if (!is.na(extreme_frac) && extreme_frac > th$severe_fraction_extreme_probability)
+  if (!is.na(extreme_frac) && extreme_frac > th$severe_fraction_extreme_probability) {
     reasons <- c(reasons, "fail_implausible_prior_predictive", "warning_extreme_prior_predictions")
-  else if (!is.na(extreme_frac) && extreme_frac > th$max_fraction_extreme_probability)
+  } else if (!is.na(extreme_frac) && extreme_frac > th$max_fraction_extreme_probability) {
     reasons <- c(reasons, "warning_extreme_prior_predictions")
+  }
 
-  if (!is.na(degenerate_frac) && degenerate_frac > th$severe_fraction_degenerate_profiles)
+  if (!is.na(degenerate_frac) && degenerate_frac > th$severe_fraction_degenerate_profiles) {
     reasons <- c(reasons, "fail_implausible_prior_predictive", "warning_degenerate_profiles")
-  else if (!is.na(degenerate_frac) && degenerate_frac > th$max_fraction_degenerate_profiles)
+  } else if (!is.na(degenerate_frac) && degenerate_frac > th$max_fraction_degenerate_profiles) {
     reasons <- c(reasons, "warning_degenerate_profiles")
+  }
 
-  if (!is.na(summary$hospital_spread_sd_mean) && summary$hospital_spread_sd_mean > th$max_hospital_spread_sd)
+  if (!is.na(summary$hospital_spread_sd_mean) && summary$hospital_spread_sd_mean > th$max_hospital_spread_sd) {
     reasons <- c(reasons, "warning_excessive_hospital_heterogeneity")
+  }
 
   reasons <- unique(reasons)
   status <- if (any(grepl("^fail_", reasons))) {
@@ -437,9 +460,7 @@ compute_prior_predictive_status <- function(prior_draws, thresholds = list()) {
   list(status = status, reasons = reasons, thresholds_used = th, summary = summary)
 }
 
-# ---------------------------------------------------------------------------
 # compute_prior_predictive_fingerprint() -- Part 12: reuse/certification
-# ---------------------------------------------------------------------------
 
 #' Fingerprint the prior-generative configuration of a fitted model
 #'

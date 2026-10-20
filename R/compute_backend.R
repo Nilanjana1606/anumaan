@@ -25,7 +25,8 @@ validate_compute_backend <- function(compute = list()) {
   cmdstan_path <- tryCatch(cmdstanr::cmdstan_path(), error = function(e) "")
   if (!nzchar(cmdstan_path)) {
     stop("CmdStan is not configured. Run cmdstanr::install_cmdstan() or cmdstanr::set_cmdstan_path().",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   invisible(cfg)
@@ -54,7 +55,8 @@ validate_compute_backend <- function(compute = list()) {
   cfg$backend <- tolower(cfg$backend)
   if (!cfg$backend %in% c("cpu", "opencl")) {
     stop(sprintf("Unknown compute backend '%s'. Use 'cpu' or 'opencl'.", cfg$backend),
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   if (!is.logical(cfg$allow_cpu_fallback) || length(cfg$allow_cpu_fallback) != 1L || is.na(cfg$allow_cpu_fallback)) {
@@ -62,10 +64,13 @@ validate_compute_backend <- function(compute = list()) {
   }
 
   .validate_opencl_id <- function(value, field) {
-    if (is.null(value)) return(NULL)
+    if (is.null(value)) {
+      return(NULL)
+    }
     if (length(value) != 1L || is.na(value) || !is.numeric(value) || value < 0 || value != as.integer(value)) {
       stop(sprintf("`compute$%s` must be a non-negative integer scalar.", field),
-           call. = FALSE)
+        call. = FALSE
+      )
     }
     as.integer(value)
   }
@@ -76,7 +81,8 @@ validate_compute_backend <- function(compute = list()) {
   if (identical(cfg$backend, "opencl")) {
     if (is.null(cfg$opencl_platform_id) || is.null(cfg$opencl_device_id)) {
       stop("OpenCL backend requires both `compute$opencl_platform_id` and `compute$opencl_device_id`.",
-           call. = FALSE)
+        call. = FALSE
+      )
     }
   } else {
     cfg$opencl_platform_id <- NULL

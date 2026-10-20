@@ -20,7 +20,7 @@ test_that("Omega correlation heatmap flags high-Rhat cells and never shows empir
   expect_false(is.null(p))
   expect_true(grepl("latent", p$labels$subtitle, ignore.case = TRUE))
   expect_false(grepl("empirical", p$labels$subtitle, ignore.case = TRUE) &&
-                 !grepl("NOT empirical", p$labels$subtitle))
+    !grepl("NOT empirical", p$labels$subtitle))
   # The 0.85 correlation (Aminoglycosides x Penicillins) has rhat = 1.02 > 1.01, must be flagged.
   flagged_row <- p$data[p$data$rhat > 1.01 & !is.na(p$data$rhat), ]
   expect_true(nrow(flagged_row) > 0L)

@@ -7,7 +7,7 @@
 test_that("legacy character vector and named-block spec produce the same structure", {
   d <- data.frame(hosp = rep(c("H1", "H2", "H3"), each = 4), adm = paste0("A", 1:12))
   re_legacy <- prepare_random_effects(d, c("hosp", "adm"))
-  re_named  <- prepare_random_effects(d, list(
+  re_named <- prepare_random_effects(d, list(
     list(name = "hospital", group_col = "hosp", terms = "intercept"),
     list(name = "admission", group_col = "adm", terms = "intercept")
   ))
@@ -95,7 +95,10 @@ test_that("min_repeated_levels is checked independently of singleton_threshold (
   warnings_seen <- character(0)
   withCallingHandlers(
     prepare_random_effects(d, c("hosp", "grp"), min_repeated_levels = 5L),
-    warning = function(w) { warnings_seen <<- c(warnings_seen, conditionMessage(w)); invokeRestart("muffleWarning") }
+    warning = function(w) {
+      warnings_seen <<- c(warnings_seen, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
   )
   grp_warning <- warnings_seen[grepl("grp", warnings_seen)]
   expect_length(grp_warning, 1L)
@@ -107,16 +110,20 @@ test_that("singleton_threshold is configurable", {
   w <- character(0)
   withCallingHandlers(
     prepare_random_effects(d, c("hosp", "grp"), singleton_threshold = 0.5),
-    warning = function(w2) { w <<- c(w, conditionMessage(w2)); invokeRestart("muffleWarning") }
+    warning = function(w2) {
+      w <<- c(w, conditionMessage(w2))
+      invokeRestart("muffleWarning")
+    }
   )
   grp_w <- w[grepl("grp", w)]
   expect_match(grp_w, "above the 50% threshold")
 })
 
 test_that("re_contribution() sums the correct blocks per event", {
-  D <- 2; total_levels <- 5
+  D <- 2
+  total_levels <- 5
   re_effect <- matrix(1:(D * total_levels), nrow = D)
-  fgi <- matrix(c(1, 3, 2, 4, 5, 1), ncol = 2, byrow = TRUE)  # 3 events x 2 blocks
+  fgi <- matrix(c(1, 3, 2, 4, 5, 1), ncol = 2, byrow = TRUE) # 3 events x 2 blocks
   out <- re_contribution(re_effect, fgi)
   expect_equal(out[1, ], re_effect[, 1] + re_effect[, 3])
   expect_equal(out[2, ], re_effect[, 2] + re_effect[, 4])
@@ -124,7 +131,8 @@ test_that("re_contribution() sums the correct blocks per event", {
 })
 
 test_that("re_contribution() handles a single event vector input", {
-  D <- 2; total_levels <- 4
+  D <- 2
+  total_levels <- 4
   re_effect <- matrix(1:(D * total_levels), nrow = D)
   out <- re_contribution(re_effect, c(1L, 3L))
   expect_equal(out, re_effect[, 1] + re_effect[, 3])

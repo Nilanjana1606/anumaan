@@ -1,6 +1,6 @@
 # Category 2: organism/antibiotic standardization
 
-# prep_standardize_organisms ---------------------------------------------------
+# prep_standardize_organisms
 
 test_that("prep_standardize_organisms: valid behavior", {
   dat <- cat2_standardization_organism_abx()[c(1, 2), "organism_name", drop = FALSE]
@@ -24,7 +24,7 @@ test_that("prep_standardize_organisms: error handling", {
   expect_error(prep_standardize_organisms(data.frame(x = 1), organism_col = "organism_name"), "not found")
 })
 
-# prep_assign_organism_group ---------------------------------------------------
+# prep_assign_organism_group
 
 test_that("prep_assign_organism_group: valid behavior", {
   dat <- data.frame(
@@ -51,7 +51,7 @@ test_that("prep_assign_organism_group: error handling", {
   expect_error(prep_assign_organism_group(data.frame(x = 1)), "not found")
 })
 
-# prep_flag_organism_unmatched -------------------------------------------------
+# prep_flag_organism_unmatched
 
 test_that("prep_flag_organism_unmatched: valid behavior", {
   dat <- data.frame(organism_normalized = c("Escherichia coli", "nonexistent organism"), stringsAsFactors = FALSE)
@@ -77,7 +77,7 @@ test_that("prep_flag_organism_unmatched: error handling", {
   expect_error(prep_flag_organism_unmatched(data.frame(x = 1)), "not found")
 })
 
-# prep_standardize_antibiotics -------------------------------------------------
+# prep_standardize_antibiotics
 
 test_that("prep_standardize_antibiotics: valid behavior", {
   dat <- cat2_standardization_organism_abx()[c(1, 5), "antibiotic_name", drop = FALSE]
@@ -105,7 +105,7 @@ test_that("prep_standardize_antibiotics: error handling", {
   expect_error(prep_standardize_antibiotics(data.frame(x = 1), antibiotic_col = "antibiotic_name"), "not found")
 })
 
-# prep_classify_antibiotic_class -----------------------------------------------
+# prep_classify_antibiotic_class
 
 test_that("prep_classify_antibiotic_class: valid behavior", {
   dat <- data.frame(antibiotic_normalized = c("Amikacin", "Ampicillin"), stringsAsFactors = FALSE)
