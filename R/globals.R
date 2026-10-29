@@ -191,6 +191,6 @@ utils::globalVariables(c(
   "backend_fallback_reason", "opencl_platform_id", "opencl_device_id",
   "stan_opencl_enabled", "cmdstan_version", "cmdstanr_version",
 
-  # plot_probit_diagnostics() -- ggplot2 aes() column references
+  # plot_omega_diagnostics() -- ggplot2 aes() column references
   "rhat", "ess", "metric"
 ))
