@@ -22,7 +22,7 @@ profile_audit_interaction_support(
 )
 }
 \arguments{
-\item{data, group_col, class_col, value_col, resistant_values, }{susceptible_values,intermediate_values,event_id_col Same as
+\item{data, group_col, class_col, value_col, resistant_values, susceptible_values, intermediate_values, event_id_col}{Same as
 \code{\link{profile_audit_support}}.}
 
 \item{panel}{Character vector. The candidate panel's classes.}

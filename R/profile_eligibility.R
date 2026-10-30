@@ -889,8 +889,8 @@ profile_precision_bound <- function(D, epsilon, alpha = 0.05, n_strata = NULL) {
 #' caller -- a clinically pre-screened shortlist, or an exhaustive
 #' enumeration the caller builds and passes in.
 #'
-#' @param data,group_col,class_col,value_col,resistant_values,
-#'   susceptible_values,intermediate_values,event_id_col Passed through to
+#' @param data,group_col,class_col,value_col,resistant_values,susceptible_values,intermediate_values,event_id_col
+#'   Passed through to
 #'   \code{\link{profile_audit_support}} once per candidate panel (its
 #'   \code{class_cols} argument is the candidate panel itself).
 #' @param candidate_panels A named list of character vectors, each a
@@ -995,8 +995,8 @@ profile_check_panel_feasibility <- function(data,
 #' only: subsets with zero or sparse direct co-tested support are flagged
 #' before any time is spent fitting at all, nothing stronger is claimed.
 #'
-#' @param data,group_col,class_col,value_col,resistant_values,
-#'   susceptible_values,intermediate_values,event_id_col Same as
+#' @param data,group_col,class_col,value_col,resistant_values,susceptible_values,intermediate_values,event_id_col
+#'   Same as
 #'   \code{\link{profile_audit_support}}.
 #' @param panel Character vector. The candidate panel's classes.
 #' @param max_order Integer or \code{NULL}. Highest interaction order to
@@ -1104,8 +1104,8 @@ profile_audit_interaction_support <- function(data,
 #' reconciliation data describes a bigger cohort than the one that actually
 #' reaches the model.
 #'
-#' @param data,group_col,class_col,value_col,resistant_values,
-#'   susceptible_values,intermediate_values,event_id_col Same as
+#' @param data,group_col,class_col,value_col,resistant_values,susceptible_values,intermediate_values,event_id_col
+#'   Same as
 #'   \code{\link{profile_audit_support}}. \code{event_id_col} is required
 #'   (not optional) for long-format \code{data} -- a real per-event key is
 #'   needed to merge covariates back onto the wide outcome matrix.
@@ -1314,9 +1314,8 @@ profile_prepare_model_data <- function(data,
 #' @param data Data frame, already restricted to the modeling cohort (e.g.
 #'   \code{profile_select_cohort(...)$data}) -- every count here describes
 #'   THIS cohort, never the full unfiltered dataset.
-#' @param group_col,class_col,value_col,resistant_values,susceptible_values,
-#'   intermediate_values,intermediate_as_resistant,unknown_action,
-#'   conflict_action Same meaning as in \code{\link{profile_audit_support}}.
+#' @param group_col,class_col,value_col,resistant_values,susceptible_values,intermediate_values,intermediate_as_resistant,unknown_action,conflict_action
+#'   Same meaning as in \code{\link{profile_audit_support}}.
 #' @param panel Character vector. The candidate panel's classes (what
 #'   \code{\link{profile_check_panel_feasibility}} calls one entry of
 #'   \code{candidate_panels}, and \code{\link{profile_prepare_model_data}}

@@ -34,8 +34,7 @@ profile_summarize_cohort_eligibility(
 \code{profile_select_cohort(...)$data}) -- every count here describes
 THIS cohort, never the full unfiltered dataset.}
 
-\item{group_col, class_col, value_col, resistant_values, susceptible_values, }{intermediate_values,intermediate_as_resistant,unknown_action,
-conflict_action Same meaning as in \code{\link{profile_audit_support}}.}
+\item{group_col, class_col, value_col, resistant_values, susceptible_values, intermediate_values, intermediate_as_resistant, unknown_action, conflict_action}{Same meaning as in \code{\link{profile_audit_support}}.}
 
 \item{panel}{Character vector. The candidate panel's classes (what
 \code{\link{profile_check_panel_feasibility}} calls one entry of

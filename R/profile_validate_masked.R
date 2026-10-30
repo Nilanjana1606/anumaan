@@ -166,8 +166,10 @@
 }
 
 
-#' (Internal) Average Precision -- area under the recall-weighted precision
-#' step function, AP = sum_k (Recall_k - Recall_{k-1}) * Precision_k.
+#' (Internal) Average Precision
+#'
+#' Area under the recall-weighted precision step function, AP = sum_k
+#' (Recall_k - Recall_\{k-1\}) * Precision_k.
 #' Depends on resistant prevalence (unlike AUROC); undefined, not zero,
 #' with zero positive cases. Matches the standard step-function definition
 #' (e.g. scikit-learn's \code{average_precision_score}); ties at a
@@ -191,7 +193,9 @@
 }
 
 
-#' (Internal) Log loss, LogLoss = -1/n * sum[y*log(q) + (1-y)*log(1-q)] --
+#' (Internal) Log Loss
+#'
+#' LogLoss = -1/n * sum[y*log(q) + (1-y)*log(1-q)] --
 #' lower is better, the opposite sign convention from this file's own
 #' per-row \code{log_score} (kept for backward compatibility: higher is
 #' better there). Both are reported; do not confuse the two.
@@ -205,7 +209,9 @@
 }
 
 
-#' (Internal) Binned calibration curve: mean predicted probability versus
+#' (Internal) Binned Calibration Curve
+#'
+#' Mean predicted probability versus
 #' observed frequency, per bin of predicted probability. Reports every
 #' non-empty bin, including its own \code{n} -- a thin bin's point is
 #' still shown, not silently smoothed over.
@@ -231,7 +237,9 @@
 }
 
 
-#' (Internal) Calibration intercept/slope from a logistic regression of
+#' (Internal) Calibration Intercept/Slope
+#'
+#' From a logistic regression of
 #' truth on logit(predicted probability) -- slope 1/intercept 0 is perfect
 #' calibration. NA when unestimable (one-class truth, separation, glm
 #' non-convergence) rather than a fabricated number.

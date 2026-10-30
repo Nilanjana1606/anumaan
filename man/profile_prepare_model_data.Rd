@@ -23,7 +23,7 @@ profile_prepare_model_data(
 )
 }
 \arguments{
-\item{data, group_col, class_col, value_col, resistant_values, }{susceptible_values,intermediate_values,event_id_col Same as
+\item{data, group_col, class_col, value_col, resistant_values, susceptible_values, intermediate_values, event_id_col}{Same as
 \code{\link{profile_audit_support}}. \code{event_id_col} is required
 (not optional) for long-format \code{data} -- a real per-event key is
 needed to merge covariates back onto the wide outcome matrix.}

@@ -3,6 +3,22 @@
 # only the deterministic, no-live-Stan-process subset is covered here
 # directly, plus a few real-fit checks kept deliberately tiny/fast.
 
+.amr_wf_cmdstan_available <- function() {
+  requireNamespace("cmdstanr", quietly = TRUE) &&
+    isTRUE(tryCatch(
+      {
+        cmdstanr::cmdstan_path()
+        TRUE
+      },
+      error = function(e) FALSE
+    ))
+}
+
+.amr_wf_skip_without_stan <- function() {
+  skip_on_cran()
+  skip_if_not(.amr_wf_cmdstan_available(), "cmdstanr/CmdStan not available")
+}
+
 test_that("1. Uniform kernel: zero coefficients give uniform states, 0.5 margins, 0.25 pair cells, 0.5 conditional", {
   D <- 3
   states <- profile_enumerate_states(D)
@@ -126,7 +142,7 @@ test_that("6. No false identification: distinct full-state distributions sharing
 })
 
 test_that("9. Mask/partial-pattern denominators retain zero-count sub-profiles, never silently drop them", {
-  skip_if_not_installed("cmdstanr")
+  .amr_wf_skip_without_stan()
   d <- data.frame(
     hosp = rep("A", 6), event = c(1, 1, 2, 2, 3, 3),
     class = c("Carb", "Flq", "Carb", "Flq", "Carb", "Flq"),
@@ -159,7 +175,7 @@ test_that("12. Metrics: hand-computed AUROC/AP/log-loss, tied scores, one-class 
 })
 
 test_that("13. Intervals: aggregating within a draw before quantiles differs from (and is narrower than) summing per-state quantiles", {
-  skip_if_not_installed("cmdstanr")
+  .amr_wf_skip_without_stan()
   set.seed(5)
   N <- 60; D <- 2
   X <- cbind(Intercept = 1, age = scale(rnorm(N))[, 1])
@@ -200,7 +216,7 @@ test_that("14. Dimensions: relabeling class order changes labels, not the underl
 })
 
 test_that("16. Sensitivity: identical fit used as both sides of the comparison gives exactly zero contrast", {
-  skip_if_not_installed("cmdstanr")
+  .amr_wf_skip_without_stan()
   set.seed(6)
   N <- 40; D <- 2
   X <- cbind(Intercept = 1, age = scale(rnorm(N))[, 1])
@@ -219,7 +235,7 @@ test_that("16. Sensitivity: identical fit used as both sides of the comparison g
 })
 
 test_that("17. Output integrity: profile probability draws sum to 1 for every event and draw; missing_allocation counts sum to N", {
-  skip_if_not_installed("cmdstanr")
+  .amr_wf_skip_without_stan()
   set.seed(7)
   N <- 30; D <- 2
   X <- cbind(Intercept = 1, age = scale(rnorm(N))[, 1])

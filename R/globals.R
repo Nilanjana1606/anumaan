@@ -4,7 +4,7 @@
 #' @importFrom grDevices dev.off pdf
 #' @importFrom magrittr %>%
 #' @importFrom rlang .data .env := %||%
-#' @importFrom stats cor density median na.omit pnorm profile quantile rbinom reorder setNames
+#' @importFrom stats cor density median na.omit pnorm profile quantile rbinom reorder reshape setNames
 #' @importFrom utils adist combn head object.size
 NULL
 

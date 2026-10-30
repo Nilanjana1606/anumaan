@@ -23,7 +23,7 @@ profile_check_panel_feasibility(
 )
 }
 \arguments{
-\item{data, group_col, class_col, value_col, resistant_values, }{susceptible_values,intermediate_values,event_id_col Passed through to
+\item{data, group_col, class_col, value_col, resistant_values, susceptible_values, intermediate_values, event_id_col}{Passed through to
 \code{\link{profile_audit_support}} once per candidate panel (its
 \code{class_cols} argument is the candidate panel itself).}
 

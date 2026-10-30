@@ -2,15 +2,12 @@
 % Please edit documentation in R/profile_validate_masked.R
 \name{.calibration_bins}
 \alias{.calibration_bins}
-\title{(Internal) Binned calibration curve: mean predicted probability versus
-observed frequency, per bin of predicted probability. Reports every
-non-empty bin, including its own \code{n} -- a thin bin's point is
-still shown, not silently smoothed over.}
+\title{(Internal) Binned Calibration Curve}
 \usage{
 .calibration_bins(y, p, n_bins = 10L)
 }
 \description{
-(Internal) Binned calibration curve: mean predicted probability versus
+Mean predicted probability versus
 observed frequency, per bin of predicted probability. Reports every
 non-empty bin, including its own \code{n} -- a thin bin's point is
 still shown, not silently smoothed over.
